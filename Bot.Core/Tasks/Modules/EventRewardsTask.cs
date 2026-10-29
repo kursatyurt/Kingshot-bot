@@ -38,10 +38,17 @@ namespace Bot.Core.Tasks.Modules
             var locator = new LocatorService(logger, account, TaskType);
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
 
-            var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
-            if (screenshot == null) return TaskExecutionDetails.Failed("No screenshot");
-            var (iconFound, iconRect, _) = _templateMatcher.MatchTemplate(screenshot, Path.Combine(ImageTemplateFolder, "path-of-growth.png"),
-                account.InstanceNumber, threshold: 0.9, searchArea: EventIconArea);
+            // The previous task may still be closing its page: look a few times
+            bool iconFound = false;
+            Rectangle iconRect = Rectangle.Empty;
+            for (int look = 0; look < 3 && !iconFound; look++)
+            {
+                await Task.Delay(1500, cancellationToken);
+                var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                if (screenshot == null) continue;
+                (iconFound, iconRect, _) = _templateMatcher.MatchTemplate(screenshot, Path.Combine(ImageTemplateFolder, "path-of-growth.png"),
+                    account.InstanceNumber, threshold: 0.9, searchArea: EventIconArea);
+            }
             _lastRun[account.InstanceNumber] = DateTime.UtcNow;
             if (!iconFound)
             {
@@ -67,6 +74,17 @@ namespace Bot.Core.Tasks.Modules
             return new TaskExecutionDetails(true, message: $"Claimed {claimed} event reward(s)");
         }
 
+        /// <summary>True for a green, claimable button; its grey version (mission not done) has G ≈ R.</summary>
+        private static bool IsLitGreen(byte[] screenshot, Rectangle rect)
+        {
+            using var img = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
+            if (img.Empty()) return false;
+            var r = new OpenCvSharp.Rect(rect.X, rect.Y, rect.Width, rect.Height) & new OpenCvSharp.Rect(0, 0, img.Width, img.Height);
+            using var roi = new OpenCvSharp.Mat(img, r);
+            var mean = OpenCvSharp.Cv2.Mean(roi); // BGR
+            return mean.Val1 - mean.Val2 > 40;
+        }
+
         /// <summary>Taps the green Claim buttons one at a time; claimed missions move out of the way.</summary>
         private async Task<int> ClaimAllAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
         {
@@ -77,7 +95,7 @@ namespace Bot.Core.Tasks.Modules
                 if (screenshot == null) break;
                 var (found, rect, _) = _templateMatcher.MatchTemplate(screenshot, Path.Combine(ImageTemplateFolder, "claim-button.png"),
                     account.InstanceNumber, threshold: 0.85, searchArea: ClaimColumn);
-                if (!found) break;
+                if (!found || !IsLitGreen(screenshot, rect)) break; // grey Claim: not reached yet
                 await ClickRandomInRectAsync(account.InstanceNumber, logger, rect);
                 claimed++;
                 await Task.Delay(2000, cancellationToken);

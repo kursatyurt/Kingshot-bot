@@ -280,6 +280,14 @@ namespace Bot.Core.Tasks.Modules
             // Go centres the camera on the building and opens its action ring (Details / Upgrade / Train)
             await ClickRandomInRectAsync(account.InstanceNumber, logger, goRect);
             await Task.Delay(2500, cancellationToken);
+            var afterGo = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            if (afterGo != null)
+            {
+                // Keep the building's action ring (Details / Upgrade / Train) for reference
+                var debugDir = Path.Combine(AppContext.BaseDirectory, "logs", "screenshots");
+                Directory.CreateDirectory(debugDir);
+                await File.WriteAllBytesAsync(Path.Combine(debugDir, $"autobuild-after-go-{account.InstanceNumber}.png"), afterGo, cancellationToken);
+            }
             await ClickAsync(account.InstanceNumber, logger, BuildingRingUpgradeButton);
 
             // The building's upgrade dialog lists its own requirements with ✓ / ❌

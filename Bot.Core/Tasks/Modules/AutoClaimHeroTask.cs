@@ -323,8 +323,11 @@ namespace Bot.Core.Tasks.Modules
 
                     if (!backArrowResult.found)
                     {
-                        logger.LogWarning("Could not find back button");
-                        return TaskExecutionDetails.Failed("Could not find back button");
+                        // The recruit page's arrow varies; the back key leaves it just as well
+                        logger.LogInfo("No back arrow found; leaving the recruit page with the back key");
+                        await PressBackAsync(account.InstanceNumber, logger);
+                        await Task.Delay(1000, cancellationToken);
+                        return TaskExecutionDetails.Succeeded();
                     }
 
                     logger.LogInfo($"Found back arrow at {backArrowResult.matchRect} with confidence {backArrowResult.confidence:F3}");
