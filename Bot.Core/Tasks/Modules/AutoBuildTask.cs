@@ -64,15 +64,16 @@ namespace Bot.Core.Tasks.Modules
         protected override async Task<TaskExecutionDetails> ExecuteTaskLogicAsync(
             AccountSettings account, LogService logger, CancellationToken cancellationToken, bool isReRun = false, IUserNotificationService? userNotifications = null)
         {
-            await BuildNewBuildingsAsync(account, logger, cancellationToken);
-
             if (_nextBuildCheck.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next)
             {
                 logger.LogInfo($"[{account.AccountName}] Auto Build checked recently; next check after {next.ToLocalTime():HH:mm}");
+                await BuildNewBuildingsAsync(account, logger, cancellationToken);
                 return new TaskExecutionDetails(true, message: "Skipped: checked recently");
             }
 
             var result = await RunBuildAsync(account, logger, cancellationToken, userNotifications);
+            // After the Town Center work: the side panel's jump moves the camera off the Town Center
+            await BuildNewBuildingsAsync(account, logger, cancellationToken);
             var cooldown = result.Success ? TimeSpan.FromMinutes(10)
                 : result.FailureCategory == FailureCategory.GameState ? TimeSpan.FromMinutes(15) // requirements missing
                 : TimeSpan.Zero; // navigation/detection problems: just retry next cycle

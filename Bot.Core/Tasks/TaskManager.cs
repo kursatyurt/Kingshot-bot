@@ -604,20 +604,22 @@ namespace Bot.Core.Tasks
                 { TaskType.AccountDetection, -1 }, // AccountDetection must run first (after Startup)
                 { TaskType.AutoShield, 0 },        // AutoShield should run first to ensure protection
                 { TaskType.AutoHunt, 1 },          // AutoHunt should run after shield
-                { TaskType.Farming, 2 },           // Farming should run after AutoHunt
+                { TaskType.Farming, 2 },           // the march slot first: an idle march is lost gathering time
                 { TaskType.AutoAllianceHelp, 3 },
-                { TaskType.TroopTraining, 9 },     // after Auto Build, which tells it which camps to keep free for upgrades
-                { TaskType.ConquestCollect, 5 },
-                { TaskType.ClaimMail, 6 },
+                // Long timers next, so the builder, the Academy and the camps start working as early as possible
+                { TaskType.AutoBuild, 4 },
+                { TaskType.AutoTechnology, 5 },
+                { TaskType.TroopTraining, 6 },     // after Auto Build, which tells it which camps to keep free for upgrades
                 { TaskType.AutoHeal, 7 },
-                { TaskType.AutoBuild, 8 },
-                { TaskType.AutoClaimHero, 9 },     // Add AutoClaimHero to the priority list
-                { TaskType.AllianceTechnology, 10 },
-                { TaskType.AutoTechnology, 11 },   // Auto Technology after AllianceTechnology
-                { TaskType.CollectVip, 12 },
-                { TaskType.EventRewards, 12 },
-                { TaskType.ClaimMissions, 13 },
-                { TaskType.ResidentWelcome, 14 },
+                // Free claims last
+                { TaskType.ConquestCollect, 8 },
+                { TaskType.EventRewards, 9 },
+                { TaskType.ClaimMissions, 10 },
+                { TaskType.ClaimMail, 11 },
+                { TaskType.AutoClaimHero, 12 },
+                { TaskType.AllianceTechnology, 13 },
+                { TaskType.CollectVip, 14 },
+                { TaskType.ResidentWelcome, 15 },
                 { TaskType.ChangeAccount, 999 }    // ChangeAccount should always run last
             };
 
