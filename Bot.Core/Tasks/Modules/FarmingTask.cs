@@ -144,6 +144,7 @@ namespace Bot.Core.Tasks.Modules
                 if (currentMarches <= 0)
                 {
                     logger.LogInfo($"[{account.AccountName}] No marches available after map view check.");
+                    await RecordNextMarchReturnAsync(account, logger); // every slot busy: still learn when the first one is home
                     return new TaskExecutionDetails(true, message: "No marches available.");
                 }
 
@@ -196,7 +197,7 @@ namespace Bot.Core.Tasks.Modules
                             break;
                         }
                         
-                        currentMarches = await GetAvailableMarchesAsync(account, logger, cancellationToken);
+                        currentMarches = await GetAvailableMarchesAsync(account, logger, cancellationToken, justSentMarch: marchesSentSuccessfully > 0);
                         if (currentMarches <= 0)
                         {
                             logger.LogInfo($"[{account.AccountName}] No more marches available.");
@@ -278,7 +279,8 @@ namespace Bot.Core.Tasks.Modules
             if (screenshot == null) return;
             using var timerOcr = new OCRService(logger, new OCRConfiguration { CharacterWhitelist = "0123456789:", PageSegMode = Tesseract.PageSegMode.SingleLine });
             var text = timerOcr.ExtractBrightTextFromScreenArea(screenshot, FirstMarchTimerRect, 190);
-            if (TimeSpan.TryParseExact(text, @"hh\:mm\:ss", null, out var remaining))
+            var timerMatch = Regex.Match(text, @"\d\d:\d\d:\d\d$"); // ignore stray characters before the time
+            if (timerMatch.Success && TimeSpan.TryParseExact(timerMatch.Value, @"hh\:mm\:ss", null, out var remaining))
             {
                 // The timer counts down the current leg: "Returning" = home; otherwise it ends when the march reaches the
                 // tile or finishes gathering, after which the next cycle reads the following leg.
@@ -300,7 +302,7 @@ namespace Bot.Core.Tasks.Modules
         /// <summary>
         /// Determines how many marches are available using a simplified and robust Regex approach.
         /// </summary>
-        private async Task<int> GetAvailableMarchesAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
+        private async Task<int> GetAvailableMarchesAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken, bool justSentMarch = false)
         {
             // 1. The "1/1" counter right of "Marching" in the world map's march panel (white text, dark see-through background)
             var marchCountRect = new Rectangle(195, 195, 60, 40);
@@ -319,9 +321,22 @@ namespace Bot.Core.Tasks.Modules
             string text = marchOcr.ExtractBrightTextFromScreenArea(screenshot, marchCountRect);
             logger.LogInfo($"[{account.AccountName}] March capacity OCR text: '{text}'");
             
+            if (string.IsNullOrWhiteSpace(text) && justSentMarch) {
+                // Right after a deploy the march panel may not be drawn yet; an empty read then is not a free slot
+                await Task.Delay(1500, cancellationToken);
+                screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                text = screenshot == null ? "" : marchOcr.ExtractBrightTextFromScreenArea(screenshot, marchCountRect);
+                logger.LogInfo($"[{account.AccountName}] March capacity OCR text (re-read after send): '{text}'");
+                if (string.IsNullOrWhiteSpace(text)) {
+                    logger.LogInfo($"[{account.AccountName}] March counter still unreadable after sending; not risking a send into a full queue.");
+                    return 0;
+                }
+            }
+
             if (string.IsNullOrWhiteSpace(text)) {
+                // No march out yet: the panel (and its counter) only shows while a march is active
                 logger.LogInfo($"[{account.AccountName}] March OCR returned no text. Assuming at least 1 march is available.");
-                return 1; // Assume at least 1 march is available when OCR fails
+                return 1;
             }
 
             // 4. Use a reliable Regex to parse the "current/max" pattern.

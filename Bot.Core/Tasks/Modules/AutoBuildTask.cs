@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using System.IO;
 using System.Linq;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
 
 namespace Bot.Core.Tasks.Modules
@@ -40,6 +41,8 @@ namespace Bot.Core.Tasks.Modules
         private readonly Rectangle goButtonSearchArea = new Rectangle(527, 588, 159, 547); // Go buttons next to the requirement rows
         private static readonly Point BuildingRingUpgradeButton = new Point(360, 750); // ring around a building after Go centres it
         private static readonly Rectangle DialogUpgradeButtonArea = new Rectangle(360, 700, 360, 560); // bottom right of a building's upgrade dialog (lower with more rows)
+        private static readonly Rectangle ConstructionStatusRect = new Rectangle(40, 722, 200, 30); // "Upgrading" bar on a building under construction
+        private static readonly Rectangle ConstructionTimerRect = new Rectangle(515, 722, 120, 30); // its "00:29:41" countdown
         private static readonly Point GetMoreCloseButton = new Point(668, 144); // X of the "Get More" resource dialog
 
         // Helper method for random delays
@@ -51,8 +54,30 @@ namespace Bot.Core.Tasks.Modules
             await Task.Delay(delay, cancellationToken);
         }
 
+        // Per instance: no Town Center check before this time. Cycles can come every few minutes (they follow the
+        // march timers), but a started upgrade or a missing requirement does not change that fast.
+        private static readonly ConcurrentDictionary<int, DateTime> _nextBuildCheck = new();
+
         protected override async Task<TaskExecutionDetails> ExecuteTaskLogicAsync(
             AccountSettings account, LogService logger, CancellationToken cancellationToken, bool isReRun = false, IUserNotificationService? userNotifications = null)
+        {
+            if (_nextBuildCheck.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next)
+            {
+                logger.LogInfo($"[{account.AccountName}] Auto Build checked recently; next check after {next.ToLocalTime():HH:mm}");
+                return new TaskExecutionDetails(true, message: "Skipped: checked recently");
+            }
+
+            var result = await RunBuildAsync(account, logger, cancellationToken, userNotifications);
+            var cooldown = result.Success ? TimeSpan.FromMinutes(10)
+                : result.FailureCategory == FailureCategory.GameState ? TimeSpan.FromMinutes(15) // requirements missing
+                : TimeSpan.Zero; // navigation/detection problems: just retry next cycle
+            if (cooldown > TimeSpan.Zero)
+                _nextBuildCheck.AddOrUpdate(account.InstanceNumber, DateTime.UtcNow + cooldown, (_, old) => old > DateTime.UtcNow + cooldown ? old : DateTime.UtcNow + cooldown);
+            return result;
+        }
+
+        private async Task<TaskExecutionDetails> RunBuildAsync(
+            AccountSettings account, LogService logger, CancellationToken cancellationToken, IUserNotificationService? userNotifications)
         {
             try
             {
@@ -67,7 +92,9 @@ namespace Bot.Core.Tasks.Modules
                 // Open the Town Center page. Other tasks (e.g. Farming's trip to the world map) move the city
                 // camera, and only a fresh game start puts it back on the Town Center, so restart once if needed.
                 NotifyProgress(userNotifications, "Opening Town Center", 30);
-                if (!await OpenTownCenterAsync(account, logger, locator, cancellationToken))
+                var (openedFirst, busyFor) = await OpenTownCenterAsync(account, logger, locator, cancellationToken);
+                if (busyFor != null) return TownCenterBusy(account, logger, busyFor.Value);
+                if (!openedFirst)
                 {
                     logger.LogInfo($"[{account.AccountName}] Town Center not in the middle of the city view; restarting the game to re-centre it");
                     NotifyProgress(userNotifications, "Restarting game to re-centre the city", 40);
@@ -77,8 +104,9 @@ namespace Bot.Core.Tasks.Modules
                     for (int attempt = 1; attempt <= 3 && !opened; attempt++)
                     {
                         await Task.Delay(3000, cancellationToken);
-                        opened = await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken, maxRetries: 5)
-                            && await OpenTownCenterAsync(account, logger, locator, cancellationToken);
+                        if (!await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken, maxRetries: 5)) continue;
+                        (opened, busyFor) = await OpenTownCenterAsync(account, logger, locator, cancellationToken);
+                        if (busyFor != null) return TownCenterBusy(account, logger, busyFor.Value);
                     }
                     if (!opened)
                     {
@@ -157,17 +185,52 @@ namespace Bot.Core.Tasks.Modules
         /// <summary>
         /// Taps the middle of the city view and checks that the Town Center page opened; closes whatever opened otherwise.
         /// </summary>
-        private async Task<bool> OpenTownCenterAsync(AccountSettings account, LogService logger, LocatorService locator, CancellationToken cancellationToken)
+        private async Task<(bool opened, TimeSpan? busyFor)> OpenTownCenterAsync(AccountSettings account, LogService logger, LocatorService locator, CancellationToken cancellationToken)
         {
             await ClickAsync(account.InstanceNumber, logger, TownCenterTapPoint);
             await RandomDelay(cancellationToken);
             var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
-            if (screenshot != null && IsTownCenterPage(screenshot, logger)) return true;
+            if (screenshot != null && IsTownCenterPage(screenshot, logger)) return (true, null);
+
+            // While it upgrades, the Town Center opens a construction page ("Upgrading 00:29:41", Finish for gems,
+            // Construction Speedup). Never tap those; back out and wait for the upgrade instead.
+            var busyFor = screenshot == null ? null : ReadConstructionTimeLeft(screenshot, logger);
+            if (busyFor != null)
+            {
+                await PressBackAsync(account.InstanceNumber, logger);
+                await RandomDelay(cancellationToken);
+                return (false, busyFor);
+            }
 
             // Not the Town Center: return to the city. A blind back key would open the game's exit
             // dialog when the tap opened nothing; the locator only acts on what is actually on screen.
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
-            return false;
+            return (false, null);
+        }
+
+        /// <summary>
+        /// Time left on a building's construction page ("Upgrading" bar with a countdown), or null on any other screen.
+        /// </summary>
+        private static TimeSpan? ReadConstructionTimeLeft(byte[] screenshot, LogService logger)
+        {
+            using var words = new OCRService(logger, new OCRConfiguration { ScaleFactor = 2.0f });
+            if (!words.ExtractTextFromScreenArea(screenshot, ConstructionStatusRect).Contains("Upgrading", StringComparison.OrdinalIgnoreCase))
+                return null;
+            using var digits = new OCRService(logger, new OCRConfiguration { ScaleFactor = 2.0f, CharacterWhitelist = "0123456789:", PageSegMode = Tesseract.PageSegMode.SingleLine });
+            var text = digits.ExtractTextFromScreenArea(screenshot, ConstructionTimerRect);
+            // The clock icon before the countdown can come out as an extra digit ("100:19:27"): use the last hh:mm:ss
+            var match = System.Text.RegularExpressions.Regex.Match(text, @"\d\d:\d\d:\d\d$");
+            if (match.Success && TimeSpan.TryParseExact(match.Value, @"hh\:mm\:ss", null, out var left)) return left;
+            logger.LogInfo($"Construction timer unreadable ('{text}'); assuming 30 minutes");
+            return TimeSpan.FromMinutes(30);
+        }
+
+        private TaskExecutionDetails TownCenterBusy(AccountSettings account, LogService logger, TimeSpan left)
+        {
+            var wait = left < TimeSpan.FromMinutes(10) ? TimeSpan.FromMinutes(10) : left;
+            _nextBuildCheck[account.InstanceNumber] = DateTime.UtcNow + wait;
+            logger.LogInfo($"[{account.AccountName}] Town Center is upgrading ({left} left); next Auto Build check in {wait}");
+            return new TaskExecutionDetails(true, message: $"Town Center upgrading, {left} left");
         }
 
         /// <summary>
