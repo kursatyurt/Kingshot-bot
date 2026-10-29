@@ -74,7 +74,7 @@ namespace Bot.Core.Tasks.Modules
             var result = await RunBuildAsync(account, logger, cancellationToken, userNotifications);
             // After the Town Center work: the side panel's jump moves the camera off the Town Center
             await BuildNewBuildingsAsync(account, logger, cancellationToken);
-            var cooldown = result.Success ? TimeSpan.FromMinutes(10)
+            var cooldown = result.Success ? SuccessCooldown(account.InstanceNumber)
                 : result.FailureCategory == FailureCategory.GameState ? TimeSpan.FromMinutes(15) // requirements missing
                 : TimeSpan.Zero; // navigation/detection problems: just retry next cycle
             if (cooldown > TimeSpan.Zero)
@@ -83,6 +83,15 @@ namespace Bot.Core.Tasks.Modules
         }
 
         private static readonly ConcurrentDictionary<int, DateTime> _nextNewBuildingCheck = new();
+        private static readonly ConcurrentDictionary<int, DateTime> _builderFreeAt = new();
+
+        /// <summary>10 minutes, or sooner when the builder is known to be free sooner (short low-level upgrades).</summary>
+        private static TimeSpan SuccessCooldown(int instance)
+        {
+            if (!_builderFreeAt.TryRemove(instance, out var freeAt)) return TimeSpan.FromMinutes(10);
+            var wait = freeAt - DateTime.UtcNow + TimeSpan.FromSeconds(20);
+            return wait < TimeSpan.FromMinutes(1) ? TimeSpan.FromMinutes(1) : wait > TimeSpan.FromMinutes(10) ? TimeSpan.FromMinutes(10) : wait;
+        }
 
         /// <summary>
         /// Builds buildings that have unlocked (Storehouse, Barricades, Monument, ...). With the builder idle, the
@@ -427,10 +436,54 @@ namespace Bot.Core.Tasks.Modules
             await ClickRandomInRectAsync(account.InstanceNumber, logger, upgradeRect);
             await RandomDelay(cancellationToken);
             await RequestAllianceHelpAsync(account, logger, cancellationToken);
+            await ChainQuickUpgradesAsync(account, logger, cancellationToken);
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
 
             account.AutoBuildSettings.LastBuildTime = DateTime.UtcNow;
             return TaskExecutionDetails.Succeeded();
+        }
+
+        /// <summary>
+        /// Low levels of a required building (e.g. Range 2 → 9) take seconds each. The camera is still on it after the
+        /// upgrade, so while the builder frees up within a few seconds, press it and upgrade again (up to 3 more) instead of
+        /// waiting for the next Auto Build run, which usually needs a game restart to find the Town Center again.
+        /// </summary>
+        private async Task ChainQuickUpgradesAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
+        {
+            using var ocr = new OCRService(logger, new OCRConfiguration { ScaleFactor = 3.0f, PageSegMode = Tesseract.PageSegMode.SingleLine });
+            for (int extra = 1; extra <= 3; extra++)
+            {
+                await Task.Delay(4000, cancellationToken);
+                await ClickAsync(account.InstanceNumber, logger, new Point(12, 550)); // side panel: is the builder free?
+                await Task.Delay(1500, cancellationToken);
+                var panel = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                var builder = panel == null ? "" : ocr.ExtractBrightTextFromScreenArea(panel, new Rectangle(150, 376, 160, 30));
+                await ClickAsync(account.InstanceNumber, logger, new Point(464, 544)); // close the panel
+                await Task.Delay(800, cancellationToken);
+                if (!builder.Contains("Idle", StringComparison.OrdinalIgnoreCase))
+                {
+                    // A real upgrade timer: come back when the builder is free rather than after the usual 10 minutes
+                    var timer = System.Text.RegularExpressions.Regex.Match(builder, @"\d\d:\d\d:\d\d");
+                    if (timer.Success && TimeSpan.TryParseExact(timer.Value, @"hh\:mm\:ss", null, out var left))
+                        _builderFreeAt[account.InstanceNumber] = DateTime.UtcNow + left;
+                    return;
+                }
+
+                await SwipeAsync(account.InstanceNumber, logger, CentredBuildingPoint, new Point(CentredBuildingPoint.X + 1, CentredBuildingPoint.Y + 1), 150);
+                await Task.Delay(1200, cancellationToken);
+                if (!await TapRingButtonAsync(account.InstanceNumber, logger, Path.Combine(ImageTemplateFolder, "ring-upgrade.png"), BuildingRingUpgradeButton)) return;
+                var missing = await ReadRequirementsAsync(account, logger, cancellationToken);
+                if (missing == null || missing.Count > 0) { await PressBackAsync(account.InstanceNumber, logger); return; }
+                var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                var (found, rect, _) = screenshot == null ? (false, Rectangle.Empty, 0.0)
+                    : _templateMatcher.MatchTemplate(screenshot, Path.Combine(ImageTemplateFolder, "dialog-upgrade-button.png"),
+                        account.InstanceNumber, threshold: 0.88, searchArea: DialogUpgradeButtonArea);
+                if (!found) { await PressBackAsync(account.InstanceNumber, logger); return; }
+                logger.LogInfo($"[{account.AccountName}] ⏩ Builder free again; upgrading the same building once more ({extra}/3)");
+                await ClickRandomInRectAsync(account.InstanceNumber, logger, rect);
+                await RandomDelay(cancellationToken);
+                await RequestAllianceHelpAsync(account, logger, cancellationToken);
+            }
         }
 
         private async Task<bool> OnFurniturePageAsync(AccountSettings account, LogService logger)
