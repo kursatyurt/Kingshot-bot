@@ -37,6 +37,20 @@ namespace Bot.Core.Tasks.Modules
 
         // Static instance-specific farming rotation indexes to maintain state across runs
         private static readonly ConcurrentDictionary<int, int> _farmingRotationIndexes = new();
+        private static readonly ConcurrentDictionary<int, (ResourceType Type, DateTime Until)> _priorityResource = new();
+
+        /// <summary>
+        /// The Town Center upgrade is short of this resource (backpack exhausted): farm it first until the upgrade
+        /// can start. Cleared by Auto Build once the requirements are met; expires after 3 hours otherwise.
+        /// </summary>
+        public static bool TownCenterIsShortOfResources(int instance) =>
+            _priorityResource.TryGetValue(instance, out var p) && DateTime.UtcNow < p.Until;
+
+        public static void SetPriorityResource(int instance, ResourceType? type)
+        {
+            if (type is ResourceType t) _priorityResource[instance] = (t, DateTime.UtcNow.AddHours(3));
+            else _priorityResource.TryRemove(instance, out _);
+        }
         // Survives bot restarts, which otherwise always started over with the first resource (Bread got 3x the marches)
         private static readonly string RotationFile = Path.Combine(AppContext.BaseDirectory, "data", "farming_rotation.json");
 
@@ -232,14 +246,26 @@ namespace Bot.Core.Tasks.Modules
                         // attempt only moves on within this cycle, so a full queue doesn't skip a resource's turn.
                         int currentIndex = _farmingRotationIndexes.GetOrAdd(account.InstanceNumber, LoadRotationIndex) + consecutiveFailures;
                         FarmingTarget currentTarget = account.FarmingTargets[currentIndex % account.FarmingTargets.Count];
+                        bool priorityMarch = false;
+                        if (consecutiveFailures == 0 && _priorityResource.TryGetValue(account.InstanceNumber, out var priority) && DateTime.UtcNow < priority.Until
+                            && account.FarmingTargets.FirstOrDefault(t => t.ResourceType == priority.Type) is FarmingTarget wanted)
+                        {
+                            // The Town Center waits on this resource: gather it first; the rotation resumes afterwards
+                            currentTarget = wanted;
+                            priorityMarch = true;
+                            logger.LogInfo($"[{account.AccountName}] 🎯 Town Center needs {wanted.ResourceType}: gathering it first");
+                        }
 
                         logger.LogInfo($"[{account.AccountName}] 🎯 Attempting to send march for {currentTarget.ResourceType} Level {currentTarget.Level}");
 
                         bool marchSent = await ProcessSingleMarchAsync(account, logger, cancellationToken, currentTarget, userNotifications);
                         if (marchSent)
                         {
-                            _farmingRotationIndexes[account.InstanceNumber] = (currentIndex + 1) % account.FarmingTargets.Count;
-                            SaveRotationIndexes();
+                            if (!priorityMarch)
+                            {
+                                _farmingRotationIndexes[account.InstanceNumber] = (currentIndex + 1) % account.FarmingTargets.Count;
+                                SaveRotationIndexes();
+                            }
                             consecutiveFailures = 0;
                             marchesSentSuccessfully++;
                             FarmingSettings.IncrementMarchesSent(account.InstanceNumber);

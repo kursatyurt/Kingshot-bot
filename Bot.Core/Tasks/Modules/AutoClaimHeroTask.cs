@@ -311,7 +311,7 @@ namespace Bot.Core.Tasks.Modules
 
                 // Return to base/map view
                 var backButtonArea = new Rectangle(87, 74, 30, 30);
-                for (int i = 0; i < 2; i++)
+                for (int i = 0; i < 4; i++)
                 {
                     var backArrowScreenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
                     if (backArrowScreenshot == null)
@@ -331,18 +331,24 @@ namespace Bot.Core.Tasks.Modules
 
                     if (!backArrowResult.found)
                     {
-                        // The recruit page's arrow varies; the back key leaves it just as well
-                        logger.LogInfo("No back arrow found; leaving the recruit page with the back key");
+                        if (_templateMatcher.MatchTemplate(backArrowScreenshot, Path.Combine(AppContext.BaseDirectory, "templates", "images", "locator", "base-view.png"),
+                                account.InstanceNumber, threshold: 0.8).found)
+                            break; // already back in the city
+                        // A hero reward pop-up can hide the arrow; the back key closes the pop-up, then look again
+                        logger.LogInfo("No back arrow found; pressing the back key");
                         await PressBackAsync(account.InstanceNumber, logger);
-                        await Task.Delay(1000, cancellationToken);
-                        return TaskExecutionDetails.Succeeded();
+                        await Task.Delay(1200, cancellationToken);
+                        continue;
                     }
 
                     logger.LogInfo($"Found back arrow at {backArrowResult.matchRect} with confidence {backArrowResult.confidence:F3}");
                     await ClickRandomInRectAsyncWithRetry(account.InstanceNumber, logger, backArrowResult.matchRect, cancellationToken);
                     await Task.Delay(1000, cancellationToken);
+                    break; // left the page; another back key on the city would open "Quit game?"
                 }
 
+                // The recruit page was left open before (the back key alone did not close it): make sure we are home
+                await new LocatorService(logger, account).EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
                 logger.LogInfo("Auto Claim Hero task completed successfully");
                 return TaskExecutionDetails.Succeeded();
             }

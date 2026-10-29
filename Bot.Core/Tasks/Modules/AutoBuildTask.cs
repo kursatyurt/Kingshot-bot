@@ -85,6 +85,56 @@ namespace Bot.Core.Tasks.Modules
         private static readonly ConcurrentDictionary<int, DateTime> _nextNewBuildingCheck = new();
         private static readonly ConcurrentDictionary<int, DateTime> _builderFreeAt = new();
 
+        /// <summary>
+        /// The idle builder's suggestion is centred: press it, and if its ring offers Upgrade and every requirement is met
+        /// (resources topped up from the backpack), upgrade it. Never the Storehouse (the user asked not to upgrade it).
+        /// </summary>
+        private async Task UpgradeSuggestedBuildingAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
+        {
+            if (FarmingTask.TownCenterIsShortOfResources(account.InstanceNumber))
+            {
+                logger.LogInfo($"[{account.AccountName}] Saving resources for the Town Center; no other upgrade now");
+                return;
+            }
+            await SwipeAsync(account.InstanceNumber, logger, CentredBuildingPoint, new Point(CentredBuildingPoint.X + 1, CentredBuildingPoint.Y + 1), 150);
+            await Task.Delay(1500, cancellationToken);
+            if (!await TapRingButtonAsync(account.InstanceNumber, logger, Path.Combine(ImageTemplateFolder, "ring-upgrade.png"), BuildingRingUpgradeButton))
+            {
+                logger.LogInfo($"[{account.AccountName}] The suggested building has no Upgrade on its ring; leaving it");
+                return;
+            }
+            var missing = await ReadRequirementsAsync(account, logger, cancellationToken);
+            if (missing == null) return;
+
+            var dialog = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            using (var words = new OCRService(logger, new OCRConfiguration { ScaleFactor = 2.0f }))
+            {
+                var title = dialog == null ? "" : words.ExtractTextFromScreenArea(dialog, new Rectangle(120, 200, 480, 70));
+                if (title.Contains("Storehouse", StringComparison.OrdinalIgnoreCase))
+                {
+                    logger.LogInfo($"[{account.AccountName}] Not upgrading the Storehouse");
+                    return;
+                }
+            }
+
+            if (missing.Count > 0 && await UseBackpackResourcesAsync(account, logger, cancellationToken))
+                missing = await ReadRequirementsAsync(account, logger, cancellationToken) ?? missing;
+            if (missing.Count > 0)
+            {
+                logger.LogInfo($"[{account.AccountName}] The suggested upgrade needs: {string.Join("; ", missing)}");
+                return;
+            }
+            dialog = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            var (found, rect, _) = dialog == null ? (false, Rectangle.Empty, 0.0)
+                : _templateMatcher.MatchTemplate(dialog, Path.Combine(ImageTemplateFolder, "dialog-upgrade-button.png"),
+                    account.InstanceNumber, threshold: 0.88, searchArea: DialogUpgradeButtonArea);
+            if (!found) return;
+            logger.LogInfo($"[{account.AccountName}] 🔨 Builder idle: upgrading the suggested building");
+            await ClickRandomInRectAsync(account.InstanceNumber, logger, rect);
+            await RandomDelay(cancellationToken);
+            await RequestAllianceHelpAsync(account, logger, cancellationToken);
+        }
+
         /// <summary>10 minutes, or sooner when the builder is known to be free sooner (short low-level upgrades).</summary>
         private static TimeSpan SuccessCooldown(int instance)
         {
@@ -130,7 +180,8 @@ namespace Bot.Core.Tasks.Modules
                 }
                 if (!found)
                 {
-                    logger.LogInfo($"[{account.AccountName}] The suggested build is not a new building; leaving it");
+                    // An upgrade (or a camp to collect): keep the builder busy on it as long as nothing else waits
+                    await UpgradeSuggestedBuildingAsync(account, logger, cancellationToken);
                     await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
                     return;
                 }
@@ -223,6 +274,7 @@ namespace Bot.Core.Tasks.Modules
                 NotifyProgress(userNotifications, "Starting upgrade", 90);
                 logger.LogInfo($"[{account.AccountName}] All Town Center requirements met, tapping Upgrade");
                 TroopTrainingTask.HoldCampsForUpgrade(account.InstanceNumber, Array.Empty<string>());
+                FarmingTask.SetPriorityResource(account.InstanceNumber, null);
                 await ClickAsync(account.InstanceNumber, logger, RequirementsUpgradeButton);
                 await RandomDelay(cancellationToken);
                 await RequestAllianceHelpAsync(account, logger, cancellationToken);
@@ -323,6 +375,7 @@ namespace Bot.Core.Tasks.Modules
         private TaskExecutionDetails TownCenterBusy(AccountSettings account, LogService logger, TimeSpan left)
         {
             TroopTrainingTask.HoldCampsForUpgrade(account.InstanceNumber, Array.Empty<string>()); // nothing to keep idle for now
+            FarmingTask.SetPriorityResource(account.InstanceNumber, null);
             var wait = left < TimeSpan.FromMinutes(10) ? TimeSpan.FromMinutes(10) : left;
             _nextBuildCheck[account.InstanceNumber] = DateTime.UtcNow + wait;
             logger.LogInfo($"[{account.AccountName}] Town Center is upgrading ({left} left); next Auto Build check in {wait}");
@@ -405,6 +458,10 @@ namespace Bot.Core.Tasks.Modules
                 }
                 return TaskExecutionDetails.FailedWith(FailureCategory.GameState, "Step 4: Upgrading required building",
                     "The required building opened neither an upgrade dialog nor an upgradable furniture page");
+            }
+            if (missing.Count > 0 && await UseBackpackResourcesAsync(account, logger, cancellationToken))
+            {
+                missing = await ReadRequirementsAsync(account, logger, cancellationToken) ?? missing;
             }
             if (missing.Count > 0)
             {
@@ -541,7 +598,7 @@ namespace Bot.Core.Tasks.Modules
                 await Task.Delay(1500, cancellationToken);
 
                 var dialogClosed = false;
-                for (int use = 1; use <= 20; use++)
+                for (int use = 1; use <= 100; use++) // the user wants backpack resources spent to progress
                 {
                     screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
                     if (screenshot == null) break;
@@ -561,6 +618,21 @@ namespace Bot.Core.Tasks.Modules
                 if (!dialogClosed)
                 {
                     logger.LogInfo($"[{account.AccountName}] Not enough backpack items for this resource; closing Get More");
+                    var shortage = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                    if (shortage != null)
+                    {
+                        // Keep the Get More dialog to learn which resource is short (for farming priority)
+                        var debugDir = Path.Combine(AppContext.BaseDirectory, "logs", "screenshots");
+                        Directory.CreateDirectory(debugDir);
+                        await File.WriteAllBytesAsync(Path.Combine(debugDir, $"autobuild-get-more-{account.InstanceNumber}.png"), shortage, cancellationToken);
+                        using var words = new OCRService(logger, new OCRConfiguration { ScaleFactor = 2.0f });
+                        var text = words.ExtractTextFromScreenArea(shortage, new Rectangle(40, 100, 640, 400));
+                        // Its items are named after the resource ("Stone x1,000"): farm that one first
+                        var shortType = new[] { ResourceType.Bread, ResourceType.Wood, ResourceType.Stone, ResourceType.Iron }
+                            .Where(t => text.Contains(t.ToString(), StringComparison.OrdinalIgnoreCase)).Select(t => (ResourceType?)t).FirstOrDefault();
+                        logger.LogInfo($"[{account.AccountName}] Short of {shortType?.ToString() ?? "an unknown resource"} for the upgrade");
+                        FarmingTask.SetPriorityResource(account.InstanceNumber, shortType);
+                    }
                     await ClickAsync(account.InstanceNumber, logger, GetMoreCloseButton);
                     await RandomDelay(cancellationToken);
                     break; // the same Obtain row would come up again
