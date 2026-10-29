@@ -1,7 +1,6 @@
 using Bot.Core.Models;
 using Bot.Core.Logging;
 using Bot.Core.Utils;
-using Bot.Core.ImageDetection;
 using Bot.Core.Services;
 using System;
 using System.Drawing;
@@ -10,38 +9,38 @@ using System.Threading.Tasks;
 using System.IO;
 using System.Linq;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 
 namespace Bot.Core.Tasks.Modules
 {
+    /// <summary>
+    /// Upgrades the Town Center. Kingshot no longer has the left-edge side panel the old flow used,
+    /// so the task opens the Town Center directly: it sits in the middle of the city view after the game starts.
+    /// When requirements are missing (another building's level, resources), it logs them and backs out
+    /// without spending anything.
+    /// </summary>
     public class AutoBuildTask : BaseTaskWithCommonPatterns
     {
-        private const int DEFAULT_WAIT_TIMEOUT_MS = 5000; // 5 seconds timeout
-        private const int DETECTION_POLL_INTERVAL_MS = 200; // Check every 200ms
         private const int MIN_CLICK_DELAY_MS = 500; // Minimum delay between clicks
         private const int MAX_CLICK_DELAY_MS = 1000; // Maximum delay between clicks
-        private const int MIN_UPGRADE_ICON_DELAY_MS = 1500; // Minimum delay before upgrade icon
-        private const int MAX_UPGRADE_ICON_DELAY_MS = 2000; // Maximum delay before upgrade icon
         private static readonly Random _random = new Random();
 
         public override TaskType TaskType => TaskType.AutoBuild;
         public override string Name => "Auto Build";
-        
+
         protected override string GetImageFolderName() => "autobuild";
 
-        private readonly Rectangle[] idleCheckRegions = new[]
-        {
-            new Rectangle(86, 370, 237, 34),
-            new Rectangle(90, 445, 233, 34)
-        };
-
-        private readonly Rectangle timerRegion = new Rectangle(450, 1000, 126, 99);
-        private readonly Rectangle redXSearchArea = new Rectangle(449, 589, 211, 543);
-        private readonly Rectangle goButtonSearchArea = new Rectangle(527, 588, 159, 547);
-        private readonly Rectangle personHeadArea = new Rectangle(254, 5, 48, 47);
-        private readonly Rectangle kitchenArea = new Rectangle(39, 967, 92, 92);
-        private readonly Rectangle upgradeIconArea = new Rectangle(129, 565, 474, 338);
-        private readonly Rectangle upgradeButtonArea = new Rectangle(391, 930, 245, 63); // For final upgrade button
-        private readonly Rectangle firstUpgradeButtonArea = new Rectangle(538, 601, 136, 43); // For first upgrade button after kitchen
+        // ponytail: fixed tap point, valid while the camera is on the Town Center (true after a game start,
+        // so the task restarts the game when it isn't). A building template match would avoid the restart.
+        private static readonly Point TownCenterTapPoint = new Point(340, 610);
+        private static readonly Rectangle TownCenterTitleArea = new Rectangle(15, 600, 320, 50); // "Town Center Lv. 6"
+        private static readonly Point TownCenterUpgradeButton = new Point(610, 624);
+        private static readonly Point RequirementsUpgradeButton = new Point(528, 1215);
+        private readonly Rectangle redXSearchArea = new Rectangle(449, 589, 211, 543); // ❌ column of the requirements list
+        private readonly Rectangle goButtonSearchArea = new Rectangle(527, 588, 159, 547); // Go buttons next to the requirement rows
+        private static readonly Point BuildingRingUpgradeButton = new Point(360, 750); // ring around a building after Go centres it
+        private static readonly Rectangle DialogUpgradeButtonArea = new Rectangle(360, 700, 360, 560); // bottom right of a building's upgrade dialog (lower with more rows)
+        private static readonly Point GetMoreCloseButton = new Point(668, 144); // X of the "Get More" resource dialog
 
         // Helper method for random delays
         private async Task RandomDelay(CancellationToken cancellationToken)
@@ -50,175 +49,6 @@ namespace Bot.Core.Tasks.Modules
             if (cancellationToken.IsCancellationRequested) return;
             int delay = _random.Next(MIN_CLICK_DELAY_MS, MAX_CLICK_DELAY_MS + 1);
             await Task.Delay(delay, cancellationToken);
-        }
-
-        private async Task LongerRandomDelay(CancellationToken cancellationToken)
-        {
-            await WaitIfPausedAsync(cancellationToken);
-            if (cancellationToken.IsCancellationRequested) return;
-            int delay = _random.Next(MIN_UPGRADE_ICON_DELAY_MS, MAX_UPGRADE_ICON_DELAY_MS + 1);
-            await Task.Delay(delay, cancellationToken);
-        }
-
-        /// <summary>
-        /// Enhanced version of FindAndClickImageAsync with debug logging and visualization
-        /// </summary>
-        private async Task<bool> FindAndClickImageWithDebugAsync(
-            string imageName, 
-            int instanceNumber, 
-            LogService logger, 
-            Rectangle? searchArea = null, 
-            double threshold = 0.8,
-            bool saveFailedMatches = true,
-            int timeoutMs = DEFAULT_WAIT_TIMEOUT_MS)
-        {
-            var startTime = DateTime.UtcNow;
-            logger.LogInfo($"[{Name}] Looking for {imageName} (timeout: {timeoutMs}ms)" + (searchArea.HasValue ? $" in area: {searchArea}" : ""));
-
-            while ((DateTime.UtcNow - startTime).TotalMilliseconds < timeoutMs)
-            {
-                var screenshot = await TakeScreenshotAsync(instanceNumber, logger);
-                if (screenshot == null) continue;
-
-                var templatePath = Path.Combine(ImageTemplateFolder, imageName);
-                if (!File.Exists(templatePath))
-                {
-                    logger.LogError($"[{Name}] Template not found: {templatePath}");
-                    return false;
-                }
-
-                // Track all detections with confidence > 0.4 for debugging
-                var detections = new List<(Rectangle rect, double confidence)>();
-
-                // First try with high threshold
-                var (found, matchRect, confidence) = _templateMatcher.MatchTemplate(
-                    screenshot,
-                    templatePath,
-                    instanceNumber,
-                    threshold: threshold,
-                    searchArea: searchArea
-                );
-
-                // Special debug for upgrade button
-                if (imageName == "upgrade-button.png")
-                {
-                    logger.LogInfo($"[{Name}] Upgrade button detection - Found: {found}, Confidence: {confidence:F3}, Location: {matchRect}");
-                    if (found)
-                    {
-                        var clickPoint = new Point(matchRect.X + matchRect.Width / 2, matchRect.Y + matchRect.Height / 2);
-                        logger.LogInfo($"[{Name}] Will click upgrade button at center point: ({clickPoint.X}, {clickPoint.Y})");
-                    }
-                }
-
-                // If high threshold fails, try with lower threshold for debugging
-                if (!found && saveFailedMatches)
-                {
-                    var (_, lowMatchRect, lowConfidence) = _templateMatcher.MatchTemplate(
-                        screenshot,
-                        templatePath,
-                        instanceNumber,
-                        threshold: 0.4,
-                        searchArea: searchArea
-                    );
-
-                    if (lowConfidence > 0.4)
-                    {
-                        detections.Add((lowMatchRect, lowConfidence));
-                        logger.LogInfo($"[{Name}] Found potential {imageName} match with lower confidence {lowConfidence:F3} at {lowMatchRect}");
-                    }
-                }
-
-                if (found)
-                {
-                    logger.LogInfo($"[{Name}] Found {imageName} at {matchRect} with confidence {confidence:F3} after {(DateTime.UtcNow - startTime).TotalMilliseconds:F0}ms");
-                    
-                    // Debug image saving disabled
-
-                    return await ClickRandomInRectAsync(instanceNumber, logger, matchRect);
-                }
-
-                // If we haven't found it yet and we still have time, wait a bit before next attempt
-                if ((DateTime.UtcNow - startTime).TotalMilliseconds + DETECTION_POLL_INTERVAL_MS < timeoutMs)
-                {
-                    await Task.Delay(DETECTION_POLL_INTERVAL_MS);
-                    continue;
-                }
-
-                // Debug screenshot saving disabled
-                break;
-            }
-
-            logger.LogInfo($"[{Name}] Failed to find {imageName} after {timeoutMs}ms");
-            return false;
-        }
-
-        /// <summary>
-        /// Enhanced version of WaitForImageAsync with debug logging and visualization
-        /// </summary>
-        private async Task<bool> WaitForImageWithDebugAsync(
-            string imageName, 
-            int instanceNumber, 
-            LogService logger, 
-            CancellationToken cancellationToken,
-            Rectangle? searchArea = null,
-            int timeoutMs = DEFAULT_WAIT_TIMEOUT_MS,
-            double threshold = 0.8)
-        {
-            var startTime = DateTime.UtcNow;
-            logger.LogInfo($"[{Name}] Waiting for {imageName} (timeout: {timeoutMs}ms)...");
-            double bestConfidenceSeen = 0.0;
-
-            while ((DateTime.UtcNow - startTime).TotalMilliseconds < timeoutMs && !cancellationToken.IsCancellationRequested)
-            {
-                var screenshot = await TakeScreenshotAsync(instanceNumber, logger);
-                if (screenshot == null) continue;
-
-                var templatePath = Path.Combine(ImageTemplateFolder, imageName);
-                if (!File.Exists(templatePath))
-                {
-                    logger.LogError($"[{Name}] Template not found: {templatePath}");
-                    return false;
-                }
-
-                var (found, matchRect, confidence) = _templateMatcher.MatchTemplate(
-                    screenshot,
-                    templatePath,
-                    instanceNumber,
-                    threshold: threshold,
-                    searchArea: searchArea
-                );
-
-                // Track the best confidence we've seen
-                if (confidence > bestConfidenceSeen)
-                {
-                    bestConfidenceSeen = confidence;
-                }
-
-                if (found)
-                {
-                    logger.LogInfo($"[{Name}] Found {imageName} at {matchRect} with confidence {confidence:F3} after {(DateTime.UtcNow - startTime).TotalMilliseconds:F0}ms");
-                    return true;
-                }
-
-                // If we haven't found it yet and we still have time, wait a bit before next attempt
-                if ((DateTime.UtcNow - startTime).TotalMilliseconds + DETECTION_POLL_INTERVAL_MS < timeoutMs)
-                {
-                    await Task.Delay(DETECTION_POLL_INTERVAL_MS, cancellationToken);
-                    continue;
-                }
-
-                // Continue waiting if we haven't reached timeout
-            }
-
-            if (cancellationToken.IsCancellationRequested)
-            {
-                logger.LogInfo($"[{Name}] Wait for {imageName} cancelled after {(DateTime.UtcNow - startTime).TotalMilliseconds:F0}ms (best confidence: {bestConfidenceSeen:F3})");
-            }
-            else
-            {
-                logger.LogInfo($"[{Name}] Failed to find {imageName} after {timeoutMs}ms - best confidence: {bestConfidenceSeen:F3} (threshold: {threshold:F1})");
-            }
-            return false;
         }
 
         protected override async Task<TaskExecutionDetails> ExecuteTaskLogicAsync(
@@ -234,52 +64,77 @@ namespace Bot.Core.Tasks.Modules
                     return FailNavigation("Step 1: Navigating to base view", "Could not reach base view");
                 }
 
-                // Click alliance button
-                await ClickAsync(account.InstanceNumber, logger, new Point(12, 549));
-                await RandomDelay(cancellationToken);
-
-                // Verify side menu
-                NotifyProgress(userNotifications, "Opening side menu", 20);
-                var sideMenuFound = await WaitForImageWithDebugAsync("side-menu.png", account.InstanceNumber, logger, cancellationToken);
-                if (!sideMenuFound)
+                // Open the Town Center page. Other tasks (e.g. Farming's trip to the world map) move the city
+                // camera, and only a fresh game start puts it back on the Town Center, so restart once if needed.
+                NotifyProgress(userNotifications, "Opening Town Center", 30);
+                if (!await OpenTownCenterAsync(account, logger, locator, cancellationToken))
                 {
-                    return FailDetection("Step 2: Opening side menu", "side menu");
+                    logger.LogInfo($"[{account.AccountName}] Town Center not in the middle of the city view; restarting the game to re-centre it");
+                    NotifyProgress(userNotifications, "Restarting game to re-centre the city", 40);
+                    await RestartGameAsync(account, logger, cancellationToken);
+                    var opened = false;
+                    // The camera sweeps into town for a few seconds after launch, so give it time and a few tries
+                    for (int attempt = 1; attempt <= 3 && !opened; attempt++)
+                    {
+                        await Task.Delay(3000, cancellationToken);
+                        opened = await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken, maxRetries: 5)
+                            && await OpenTownCenterAsync(account, logger, locator, cancellationToken);
+                    }
+                    if (!opened)
+                    {
+                        return TaskExecutionDetails.FailedWith(
+                            FailureCategory.Navigation,
+                            "Step 2: Opening Town Center",
+                            "Could not open the Town Center, even after restarting the game");
+                    }
                 }
-                await RandomDelay(cancellationToken);
 
-                // Check idle status
-                NotifyProgress(userNotifications, "Checking builders", 30);
-                if (!await CheckIdleStatus(account, logger))
+                // Open its upgrade requirements
+                NotifyProgress(userNotifications, "Checking requirements", 60);
+                await ClickAsync(account.InstanceNumber, logger, TownCenterUpgradeButton);
+                var missing = await ReadRequirementsAsync(account, logger, cancellationToken);
+                if (missing == null)
                 {
-                    logger.LogInfo($"[{account.AccountName}] No idle builders found, clicking exit (461, 542)");
-                    await ClickAsync(account.InstanceNumber, logger, new Point(461, 542));
-                    await RandomDelay(cancellationToken);
+                    await CloseTownCenterPagesAsync(account, logger, cancellationToken);
+                    return FailDetection("Step 3: Checking requirements", "requirements list (no ❌ or ✓ marks)");
+                }
+                if (missing.Count > 0)
+                {
+                    logger.LogInfo($"[{account.AccountName}] Town Center upgrade needs: {string.Join("; ", missing)}");
+
+                    // A missing building has a Go button: upgrade that building instead (one upgrade per cycle)
+                    NotifyProgress(userNotifications, "Upgrading a required building", 75);
+                    var buildingResult = await UpgradeRequiredBuildingAsync(account, logger, locator, cancellationToken);
+                    if (buildingResult != null) return buildingResult;
+
+                    // Only resources are missing: fill them from backpack items. Done only now, when nothing else
+                    // blocks the upgrade, so secured (plunder-proof) items aren't opened while the upgrade still waits.
+                    NotifyProgress(userNotifications, "Using backpack resources", 80);
+                    if (await UseBackpackResourcesAsync(account, logger, cancellationToken))
+                    {
+                        missing = await ReadRequirementsAsync(account, logger, cancellationToken) ?? missing;
+                    }
+                }
+                if (missing.Count > 0)
+                {
+                    await CloseTownCenterPagesAsync(account, logger, cancellationToken);
                     return TaskExecutionDetails.FailedWith(
                         FailureCategory.GameState,
-                        "Step 3: Checking builders",
-                        "No idle builders available",
-                        customHint: "All builders are busy - task will retry next cycle");
+                        "Step 3: Checking requirements",
+                        $"Town Center upgrade needs: {string.Join("; ", missing)}",
+                        customHint: "Not enough resources in the backpack either; gathering continues and the task retries every cycle");
                 }
 
-                // Navigate to kitchen
-                NotifyProgress(userNotifications, "Finding kitchen", 50);
-                await WaitIfPausedAsync(cancellationToken);
-                if (cancellationToken.IsCancellationRequested) return TaskExecutionDetails.Failed("Task was cancelled");
-                if (!await NavigateToKitchen(account, logger, cancellationToken))
-                {
-                    return FailNavigation("Step 4: Finding kitchen", "Could not locate kitchen building");
-                }
+                // All requirements met
+                NotifyProgress(userNotifications, "Starting upgrade", 90);
+                logger.LogInfo($"[{account.AccountName}] All Town Center requirements met, tapping Upgrade");
+                await ClickAsync(account.InstanceNumber, logger, RequirementsUpgradeButton);
+                await RandomDelay(cancellationToken);
+                await RequestAllianceHelpAsync(account, logger, cancellationToken);
+                // The game may already be back in the city after starting the upgrade, where a blind back key
+                // would open the exit dialog, so let the locator return to the city view.
+                await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
 
-                // Handle upgrade process
-                NotifyProgress(userNotifications, "Starting upgrade", 70);
-                await WaitIfPausedAsync(cancellationToken);
-                if (cancellationToken.IsCancellationRequested) return TaskExecutionDetails.Failed("Task was cancelled");
-                if (!await HandleUpgradeProcess(account, logger, cancellationToken))
-                {
-                    return FailGameState("Step 5: Starting upgrade", "Upgrade dialog not responding", recoveryNeeded: true);
-                }
-
-                // Update last build time
                 account.AutoBuildSettings.LastBuildTime = DateTime.UtcNow;
                 return TaskExecutionDetails.Succeeded();
             }
@@ -299,448 +154,237 @@ namespace Bot.Core.Tasks.Modules
             }
         }
 
-        private async Task<bool> CheckIdleStatus(AccountSettings account, LogService logger)
+        /// <summary>
+        /// Taps the middle of the city view and checks that the Town Center page opened; closes whatever opened otherwise.
+        /// </summary>
+        private async Task<bool> OpenTownCenterAsync(AccountSettings account, LogService logger, LocatorService locator, CancellationToken cancellationToken)
         {
-            var ocrConfig = new OCRConfiguration 
-            { 
-                ScaleFactor = 2.0f,
-                CharacterWhitelist = "idleIDLE"
-            };
-            
-            using var ocrService = new OCRService(logger, ocrConfig);
-            
-            foreach (var region in idleCheckRegions)
-            {
-                var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
-                if (screenshot == null) continue;
+            await ClickAsync(account.InstanceNumber, logger, TownCenterTapPoint);
+            await RandomDelay(cancellationToken);
+            var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            if (screenshot != null && IsTownCenterPage(screenshot, logger)) return true;
 
-                var text = ocrService.ExtractTextFromScreenArea(screenshot, region);
-                logger.LogInfo($"[{account.AccountName}] OCR Result for region {region}: '{text}'");
-                
-                if (text.ToLower().Contains("idle"))
-                    return true;
-            }
-            
+            // Not the Town Center: return to the city. A blind back key would open the game's exit
+            // dialog when the tap opened nothing; the locator only acts on what is actually on screen.
+            await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
             return false;
         }
 
-        private async Task<bool> NavigateToKitchen(AccountSettings account, LogService logger, CancellationToken cancellationToken)
+        /// <summary>
+        /// Follows the Go button of a missing building requirement and upgrades that building when its own
+        /// requirements are met. Returns null when there is no building to go to (only resources missing),
+        /// so the caller backs out of the Town Center pages itself.
+        /// </summary>
+        private async Task<TaskExecutionDetails?> UpgradeRequiredBuildingAsync(AccountSettings account, LogService logger, LocatorService locator, CancellationToken cancellationToken)
         {
-            logger.LogInfo($"[{account.AccountName}] Attempting to navigate to kitchen");
-            logger.LogInfo($"[{account.AccountName}] Searching for person head in area: {personHeadArea}");
-            
-            // Click person head
-            if (!await FindAndClickImageWithDebugAsync("person-head.png", account.InstanceNumber, logger, searchArea: personHeadArea))
+            var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            if (screenshot == null) return null;
+            var (goFound, goRect, _) = _templateMatcher.MatchTemplate(
+                screenshot, Path.Combine(ImageTemplateFolder, "go-button.png"), account.InstanceNumber, threshold: 0.85, searchArea: goButtonSearchArea);
+            if (!goFound) return null;
+
+            // Go centres the camera on the building and opens its action ring (Details / Upgrade / Train)
+            await ClickRandomInRectAsync(account.InstanceNumber, logger, goRect);
+            await Task.Delay(2500, cancellationToken);
+            await ClickAsync(account.InstanceNumber, logger, BuildingRingUpgradeButton);
+
+            // The building's upgrade dialog lists its own requirements with ✓ / ❌
+            var missing = await ReadRequirementsAsync(account, logger, cancellationToken);
+            if (missing == null)
             {
-                logger.LogError($"[{account.AccountName}] Person head icon not found in area {personHeadArea}");
-                return false;
+                // e.g. work buildings like the Mill open a furniture page instead of an upgrade dialog
+                logger.LogInfo($"[{account.AccountName}] The required building has no upgrade dialog (furniture building?); leaving it");
+                await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
+                return TaskExecutionDetails.FailedWith(FailureCategory.GameState, "Step 4: Upgrading required building",
+                    "The required building is upgraded through its furniture, which the bot does not do yet");
             }
-            await RandomDelay(cancellationToken);
-
-            logger.LogInfo($"[{account.AccountName}] Searching for kitchen in area: {kitchenArea}");
-            
-            // Click kitchen
-            if (!await FindAndClickImageWithDebugAsync("kitchen.png", account.InstanceNumber, logger, searchArea: kitchenArea))
+            if (missing.Count > 0)
             {
-                logger.LogError($"[{account.AccountName}] Kitchen icon not found in area {kitchenArea}");
-                return false;
+                logger.LogInfo($"[{account.AccountName}] The required building needs: {string.Join("; ", missing)}. Not upgrading.");
+                await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
+                return TaskExecutionDetails.FailedWith(FailureCategory.GameState, "Step 4: Upgrading required building",
+                    $"The required building needs: {string.Join("; ", missing)}");
             }
-            await RandomDelay(cancellationToken);
 
-            // Click sequence
-            logger.LogInfo($"[{account.AccountName}] Executing click sequence");
-            await ClickAsync(account.InstanceNumber, logger, new Point(245, 902));
-            await RandomDelay(cancellationToken);
-            await ClickAsync(account.InstanceNumber, logger, new Point(363, 299));
-            await RandomDelay(cancellationToken);
-            await ClickAsync(account.InstanceNumber, logger, new Point(635, 757));
-            await RandomDelay(cancellationToken);
+            // Its cyan Upgrade button (with a timer) sits at the bottom right; the Town Center page's greyed one scores ~0.77
+            screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            var (upgradeFound, upgradeRect, _) = screenshot == null ? (false, Rectangle.Empty, 0.0)
+                : _templateMatcher.MatchTemplate(screenshot, Path.Combine(ImageTemplateFolder, "dialog-upgrade-button.png"),
+                    account.InstanceNumber, threshold: 0.88, searchArea: DialogUpgradeButtonArea);
+            if (!upgradeFound)
+            {
+                await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
+                return FailDetection("Step 4: Upgrading required building", "the building's Upgrade button");
+            }
 
-            return true;
+            logger.LogInfo($"[{account.AccountName}] All requirements of the required building met, tapping Upgrade");
+            await ClickRandomInRectAsync(account.InstanceNumber, logger, upgradeRect);
+            await RandomDelay(cancellationToken);
+            await RequestAllianceHelpAsync(account, logger, cancellationToken);
+            await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
+
+            account.AutoBuildSettings.LastBuildTime = DateTime.UtcNow;
+            return TaskExecutionDetails.Succeeded();
         }
 
         /// <summary>
-        /// Reads the requirement row of the Go button (the building Go would lead to) and checks it against SkipBuildings.
+        /// For each missing resource: Obtain opens "Get More", whose green Use buttons each use one backpack item;
+        /// the game closes the dialog once the requirement is met. Never taps Buy Packs, Replenish All or anything
+        /// costing gems. Returns true when at least one resource was filled.
         /// </summary>
-        private async Task<bool> RequiresSkippedBuildingAsync(AccountSettings account, LogService logger)
+        private async Task<bool> UseBackpackResourcesAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
         {
-            var skipBuildings = account.AutoBuildSettings.SkipBuildings;
-            if (skipBuildings.Count == 0) return false;
+            var obtain = Path.Combine(ImageTemplateFolder, "obtain.png");
+            var useItem = Path.Combine(ImageTemplateFolder, "item-use-button.png");
+            var filledAny = false;
 
-            var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
-            if (screenshot == null) return false;
-
-            var (found, goRect, _) = _templateMatcher.MatchTemplate(
-                screenshot, Path.Combine(ImageTemplateFolder, "go-button.png"), account.InstanceNumber,
-                threshold: 0.8, searchArea: goButtonSearchArea);
-            if (!found) return false;
-
-            using var ocr = new OCRService(logger, new OCRConfiguration { ScaleFactor = 2.0f });
-            var rowText = ocr.ExtractTextFromScreenArea(screenshot, new Rectangle(40, goRect.Y - 10, goRect.X - 40, goRect.Height + 20));
-            var skipped = skipBuildings.FirstOrDefault(b => rowText.Contains(b, StringComparison.OrdinalIgnoreCase));
-
-            logger.LogInfo($"[{account.AccountName}] Upgrade requirement: '{rowText}'" +
-                (skipped != null ? $" -> {skipped} is in SkipBuildings, not upgrading it (Kitchen stays blocked until it is upgraded)" : ""));
-            return skipped != null;
-        }
-
-        private async Task<bool> HandleUpgradeProcess(AccountSettings account, LogService logger, CancellationToken cancellationToken)
-        {
-            logger.LogInfo($"[{account.AccountName}] Starting upgrade process");
-            
-            // Click first upgrade button (after kitchen)
-            logger.LogInfo($"[{account.AccountName}] Looking for first upgrade button in area: {firstUpgradeButtonArea}");
-            if (!await FindAndClickImageWithDebugAsync("upgrade-button.png", account.InstanceNumber, logger, searchArea: firstUpgradeButtonArea))
-            {
-                logger.LogError($"[{account.AccountName}] First upgrade button not found in area {firstUpgradeButtonArea}");
-                return false;
-            }
-            await RandomDelay(cancellationToken);
-
-            logger.LogInfo($"[{account.AccountName}] Checking for red X in area: {redXSearchArea}");
-            
-            // Check for red X (use lower threshold since red X can vary in appearance)
-            var redXFound = await WaitForImageWithDebugAsync("red-x.png", account.InstanceNumber, logger, cancellationToken, searchArea: redXSearchArea, threshold: 0.6);
-
-            if (!redXFound)
-            {
-                logger.LogInfo($"[{account.AccountName}] No red X found, clicking default position (530, 1215)");
-                await ClickAsync(account.InstanceNumber, logger, new Point(530, 1215));
-                await RandomDelay(cancellationToken);
-            }
-            else
-            {
-                logger.LogInfo($"[{account.AccountName}] Red X found, searching for go button in area: {goButtonSearchArea}");
-
-                if (await RequiresSkippedBuildingAsync(account, logger))
-                {
-                    await FindAndClickImageWithDebugAsync("back-button.png", account.InstanceNumber, logger);
-                    await RandomDelay(cancellationToken);
-                    return true; // Skip the rest of the module
-                }
-
-                // Red X found - look for go button
-                if (!await FindAndClickImageWithDebugAsync("go-button.png", account.InstanceNumber, logger, searchArea: goButtonSearchArea, threshold: 0.8))
-                {
-                    logger.LogWarning($"[{account.AccountName}] Go button not found in area {goButtonSearchArea}, checking for obtain.png fallback...");
-                    
-                    // Fallback: Look for and click obtain.png
-                    if (await FindAndClickImageWithDebugAsync("obtain.png", account.InstanceNumber, logger, searchArea: goButtonSearchArea, threshold: 0.8, timeoutMs: 2000))
-                    {
-                        logger.LogInfo($"[{account.AccountName}] Found and clicked obtain.png, clicking again after 0.5s delay and skipping module");
-                        await Task.Delay(500, cancellationToken); // 0.5 second delay
-                        await FindAndClickImageWithDebugAsync("obtain.png", account.InstanceNumber, logger, searchArea: goButtonSearchArea, threshold: 0.8, timeoutMs: 1000);
-                        await RandomDelay(cancellationToken);
-                        return true; // Skip the rest of the module
-                    }
-                    
-                    logger.LogError($"[{account.AccountName}] Neither go button nor obtain.png found");
-                    return false;
-                }
-                await RandomDelay(cancellationToken);
-
-                // Click the specified point twice
-                var clickPoint = new Point(347, 595);
-                logger.LogInfo($"[{account.AccountName}] Clicking additional point after go button {clickPoint} (first click)");
-                await ClickAsync(account.InstanceNumber, logger, clickPoint);
-                await RandomDelay(cancellationToken);
-                
-                logger.LogInfo($"[{account.AccountName}] Clicking additional point after go button {clickPoint} (second click)");
-                await ClickAsync(account.InstanceNumber, logger, clickPoint);
-                await RandomDelay(cancellationToken);
-            }
-
-            // Wait longer before looking for upgrade icon
-            logger.LogInfo($"[{account.AccountName}] Waiting 1.5-2 seconds before looking for upgrade icon...");
-            await LongerRandomDelay(cancellationToken);
-
-            // Look for upgrade icon in the new search area
-            if (!await FindAndClickImageWithDebugAsync("upgrade-icon.png", account.InstanceNumber, logger, searchArea: upgradeIconArea))
-            {
-                logger.LogInfo($"[{account.AccountName}] Upgrade icon not found, checking if troops are training...");
-                
-                // Try the train icon fallback path
-                if (await HandleTrainIconFallback(account, logger, cancellationToken))
-                {
-                    // After handling train icon, try to find upgrade icon again
-                    logger.LogInfo($"[{account.AccountName}] Retrying upgrade icon search after handling training...");
-                    await RandomDelay(cancellationToken);
-                    
-                    if (!await FindAndClickImageWithDebugAsync("upgrade-icon.png", account.InstanceNumber, logger, searchArea: upgradeIconArea))
-                    {
-                        logger.LogError($"[{account.AccountName}] Upgrade icon still not found after handling training");
-                        return false;
-                    }
-                }
-                else
-                {
-                    logger.LogError($"[{account.AccountName}] Upgrade icon not found in area {upgradeIconArea}");
-                    return false;
-                }
-            }
-            await RandomDelay(cancellationToken);
-
-            // Look for final upgrade button in bottom area
-            logger.LogInfo($"[{account.AccountName}] Looking for final upgrade button in area: {upgradeButtonArea}");
-            if (!await FindAndClickImageWithDebugAsync("upgrade-button.png", account.InstanceNumber, logger, searchArea: upgradeButtonArea))
-            {
-                logger.LogError($"[{account.AccountName}] Final upgrade button not found in area {upgradeButtonArea}");
-                return false;
-            }
-            await RandomDelay(cancellationToken);
-
-            // Look for alliance help button
-            logger.LogInfo($"[{account.AccountName}] Looking for alliance help button...");
-            var allianceHelpImagePath = Path.Combine(Path.GetDirectoryName(ImageTemplateFolder) ?? "", "alliance", "alliance-help.png");
-            if (File.Exists(allianceHelpImagePath))
+            for (int resource = 0; resource < 4; resource++) // a requirements list has at most a few resource rows
             {
                 var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
-                if (screenshot != null)
-                {
-                    var (found, matchRect, confidence) = _templateMatcher.MatchTemplate(
-                        screenshot,
-                        allianceHelpImagePath,
-                        account.InstanceNumber,
-                        threshold: 0.7,
-                        searchArea: null // Search entire screen
-                    );
-                    
-                    if (found)
-                    {
-                        logger.LogInfo($"[{account.AccountName}] Found alliance help button at {matchRect} with confidence {confidence:F3}, clicking...");
-                        await ClickRandomInRectAsync(account.InstanceNumber, logger, matchRect);
-                        await RandomDelay(cancellationToken);
-                    }
-                    else
-                    {
-                        logger.LogInfo($"[{account.AccountName}] Couldn't find alliance help button after 2 seconds, moving on");
-                    }
-                }
-                else
-                {
-                    logger.LogInfo($"[{account.AccountName}] Couldn't find alliance help button after 2 seconds, moving on");
-                }
-            }
-            else
-            {
-                logger.LogInfo($"[{account.AccountName}] Alliance help template not found at: {allianceHelpImagePath}");
-            }
+                if (screenshot == null) break;
+                var (obtainFound, obtainRect, _) = _templateMatcher.MatchTemplate(
+                    screenshot, obtain, account.InstanceNumber, threshold: 0.88, searchArea: goButtonSearchArea);
+                if (!obtainFound) break;
 
-            // Success - no need to look for back button or check upgrade icon again
-            return true;
-        }
+                await ClickRandomInRectAsync(account.InstanceNumber, logger, obtainRect);
+                await Task.Delay(1500, cancellationToken);
 
-        private async Task<bool> HandleTrainIconFallback(AccountSettings account, LogService logger, CancellationToken cancellationToken)
-        {
-            try
-            {
-                logger.LogInfo($"[{account.AccountName}] Looking for train icon...");
-                
-                // Look for and click train icon
-                if (!await FindAndClickImageWithDebugAsync("train-icon.png", account.InstanceNumber, logger))
+                var dialogClosed = false;
+                for (int use = 1; use <= 20; use++)
                 {
-                    logger.LogInfo($"[{account.AccountName}] Train icon not found, fallback not applicable");
-                    return false;
-                }
-                await RandomDelay(cancellationToken);
-                
-                // Look for speedup button
-                logger.LogInfo($"[{account.AccountName}] Looking for speedup button...");
-                if (await WaitForImageWithDebugAsync("speedup-button.png", account.InstanceNumber, logger, cancellationToken, timeoutMs: 3000))
-                {
-                    logger.LogInfo($"[{account.AccountName}] Speedup button found, looking for troop training cancel button...");
-                    
-                    // Look for and click the cancel button from trooptraining folder
-                    var cancelImagePath = Path.Combine(Path.GetDirectoryName(ImageTemplateFolder) ?? "", "trooptraining", "cancel.png");
-                    if (File.Exists(cancelImagePath))
+                    screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                    if (screenshot == null) break;
+                    var (useFound, useRect, _) = _templateMatcher.MatchTemplate(screenshot, useItem, account.InstanceNumber, threshold: 0.88);
+                    if (!useFound)
                     {
-                        var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
-                        if (screenshot != null)
-                        {
-                            var (found, matchRect, confidence) = _templateMatcher.MatchTemplate(
-                                screenshot,
-                                cancelImagePath,
-                                account.InstanceNumber,
-                                threshold: 0.7
-                            );
-                            
-                            if (found)
-                            {
-                                logger.LogInfo($"[{account.AccountName}] Found cancel button, clicking...");
-                                await ClickRandomInRectAsync(account.InstanceNumber, logger, matchRect);
-                                await RandomDelay(cancellationToken);
-                                
-                                // Look for confirm button from ChangeAccount folder
-                                var confirmImagePath = Path.Combine(Path.GetDirectoryName(ImageTemplateFolder) ?? "", "ChangeAccount", "confirm.png");
-                                if (File.Exists(confirmImagePath))
-                                {
-                                    screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
-                                    if (screenshot != null)
-                                    {
-                                        var (confirmFound, confirmRect, confirmConfidence) = _templateMatcher.MatchTemplate(
-                                            screenshot,
-                                            confirmImagePath,
-                                            account.InstanceNumber,
-                                            threshold: 0.7
-                                        );
-                                        
-                                        if (confirmFound)
-                                        {
-                                            logger.LogInfo($"[{account.AccountName}] Found confirm button, clicking...");
-                                            await ClickRandomInRectAsync(account.InstanceNumber, logger, confirmRect);
-                                            await RandomDelay(cancellationToken);
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        // No green Use: either the dialog closed (requirement met) or the backpack has no such items
+                        dialogClosed = !_templateMatcher.MatchTemplate(screenshot, Path.Combine(ImageTemplateFolder, "replenish-all.png"),
+                            account.InstanceNumber, threshold: 0.88).found;
+                        break;
                     }
+                    logger.LogInfo($"[{account.AccountName}] Using a backpack resource item ({use})");
+                    await ClickRandomInRectAsync(account.InstanceNumber, logger, useRect);
+                    await Task.Delay(1200, cancellationToken);
                 }
-                
-                // Look for and click back button
-                logger.LogInfo($"[{account.AccountName}] Looking for back button...");
-                if (await FindAndClickImageWithDebugAsync("back-button.png", account.InstanceNumber, logger))
+
+                if (!dialogClosed)
                 {
-                    logger.LogInfo($"[{account.AccountName}] Back button clicked, waiting for base view...");
+                    logger.LogInfo($"[{account.AccountName}] Not enough backpack items for this resource; closing Get More");
+                    await ClickAsync(account.InstanceNumber, logger, GetMoreCloseButton);
                     await RandomDelay(cancellationToken);
-                    
-                    // Wait for base-view.png from locator folder
-                    var baseViewImagePath = Path.Combine(Path.GetDirectoryName(ImageTemplateFolder) ?? "", "locator", "base-view.png");
-                    if (File.Exists(baseViewImagePath))
-                    {
-                        logger.LogInfo($"[{account.AccountName}] Waiting for base view to appear...");
-                        var baseViewFound = false;
-                        var waitStartTime = DateTime.UtcNow;
-                        var maxWaitTime = TimeSpan.FromSeconds(10);
-                        
-                        while (!baseViewFound && (DateTime.UtcNow - waitStartTime) < maxWaitTime)
-                        {
-                            var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
-                            if (screenshot != null)
-                            {
-                                var (found, matchRect, confidence) = _templateMatcher.MatchTemplate(
-                                    screenshot,
-                                    baseViewImagePath,
-                                    account.InstanceNumber,
-                                    threshold: 0.7
-                                );
-                                
-                                if (found)
-                                {
-                                    logger.LogInfo($"[{account.AccountName}] Base view detected (confidence: {confidence:F3})");
-                                    baseViewFound = true;
-                                    break;
-                                }
-                            }
-                            
-                            await Task.Delay(500, cancellationToken);
-                        }
-                        
-                        if (baseViewFound)
-                        {
-                            // Perform the two clicks at the upgrade location
-                            var clickPoint = new Point(347, 595);
-                            logger.LogInfo($"[{account.AccountName}] Performing first click at {clickPoint}");
-                            await ClickAsync(account.InstanceNumber, logger, clickPoint);
-                            await RandomDelay(cancellationToken);
-                            
-                            logger.LogInfo($"[{account.AccountName}] Performing second click at {clickPoint}");
-                            await ClickAsync(account.InstanceNumber, logger, clickPoint);
-                            await RandomDelay(cancellationToken);
-                            
-                            return true;
-                        }
-                        else
-                        {
-                            logger.LogWarning($"[{account.AccountName}] Base view not found after {maxWaitTime.TotalSeconds} seconds");
-                        }
-                    }
-                    else
-                    {
-                        logger.LogWarning($"[{account.AccountName}] base-view.png not found at: {baseViewImagePath}");
-                    }
-                    
-                    return true;
+                    break; // the same Obtain row would come up again
                 }
-                
-                return false;
+                logger.LogInfo($"[{account.AccountName}] Resource requirement filled from the backpack");
+                filledAny = true;
             }
-            catch (Exception ex)
-            {
-                logger.LogError($"[{account.AccountName}] Error in train icon fallback: {ex.Message}");
-                return false;
-            }
+            return filledAny;
         }
 
-        private async Task<TimeSpan?> ReadSpeedupTimer(AccountSettings account, LogService logger)
+        /// <summary>
+        /// After an upgrade starts, the game shows the alliance help handshake; tapping it asks alliance
+        /// members to speed the upgrade up. No handshake (e.g. not in an alliance) is fine.
+        /// </summary>
+        private async Task RequestAllianceHelpAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
         {
-            var ocrConfig = new OCRConfiguration 
-            { 
-                ScaleFactor = 2.0f,
-                CharacterWhitelist = "0123456789:"
-            };
-            
-            using var ocrService = new OCRService(logger, ocrConfig);
-            var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
-            if (screenshot == null) return null;
+            var handshake = Path.Combine(Path.GetDirectoryName(ImageTemplateFolder)!, "alliance", "alliance-help.png");
+            for (int attempt = 1; attempt <= 3; attempt++)
+            {
+                await Task.Delay(1000, cancellationToken);
+                var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                if (screenshot == null) continue;
 
-            var text = ocrService.ExtractTextFromScreenArea(screenshot, timerRegion);
-            logger.LogInfo($"[{account.AccountName}] Timer OCR Result: '{text}'");
-            
-            if (TryParseTimer(text, out var timeSpan))
-                return timeSpan;
-                
+                var (found, rect, confidence) = _templateMatcher.MatchTemplate(screenshot, handshake, account.InstanceNumber, threshold: 0.8);
+                if (found)
+                {
+                    logger.LogInfo($"[{account.AccountName}] Requesting alliance help for the upgrade (confidence {confidence:F2})");
+                    await ClickRandomInRectAsync(account.InstanceNumber, logger, rect);
+                    await RandomDelay(cancellationToken);
+                    return;
+                }
+            }
+            logger.LogInfo($"[{account.AccountName}] No alliance help button after the upgrade (not in an alliance?)");
+        }
+
+        /// <summary>
+        /// Closes and relaunches the game through the emulator console (ldconsole killapp/runapp), then waits
+        /// for it to load. A fresh start puts the city camera back on the Town Center.
+        /// </summary>
+        private static async Task RestartGameAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
+        {
+            await RunGameConsoleCommandAsync("killapp", account.InstanceNumber, cancellationToken);
+            await RunGameConsoleCommandAsync("runapp", account.InstanceNumber, cancellationToken);
+            // Don't touch the screen while it loads; EnsureViewAsync then closes the launch pop-ups
+            await Task.Delay(TimeSpan.FromSeconds(25), cancellationToken);
+        }
+
+        /// <summary>
+        /// Reads the page title. The outlined title font comes out of OCR with stray marks
+        /// (e.g. "iTown|[CenterJIvY6]*", or "iown|CenterJEvy7j" with the T misread), so only "Center" is required.
+        /// </summary>
+        private static bool IsTownCenterPage(byte[] screenshot, LogService logger)
+        {
+            using var ocr = new OCRService(logger, new OCRConfiguration { ScaleFactor = 2.0f });
+            var title = ocr.ExtractTextFromScreenArea(screenshot, TownCenterTitleArea);
+            logger.LogInfo($"Building page title: '{title}'");
+            return Regex.Replace(title, "[^A-Za-z]", "").Contains("Center", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Waits for the requirements list and returns its unmet rows: empty when every row has a green ✓,
+        /// null when no ❌ or ✓ mark appeared (screen not open yet, or something else on top). "No ❌ seen"
+        /// alone must never count as "all met": right after the tap the list is still sliding in.
+        /// </summary>
+        private async Task<List<string>?> ReadRequirementsAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
+        {
+            var greenCheck = Path.Combine(ImageTemplateFolder, "green-check.png");
+            for (int attempt = 1; attempt <= 5; attempt++)
+            {
+                await Task.Delay(1000, cancellationToken);
+                var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                if (screenshot == null) continue;
+
+                var missing = ReadMissingRequirements(screenshot, account, logger);
+                if (missing.Count > 0) return missing;
+
+                var (metRowFound, _, _) = _templateMatcher.MatchTemplate(
+                    screenshot, greenCheck, account.InstanceNumber, threshold: 0.85, searchArea: redXSearchArea);
+                if (metRowFound) return missing;
+
+                logger.LogInfo($"[{account.AccountName}] Requirements list not visible yet (attempt {attempt}/5)");
+            }
             return null;
         }
 
-        private bool TryParseTimer(string text, out TimeSpan result)
+        /// <summary>
+        /// Text of every requirement row marked with a red ❌, e.g. "Mill Level 6" or "926/13K".
+        /// </summary>
+        private List<string> ReadMissingRequirements(byte[] screenshot, AccountSettings account, LogService logger)
         {
-            result = TimeSpan.Zero;
-            
-            if (string.IsNullOrWhiteSpace(text))
-                return false;
+            var redX = Path.Combine(ImageTemplateFolder, "red-x.png");
+            using var ocr = new OCRService(logger, new OCRConfiguration { ScaleFactor = 2.0f });
+            using var image = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
+            var missing = new List<string>();
 
-            // Remove any non-timer characters
-            text = new string(text.Where(c => char.IsDigit(c) || c == ':').ToArray());
-            
-            string[] parts = text.Split(':');
-            if (parts.Length != 3)
-                return false;
+            for (int i = 0; i < 8; i++) // a requirements list has only a few rows
+            {
+                var (found, rect, _) = _templateMatcher.MatchTemplate(
+                    image.ToBytes(".png"), redX, account.InstanceNumber, threshold: 0.85, searchArea: redXSearchArea);
+                if (!found) break;
 
-            if (!int.TryParse(parts[0], out int hours) ||
-                !int.TryParse(parts[1], out int minutes) ||
-                !int.TryParse(parts[2], out int seconds))
-                return false;
-
-            result = new TimeSpan(hours, minutes, seconds);
-            return true;
+                missing.Add(ocr.ExtractTextFromScreenArea(screenshot, new Rectangle(90, rect.Y - 8, rect.X - 100, rect.Height + 16)));
+                // Paint over this ❌ so the next match finds the next row
+                OpenCvSharp.Cv2.Rectangle(image, new OpenCvSharp.Rect(rect.X, rect.Y, rect.Width, rect.Height), OpenCvSharp.Scalar.All(255), -1);
+            }
+            return missing;
         }
 
-        protected override async Task OnInitializeAsync(LogService logger, CancellationToken cancellationToken)
+        private async Task CloseTownCenterPagesAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
         {
-            var readmePath = Path.Combine(ImageTemplateFolder, "README.txt");
-            if (!File.Exists(readmePath))
-            {
-                await File.WriteAllTextAsync(readmePath,
-                    "Auto Build Module Templates:\n\n" +
-                    "Required images:\n" +
-                    "- side-menu.png: Side menu indicator\n" +
-                    "- person-head.png: Person head icon\n" +
-                    "- kitchen.png: Kitchen building icon\n" +
-                    "- upgrade-button.png: Upgrade button\n" +
-                    "- red-x.png: Red X indicator\n" +
-                    "- go-button.png: Go button\n" +
-                    "- upgrade-icon.png: Upgrade icon\n" +
-                    "- train-icon.png: Train icon\n" +
-                    "- speedup-button.png: Speedup button\n" +
-                    "- use-button.png: Use button\n" +
-                    "- back-button.png: Back button\n\n" +
-                    "Notes:\n" +
-                    "- Images should be clear screenshots\n" +
-                    "- Crop to just the unique elements\n" +
-                    "- Test at different zoom levels", 
-                    cancellationToken);
-            }
+            // Requirements screen -> Town Center page -> city view
+            await PressBackAsync(account.InstanceNumber, logger);
+            await RandomDelay(cancellationToken);
+            await PressBackAsync(account.InstanceNumber, logger);
+            await RandomDelay(cancellationToken);
         }
     }
-} 
+}

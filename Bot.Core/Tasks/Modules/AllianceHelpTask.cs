@@ -67,7 +67,7 @@ namespace Bot.Core.Tasks.Modules
                         "alliance-help.png",
                         account.InstanceNumber,
                         logger,
-                        threshold: 0.6, // Lower threshold for more lenient matching
+                        threshold: 0.85, // The current handshake template matches the real button at 0.97+; nothing else gets above 0.6
                         useEnhancedMatching: true // This will use multiple scales
                     );
 

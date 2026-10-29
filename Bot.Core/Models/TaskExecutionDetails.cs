@@ -47,7 +47,7 @@ namespace Bot.Core.Models
         public static readonly Dictionary<FailureCategory, string> CommonHints = new()
         {
             { Models.FailureCategory.Connection, "Restart LDPlayer or check ADB connection" },
-            { Models.FailureCategory.Detection, "Ensure game is fully loaded and resolution is 960x540" },
+            { Models.FailureCategory.Detection, "Ensure the game is fully loaded and on the expected screen" },
             { Models.FailureCategory.Navigation, "Game may be stuck - recovery will be attempted" },
             { Models.FailureCategory.Timeout, "Game may be slow - check system resources" },
             { Models.FailureCategory.Configuration, "Check task settings for this account" },
