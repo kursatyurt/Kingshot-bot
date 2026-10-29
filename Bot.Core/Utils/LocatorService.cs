@@ -545,7 +545,8 @@ namespace Bot.Core.Utils
                 var backButtonPaths = new[]
                 {
                     Path.Combine(recoveryFolder, "back-arrow.png"),
-                    Path.Combine(recoveryFolder, "deploy-back.png")
+                    Path.Combine(recoveryFolder, "deploy-back.png"),
+                    Path.Combine(recoveryFolder, "page-back-button.png") // cyan "Back" on building pages (Embassy, Arena, ...)
                 };
 
                 foreach (var backButtonPath in backButtonPaths)

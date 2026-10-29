@@ -154,8 +154,8 @@ namespace Bot.Core.Tasks.Modules
                     }
 
                     // Check for all navigation elements simultaneously
-                    var (foundAdClose, adCloseRect, adCloseConf) = _templateMatcher.MatchTemplate(screenshot, adClosePath, account.InstanceNumber, 0.6f);
-                    var (foundAdClose2, adClose2Rect, adClose2Conf) = _templateMatcher.MatchTemplate(screenshot, adClose2Path, account.InstanceNumber, 0.6f);
+                    var (foundAdClose, adCloseRect, adCloseConf) = _templateMatcher.MatchTemplate(screenshot, adClosePath, account.InstanceNumber, 0.7, null, false, AdCloseArea);
+                    var (foundAdClose2, adClose2Rect, adClose2Conf) = _templateMatcher.MatchTemplate(screenshot, adClose2Path, account.InstanceNumber, 0.7, null, false, AdCloseArea);
                     var (foundBackArrow, backArrowRect, backArrowConf) = _templateMatcher.MatchTemplate(screenshot, backArrowPath, account.InstanceNumber, 0.6f);
 
                     // If any navigation element is found, click it
@@ -214,6 +214,12 @@ namespace Bot.Core.Tasks.Modules
                     }
 
                     logger.LogInfo($"[{account.AccountName}] Maps not found yet, continuing recovery loop...");
+                    if (!clickedSomething)
+                    {
+                        // Pages without a back arrow (e.g. a work building's furniture page) close with the back key
+                        await PressBackAsync(account.InstanceNumber, logger);
+                        await Task.Delay(800, cancellationToken);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -237,6 +243,9 @@ namespace Bot.Core.Tasks.Modules
             catch (Exception ex) { logger.LogWarning($"[{account.AccountName}] Could not save the unknown screen: {ex.Message}"); }
             return false;
         }
+
+        // Ad close buttons sit in the top strip; searched full-screen at 0.6, ad-close.png matched the Conquest tab (0.605)
+        private static readonly System.Drawing.Rectangle AdCloseArea = new System.Drawing.Rectangle(0, 0, 720, 300);
 
         protected override async Task<TaskExecutionDetails> ExecuteTaskLogicAsync(
             AccountSettings account,
