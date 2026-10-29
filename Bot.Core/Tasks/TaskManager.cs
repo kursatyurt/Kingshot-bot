@@ -606,7 +606,7 @@ namespace Bot.Core.Tasks
                 { TaskType.AutoHunt, 1 },          // AutoHunt should run after shield
                 { TaskType.Farming, 2 },           // Farming should run after AutoHunt
                 { TaskType.AutoAllianceHelp, 3 },
-                { TaskType.TroopTraining, 4 },
+                { TaskType.TroopTraining, 9 },     // after Auto Build, which tells it which camps to keep free for upgrades
                 { TaskType.ConquestCollect, 5 },
                 { TaskType.ClaimMail, 6 },
                 { TaskType.AutoHeal, 7 },

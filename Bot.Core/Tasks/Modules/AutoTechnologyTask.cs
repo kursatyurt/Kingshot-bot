@@ -1,4 +1,6 @@
 using System;
+using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Bot.Core.Models;
@@ -18,420 +20,142 @@ namespace Bot.Core.Tasks.Modules
         protected override string GetImageFolderName() => "autotech";
         public override string Name => "Auto Technology";
 
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, DateTime> _nextCheck = new();
+
+        private static readonly Point SidePanelTab = new Point(12, 550);
+        private static readonly Point SidePanelCloseHandle = new Point(464, 544);
+        private static readonly Rectangle ResearchStatusArea = new Rectangle(150, 822, 160, 30);
+        private static readonly Point ResearchArrow = new Point(405, 820);
+        private static readonly Point RingResearchButton = new Point(480, 722);   // same slot as a camp's Train
+        private static readonly Point RingUpgradeButton = new Point(360, 750);
+        private static readonly int[] TreeColumns = { 140, 360, 579 };            // research items sit on a grid
+        private static readonly int[] TreeRows = { 245, 515, 785, 1055 };          // icon centres (level badges ~58 px below)
+
+        /// <summary>
+        /// Keeps the Academy researching. The city side panel shows Tech Research as Idle or busy; its arrow centres
+        /// the Academy with its ring open; ring Research opens the tree. Items are tried top to bottom: a research
+        /// dialog has an orange Finish (gems, never tapped) beside the cyan Research; a locked item shows only its
+        /// requirement with a cyan Go, which is skipped. Categories alternate per ResearchTypes (e.g. Economy, Growth).
+        /// </summary>
         protected override async Task<TaskExecutionDetails> ExecuteTaskLogicAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken, bool isReRun = false, IUserNotificationService? userNotifications = null)
         {
-            try
+            if (_nextCheck.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next)
+                return new TaskExecutionDetails(true, message: "Skipped: checked recently");
+            _nextCheck[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(20);
+
+            var settings = GetTaskSettings<AutoTechnologySettings>(account);
+            var locator = new LocatorService(logger, account, TaskType);
+            await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
+
+            // 1. Is the Academy free?
+            await ClickAsync(account.InstanceNumber, logger, SidePanelTab);
+            await Task.Delay(1500, cancellationToken);
+            var panel = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            using (var ocr = new OCRService(logger, new OCRConfiguration { ScaleFactor = 3.0f, PageSegMode = PageSegMode.SingleLine }))
             {
-                logger.LogInfo($"[{account.AccountName}] Starting Auto Technology task");
-
-                // Get settings
-                var settings = GetTaskSettings<AutoTechnologySettings>(account);
-                
-                // First, look for and click menu-arrow.png
-                var menuArrowFound = await FindAndClickImageAsync("menu-arrow.png", account.InstanceNumber, logger, 
-                    threshold: 0.7);
-                
-                if (!menuArrowFound)
+                var status = panel == null ? "" : ocr.ExtractBrightTextFromScreenArea(panel, ResearchStatusArea);
+                if (!status.Contains("Idle", StringComparison.OrdinalIgnoreCase))
                 {
-                    logger.LogError($"[{account.AccountName}] Could not find menu-arrow.png");
-                    return TaskExecutionDetails.Failed("Could not find menu arrow");
+                    await ClickAsync(account.InstanceNumber, logger, SidePanelCloseHandle);
+                    logger.LogInfo($"[{account.AccountName}] Research busy or no Academy ('{status}')");
+                    return new TaskExecutionDetails(true, message: "Research busy");
                 }
+            }
 
-                logger.LogInfo($"[{account.AccountName}] Clicked menu arrow, checking for idle status");
-                await Task.Delay(1000, cancellationToken);
+            // 2. Academy ring → Research (only on its normal idle ring: Details / Upgrade / Research)
+            await ClickAsync(account.InstanceNumber, logger, ResearchArrow);
+            await Task.Delay(2500, cancellationToken);
+            var ring = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            var ringUpgrade = Path.Combine(Path.GetDirectoryName(ImageTemplateFolder)!, "autobuild", "ring-upgrade.png");
+            if (ring == null || !_templateMatcher.MatchTemplate(ring, ringUpgrade, account.InstanceNumber, threshold: 0.9,
+                    searchArea: new Rectangle(RingUpgradeButton.X - 90, RingUpgradeButton.Y - 90, 180, 180)).found)
+            {
+                logger.LogInfo($"[{account.AccountName}] The Academy's ring is not the idle one; leaving it");
+                await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
+                return new TaskExecutionDetails(true, message: "Academy not ready");
+            }
+            await ClickAsync(account.InstanceNumber, logger, RingResearchButton);
+            await Task.Delay(2500, cancellationToken);
 
-                // Use OCR to read text at coordinates 196,817 245,845 looking for "idle"
-                var ocrText = await ReadTextFromSpecificRegionAsync(account.InstanceNumber, logger, 
-                    new Rectangle(196, 817, 49, 28));
+            // 3. Category tab, then items top to bottom
+            var researchType = settings.NextResearchType(account.InstanceNumber);
+            var tab = researchType switch { ResearchType.Economy => new Point(361, 123), ResearchType.Battle => new Point(585, 120), _ => new Point(130, 116) };
+            await ClickAsync(account.InstanceNumber, logger, tab);
+            await Task.Delay(1500, cancellationToken);
 
-                if (string.IsNullOrEmpty(ocrText) || !ocrText.ToLower().Contains("idle"))
+            foreach (var y in TreeRows)
+            foreach (var x in TreeColumns)
+            {
+                await ClickAsync(account.InstanceNumber, logger, new Point(x, y));
+                await Task.Delay(1500, cancellationToken);
+                var dialog = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                var research = dialog == null ? null : FindResearchButton(dialog);
+                if (research is Point button)
                 {
-                    logger.LogInfo($"[{account.AccountName}] 'Idle' not detected (OCR result: '{ocrText}'), clicking 467,551 and moving to next module");
-                    
-                    // Click 467,551 if idle is not detected
-                    await ClickAsync(account.InstanceNumber, logger, new Point(467, 551));
-                    await Task.Delay(500, cancellationToken);
-                    
-                    return new TaskExecutionDetails(true, message: "Technology not idle, skipped to next module");
-                }
-
-                logger.LogInfo($"[{account.AccountName}] 'Idle' detected, proceeding with technology research");
-                
-                // Click 407,818 since idle was detected
-                await ClickAsync(account.InstanceNumber, logger, new Point(407, 818));
-                await Task.Delay(500, cancellationToken);
-
-                // Look for research-icon.png and click it (up to 2 seconds)
-                var researchIconFound = false;
-                var attempts = 0;
-                while (!researchIconFound && attempts < 4)
-                {
-                    researchIconFound = await FindAndClickImageAsync("research-icon.png", account.InstanceNumber, logger, 
-                        threshold: 0.7);
-                    if (!researchIconFound)
-                    {
-                        await Task.Delay(500, cancellationToken);
-                        attempts++;
-                    }
-                }
-
-                if (!researchIconFound)
-                {
-                    logger.LogError($"[{account.AccountName}] Could not find research-icon.png within 2 seconds");
-                    return TaskExecutionDetails.Failed("Could not find research icon");
-                }
-
-                logger.LogInfo($"[{account.AccountName}] Found and clicked research icon");
-                await Task.Delay(1000, cancellationToken);
-
-                // Click on the appropriate research type based on user settings
-                Point researchTypeLocation;
-                string researchTypeName;
-
-                var researchType = settings.NextResearchType(account.InstanceNumber);
-                switch (researchType)
-                {
-                    case ResearchType.Growth:
-                        researchTypeLocation = new Point(130, 116);
-                        researchTypeName = "Growth";
-                        break;
-                    case ResearchType.Economy:
-                        researchTypeLocation = new Point(361, 123);
-                        researchTypeName = "Economy";
-                        break;
-                    case ResearchType.Battle:
-                        researchTypeLocation = new Point(585, 120);
-                        researchTypeName = "Battle";
-                        break;
-                    default:
-                        logger.LogError($"[{account.AccountName}] Invalid research type: {researchType}");
-                        return TaskExecutionDetails.Failed("Invalid research type configured");
-                }
-
-                logger.LogInfo($"[{account.AccountName}] Clicking {researchTypeName} research type at {researchTypeLocation}");
-                await ClickAsync(account.InstanceNumber, logger, researchTypeLocation);
-                await Task.Delay(1000, cancellationToken);
-
-                // Use improved OCR to detect "x/x" pattern and find the highest one on screen
-                logger.LogInfo($"[{account.AccountName}] Scanning for x/x progress patterns using improved OCR");
-                
-                var progressPattern = await FindProgressPatternWithImprovedOCRAsync(account.InstanceNumber, logger);
-                
-                if (progressPattern.HasValue)
-                {
-                    logger.LogInfo($"[{account.AccountName}] Found progress pattern, clicking at {progressPattern.Value}");
-                    await ClickAsync(account.InstanceNumber, logger, progressPattern.Value);
-                    await Task.Delay(1000, cancellationToken);
-
+                    logger.LogInfo($"[{account.AccountName}] 🔬 Starting {researchType} research (item at {x},{y})");
+                    await ClickAsync(account.InstanceNumber, logger, button);
+                    await Task.Delay(2000, cancellationToken);
                     AutoTechnologySettings.AdvanceResearchType(account.InstanceNumber);
-                    return new TaskExecutionDetails(true, message: $"Successfully started {researchTypeName} research");
+                    _nextCheck[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(5); // short researches finish fast
+                    await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
+                    return new TaskExecutionDetails(true, message: $"Started {researchType} research");
                 }
-                else
+                if (dialog != null && HasDialogOpen(dialog))
                 {
-                    logger.LogWarning($"[{account.AccountName}] Could not find any x/x progress pattern on screen");
-                    return TaskExecutionDetails.Failed("Could not find research progress pattern");
+                    await PressBackAsync(account.InstanceNumber, logger); // close a locked or maxed item
+                    await Task.Delay(1000, cancellationToken);
                 }
             }
-            catch (OperationCanceledException)
-            {
-                logger.LogInfo($"[{account.AccountName}] Auto Technology task was cancelled");
-                throw;
-            }
-            catch (Exception ex)
-            {
-                logger.LogError($"[{account.AccountName}] Error in Auto Technology task: {ex.Message}");
-                return TaskExecutionDetails.Failed($"Auto Technology failed: {ex.Message}");
-            }
+
+            logger.LogInfo($"[{account.AccountName}] No {researchType} research available right now");
+            AutoTechnologySettings.AdvanceResearchType(account.InstanceNumber); // try the other category next time
+            await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
+            return new TaskExecutionDetails(true, message: $"No {researchType} research available");
         }
 
-        private async Task<Point?> FindProgressPatternWithImprovedOCRAsync(int instanceNumber, LogService logger)
+        /// <summary>
+        /// The cyan Research button of a research dialog: a cyan button in the right half with the orange Finish (gems)
+        /// on its left at the same height. A locked item's cyan Go has no Finish beside it.
+        /// </summary>
+        private static Point? FindResearchButton(byte[] screenshot)
         {
-            try
-            {
-                var screenshot = await TakeScreenshotAsync(instanceNumber, logger);
-                if (screenshot == null)
-                {
-                    logger.LogError("Could not take screenshot for progress pattern detection");
-                    return null;
-                }
-
-                using var bitmap = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
-                int width = bitmap.Width, height = bitmap.Height;
-                
-                // Create optimized OCR configuration specifically for x/x patterns
-                var ocrConfig = new OCRConfiguration
-                {
-                    ScaleFactor = 5, // Higher scale for better recognition
-                    AdaptiveC = 8, // Better contrast adaptation
-                    MedianBlurKernelSize = 3, // Reduce noise
-                    CharacterWhitelist = "0123456789/", // Only numbers and slash
-                    PageSegMode = PageSegMode.SingleWord // Better for short patterns
-                };
-
-                var regex = new Regex(@"\b\d+/\d+\b", RegexOptions.IgnoreCase);
-                Point? highestMatch = null;
-                int highestY = int.MaxValue;
-
-                logger.LogInfo($"Starting improved OCR scan for x/x patterns...");
-
-                // Scan in larger, more targeted regions
-                for (int y = 100; y < Math.Min(height - 100, 700); y += 60) // Larger steps
-                {
-                    for (int x = 50; x < Math.Min(width - 150, 650); x += 80) // Larger regions
-                    {
-                        var region = new Rectangle(x, y, 120, 50); // Larger OCR regions
-                        
-                        try
-                        {
-                            using var ocr = new OCRService(logger, ocrConfig);
-                            
-                            string ocrText = ocr.ExtractTextFromScreenArea(screenshot, region);
-                            
-                            if (!string.IsNullOrEmpty(ocrText))
-                            {
-                                // Clean up the OCR text
-                                string originalText = ocrText;
-                                ocrText = ocrText.Trim().Replace(" ", "").Replace("\n", "").Replace("\r", "");
-                                
-                                // Debug logging - show all non-empty OCR results
-                                if (ocrText.Length > 0)
-                                {
-                                    logger.LogInfo($"OCR extracted text: '{ocrText}' (original: '{originalText}') at {region}");
-                                }
-                                
-                                if (regex.IsMatch(ocrText))
-                                {
-                                    logger.LogInfo($"✅ REGEX MATCH! Found progress pattern '{ocrText}' at region {region}");
-                                    
-                                    // Check if this is higher on screen (lower Y value)
-                                    if (y < highestY)
-                                    {
-                                        highestY = y;
-                                        highestMatch = new Point(x + region.Width / 2, y + region.Height / 2);
-                                        logger.LogInfo($"🎯 New highest progress pattern at Y={y}: {ocrText}");
-                                    }
-                                }
-                                else if (ocrText.Length > 0)
-                                {
-                                    // Enhanced debugging for pattern analysis
-                                    bool hasSlash = ocrText.Contains("/");
-                                    bool hasDigit = ocrText.Any(char.IsDigit);
-                                    bool startsWithDigit = char.IsDigit(ocrText[0]);
-                                    
-                                    logger.LogInfo($"📊 OCR Analysis: '{ocrText}' | HasSlash: {hasSlash} | HasDigit: {hasDigit} | StartsWithDigit: {startsWithDigit}");
-                                    
-                                    // Try some pattern variations to see what might work
-                                    var relaxedPatterns = new[]
-                                    {
-                                        @"\d+/\d+",        // Basic x/x
-                                        @"\d+\/\d+",       // Escaped slash
-                                        @"\d+.\d+",        // Any character between digits
-                                        @"\d+[\s/]\d+",    // Space or slash between digits
-                                    };
-                                    
-                                    foreach (var pattern in relaxedPatterns)
-                                    {
-                                        if (Regex.IsMatch(ocrText, pattern))
-                                        {
-                                            logger.LogInfo($"🔍 Alternative pattern '{pattern}' matches: {ocrText}");
-                                        }
-                                    }
-                                    
-                                    if (hasSlash || (hasDigit && ocrText.Length >= 3))
-                                    {
-                                        logger.LogInfo($"🔍 Potential pattern candidate: '{ocrText}' at {region}");
-                                    }
-                                }
-                            }
-                            else
-                            {
-                                // Log empty results occasionally for debugging scan coverage
-                                if ((x + y) % 240 == 0) // Log every few empty regions
-                                {
-                                    logger.LogInfo($"📋 Empty OCR result at {region}");
-                                }
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            logger.LogWarning($"OCR error at region {region}: {ex.Message}");
-                        }
-                    }
-                }
-
-                if (highestMatch.HasValue)
-                {
-                    logger.LogInfo($"Selected highest progress pattern at {highestMatch.Value}");
-                    return highestMatch;
-                }
-                else
-                {
-                    logger.LogWarning("No x/x progress patterns found with improved OCR, trying adjacent region detection...");
-                    
-                    // Try a different approach - look for adjacent regions with numbers
-                    var adjacentMatch = await FindAdjacentNumberPatternsAsync(instanceNumber, logger);
-                    
-                    if (adjacentMatch.HasValue)
-                    {
-                        logger.LogInfo($"Found adjacent number pattern at {adjacentMatch.Value}");
-                        return adjacentMatch;
-                    }
-                    
-                    logger.LogWarning("No progress patterns found with any method");
-                    return null;
-                }
-            }
-            catch (Exception ex)
-            {
-                logger.LogError($"Error in improved OCR progress pattern detection: {ex.Message}");
-                return null;
-            }
+            using var img = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
+            if (img.Empty()) return null;
+            using var hsv = new OpenCvSharp.Mat();
+            OpenCvSharp.Cv2.CvtColor(img, hsv, OpenCvSharp.ColorConversionCodes.BGR2HSV);
+            var cyan = FindButton(hsv, new OpenCvSharp.Scalar(85, 120, 150), new OpenCvSharp.Scalar(100, 255, 255), xMin: 360);
+            var orange = FindButton(hsv, new OpenCvSharp.Scalar(10, 150, 180), new OpenCvSharp.Scalar(25, 255, 255), xMin: 0, xMax: 360);
+            if (orange is not OpenCvSharp.Rect o) return null;
+            // A tutorial glove can cover Research; it always sits 299 px right of Finish, at the same height
+            if (cyan is not OpenCvSharp.Rect c) return new Point(o.X + 299 + o.Width / 2, o.Y + o.Height / 2);
+            if (Math.Abs((c.Y + c.Height / 2) - (o.Y + o.Height / 2)) > 25) return null;
+            return new Point(c.X + c.Width / 2, c.Y + c.Height / 2);
         }
 
-        private async Task<Point?> FindAdjacentNumberPatternsAsync(int instanceNumber, LogService logger)
+        private static OpenCvSharp.Rect? FindButton(OpenCvSharp.Mat hsv, OpenCvSharp.Scalar lo, OpenCvSharp.Scalar hi, int xMin, int xMax = 720)
         {
-            try
-            {
-                logger.LogInfo("🔍 Trying adjacent number pattern detection...");
-                
-                var screenshot = await TakeScreenshotAsync(instanceNumber, logger);
-                if (screenshot == null) return null;
-
-                using var bitmap = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
-                int width = bitmap.Width, height = bitmap.Height;
-
-                var numberOcrConfig = new OCRConfiguration
-                {
-                    ScaleFactor = 4,
-                    AdaptiveC = 7,
-                    MedianBlurKernelSize = 1,
-                    CharacterWhitelist = "0123456789", // Only numbers
-                    PageSegMode = PageSegMode.SingleChar
-                };
-
-                var slashOcrConfig = new OCRConfiguration
-                {
-                    ScaleFactor = 4,
-                    AdaptiveC = 7,
-                    MedianBlurKernelSize = 1,
-                    CharacterWhitelist = "/", // Only slash
-                    PageSegMode = PageSegMode.SingleChar
-                };
-
-                // Look for patterns where we have: [number] [slash] [number] in nearby regions
-                for (int y = 100; y < Math.Min(height - 50, 600); y += 40)
-                {
-                    for (int x = 50; x < Math.Min(width - 150, 600); x += 60)
-                    {
-                        try
-                        {
-                            // Check three adjacent small regions: [num][/][num]
-                            var leftRegion = new Rectangle(x, y, 30, 25);
-                            var middleRegion = new Rectangle(x + 25, y, 20, 25);
-                            var rightRegion = new Rectangle(x + 40, y, 30, 25);
-
-                            string leftText = "", middleText = "", rightText = "";
-
-                            // OCR left region (number)
-                            using (var leftOcr = new OCRService(logger, numberOcrConfig))
-                            {
-                                leftText = leftOcr.ExtractTextFromScreenArea(screenshot, leftRegion).Trim();
-                            }
-
-                            // OCR middle region (slash)
-                            using (var middleOcr = new OCRService(logger, slashOcrConfig))
-                            {
-                                middleText = middleOcr.ExtractTextFromScreenArea(screenshot, middleRegion).Trim();
-                            }
-
-                            // OCR right region (number)
-                            using (var rightOcr = new OCRService(logger, numberOcrConfig))
-                            {
-                                rightText = rightOcr.ExtractTextFromScreenArea(screenshot, rightRegion).Trim();
-                            }
-
-                            // Check if we found a pattern
-                            bool hasLeftNum = !string.IsNullOrEmpty(leftText) && leftText.All(char.IsDigit);
-                            bool hasSlash = middleText.Contains("/");
-                            bool hasRightNum = !string.IsNullOrEmpty(rightText) && rightText.All(char.IsDigit);
-
-                            if (hasLeftNum || hasSlash || hasRightNum)
-                            {
-                                logger.LogInfo($"🔍 Adjacent regions at Y={y}: Left='{leftText}' Middle='{middleText}' Right='{rightText}'");
-                                logger.LogInfo($"    Analysis: LeftNum={hasLeftNum} Slash={hasSlash} RightNum={hasRightNum}");
-                            }
-
-                            if (hasLeftNum && hasSlash && hasRightNum)
-                            {
-                                string fullPattern = $"{leftText}/{rightText}";
-                                logger.LogInfo($"🎯 Found adjacent pattern: {fullPattern} at Y={y}");
-                                return new Point(x + 35, y + 12); // Center of the pattern
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            logger.LogWarning($"Error in adjacent pattern detection at {x},{y}: {ex.Message}");
-                        }
-                    }
-                }
-
-                return null;
-            }
-            catch (Exception ex)
-            {
-                logger.LogError($"Error in adjacent pattern detection: {ex.Message}");
-                return null;
-            }
+            using var mask = new OpenCvSharp.Mat();
+            OpenCvSharp.Cv2.InRange(hsv, lo, hi, mask);
+            OpenCvSharp.Cv2.FindContours(mask, out var contours, out _, OpenCvSharp.RetrievalModes.External, OpenCvSharp.ContourApproximationModes.ApproxSimple);
+            return contours.Select(OpenCvSharp.Cv2.BoundingRect)
+                .Where(r => r.Width > 150 && r.Height > 45 && r.Height < 120 && r.X >= xMin && r.X + r.Width <= xMax && r.Y > 700)
+                .Select(r => (OpenCvSharp.Rect?)r).FirstOrDefault();
         }
 
-        private async Task<string> ReadTextFromSpecificRegionAsync(int instanceNumber, LogService logger, Rectangle region)
+        private static AutoTechnologySettings GetTaskSettings<T>(AccountSettings account) where T : new()
         {
-            try
-            {
-                var screenshot = await TakeScreenshotAsync(instanceNumber, logger);
-                if (screenshot == null) return string.Empty;
-
-                using var bitmap = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
-                int width = bitmap.Width, height = bitmap.Height;
-                
-                // OCR configuration optimized for "idle" text detection
-                var ocrConfig = new OCRConfiguration
-                {
-                    ScaleFactor = 4,
-                    AdaptiveC = 6,
-                    MedianBlurKernelSize = 1,
-                    CharacterWhitelist = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", // Only letters for "idle"
-                    PageSegMode = PageSegMode.SingleWord
-                };
-
-                using var ocr = new OCRService(logger, ocrConfig);
-                
-                string ocrText = ocr.ExtractTextFromScreenArea(screenshot, region);
-                
-                return ocrText?.Trim() ?? string.Empty;
-            }
-            catch (Exception ex)
-            {
-                logger.LogError($"Error reading text from region: {ex.Message}");
-                return string.Empty;
-            }
+            if (!account.TaskSettings.TryGetValue("AutoTechnology", out var settingsJson)) return new AutoTechnologySettings();
+            try { return JsonSerializer.Deserialize<AutoTechnologySettings>(settingsJson) ?? new AutoTechnologySettings(); }
+            catch { return new AutoTechnologySettings(); }
         }
 
-        private AutoTechnologySettings GetTaskSettings<T>(AccountSettings account) where T : new()
+        /// <summary>A research dialog covers the tree with its dimmed backdrop: its title bar shows at the top.</summary>
+        private static bool HasDialogOpen(byte[] screenshot)
         {
-            if (!account.TaskSettings.TryGetValue("AutoTechnology", out var settingsJson))
-            {
-                return new AutoTechnologySettings();
-            }
-
-            try
-            {
-                return JsonSerializer.Deserialize<AutoTechnologySettings>(settingsJson) ?? new AutoTechnologySettings();
-            }
-            catch
-            {
-                return new AutoTechnologySettings();
-            }
+            using var img = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
+            if (img.Empty()) return false;
+            using var roi = new OpenCvSharp.Mat(img, new OpenCvSharp.Rect(0, 0, 720, 60));
+            return OpenCvSharp.Cv2.Mean(roi).Val2 < 85; // the header darkens behind a dialog (red ~66; tree alone ~105)
         }
     }
 
