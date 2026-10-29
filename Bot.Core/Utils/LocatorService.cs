@@ -458,7 +458,7 @@ namespace Bot.Core.Utils
         /// 0.83 against the glove's outline, so a match also needs the golden cuff. Real gloves score 0.69+, the best
         /// false match with gold nearby 0.59.
         /// </summary>
-        private static (int x, int y, double confidence)? FindTutorialGlove(byte[] screenshot, string glovePath)
+        public static (int x, int y, double confidence)? FindTutorialGlove(byte[] screenshot, string glovePath)
         {
             using var img = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
             using var glove = OpenCvSharp.Cv2.ImRead(glovePath);

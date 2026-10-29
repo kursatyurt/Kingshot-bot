@@ -402,6 +402,14 @@ namespace Bot.Core.Tasks
                 searchArea: new Rectangle(expected.X - 90, expected.Y - 90, 180, 180));
             if (!found)
             {
+                // A tutorial glove can sit on the button (hiding its icon); its fingertip on that spot confirms the button
+                var glove = LocatorService.FindTutorialGlove(screenshot, Path.Combine(AppContext.BaseDirectory, "templates", "images", "locator", "tutorial-glove.png"));
+                // Tight: on a busy ring the glove points at Speedups, 65 px from where Train would be
+                if (glove is { } g && Math.Abs(g.x - expected.X) < 35 && Math.Abs(g.y - expected.Y) < 40)
+                {
+                    logger.LogInfo($"Ring button {Path.GetFileName(iconTemplate)} is under the tutorial glove; tapping it");
+                    return await ClickAsync(instanceNumber, logger, expected);
+                }
                 logger.LogInfo($"Ring button {Path.GetFileName(iconTemplate)} not shown (best {confidence:F2}); not tapping");
                 return false;
             }

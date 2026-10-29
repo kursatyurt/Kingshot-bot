@@ -211,6 +211,16 @@ namespace Bot.Core.Tasks.Modules
                 account.InstanceNumber, threshold: 0.9, searchArea: QuantityMinusArea);
             if (!onTrainPage)
             {
+                // The camp's Build page can still be up once a slow tutorial glove has moved off its button
+                var (lateBuild, lateRect, _) = _templateMatcher.MatchTemplate(screenshot, buildButton, account.InstanceNumber,
+                    threshold: 0.85, searchArea: new Rectangle(150, 1100, 450, 160));
+                if (lateBuild)
+                {
+                    logger.LogInfo($"[{account.AccountName}] 🏗️ The {camp} camp is not built yet; building it");
+                    await ClickRandomInRectAsync(account.InstanceNumber, logger, lateRect);
+                    await Task.Delay(2000, cancellationToken);
+                    return true;
+                }
                 logger.LogInfo($"[{account.AccountName}] {camp}: no Train page after the ring's Train; leaving it");
                 await SaveDebugAsync($"training-{camp}-no-train-page-{account.InstanceNumber}.png", screenshot);
                 await ClickAsync(account.InstanceNumber, logger, BackArrow);
