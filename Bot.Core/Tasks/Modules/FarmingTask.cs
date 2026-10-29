@@ -608,6 +608,25 @@ namespace Bot.Core.Tasks.Modules
                         }
                         
                         logger.LogInfo($"[{account.AccountName}] ⏱️ Max-march detection timeout reached (5 seconds total). Neither deploy button nor max-march indicator found.");
+                        // With two emulators busy, the deploy screen can take longer than 5 s to load: keep looking a little
+                        byte[]? noDeploy = null;
+                        for (int look = 0; look < 6 && !deployClicked; look++)
+                        {
+                            await Task.Delay(1000, cancellationToken);
+                            noDeploy = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                            if (noDeploy == null) continue;
+                            var (lateDeploy, lateRect, _) = _templateMatcher.MatchTemplate(noDeploy, deployButtonPath, account.InstanceNumber,
+                                threshold: TEMPLATE_MATCH_THRESHOLD, scales: UnifiedTemplateMatchingService.StandardScales, searchArea: DeployButtonArea);
+                            if (lateDeploy && await ClickRandomInRectAsync(account.InstanceNumber, logger, lateRect))
+                            {
+                                logger.LogInfo($"[{account.AccountName}] ✅ Deploy screen loaded late; clicked deploy button");
+                                deployClicked = true;
+                            }
+                        }
+                    }
+
+                    if (!deployClicked)
+                    {
                         // Keep what the game showed instead, to teach the bot this screen
                         var noDeploy = await TakeScreenshotAsync(account.InstanceNumber, logger);
                         if (noDeploy != null)
