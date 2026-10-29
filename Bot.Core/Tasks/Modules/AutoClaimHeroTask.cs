@@ -153,6 +153,14 @@ namespace Bot.Core.Tasks.Modules
                     }
                 }
 
+                // Tap the button where it was found: it moved left in a game update, and the old fixed area missed it
+                var recruitShot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                if (recruitShot != null)
+                {
+                    var (recruitFound, recruitRect, _) = _templateMatcher.MatchTemplate(recruitShot,
+                        Path.Combine(ImageTemplateFolder, "recruit-heros-button.png"), account.InstanceNumber, threshold: 0.8);
+                    if (recruitFound) recruitButtonArea = recruitRect;
+                }
                 if (!await ClickRandomInRectAsyncWithRetry(account.InstanceNumber, logger, recruitButtonArea, cancellationToken))
                 {
                     return TaskExecutionDetails.Failed("Failed to click recruit heroes button");
