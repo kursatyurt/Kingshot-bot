@@ -109,8 +109,7 @@ namespace Bot.Core.Tasks.Modules
             for (int built = 0; built < 6;)
             {
                 if (!await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken)) return;
-                await ClickAsync(account.InstanceNumber, logger, new Point(12, 550)); // side panel tab
-                await Task.Delay(1500, cancellationToken);
+                await OpenSidePanelAsync(account.InstanceNumber, logger, cancellationToken); // side panel tab
                 var panel = await TakeScreenshotAsync(account.InstanceNumber, logger);
                 var queueStatus = panel == null ? "" : ocr.ExtractBrightTextFromScreenArea(panel, new Rectangle(150, 376, 160, 30));
                 if (!queueStatus.Contains("Idle", StringComparison.OrdinalIgnoreCase))
@@ -454,8 +453,7 @@ namespace Bot.Core.Tasks.Modules
             for (int extra = 1; extra <= 3; extra++)
             {
                 await Task.Delay(4000, cancellationToken);
-                await ClickAsync(account.InstanceNumber, logger, new Point(12, 550)); // side panel: is the builder free?
-                await Task.Delay(1500, cancellationToken);
+                await OpenSidePanelAsync(account.InstanceNumber, logger, cancellationToken); // side panel: is the builder free?
                 var panel = await TakeScreenshotAsync(account.InstanceNumber, logger);
                 var builder = panel == null ? "" : ocr.ExtractBrightTextFromScreenArea(panel, new Rectangle(150, 376, 160, 30));
                 await ClickAsync(account.InstanceNumber, logger, new Point(464, 544)); // close the panel

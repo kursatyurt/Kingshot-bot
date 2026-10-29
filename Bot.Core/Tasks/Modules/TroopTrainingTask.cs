@@ -40,7 +40,6 @@ namespace Bot.Core.Tasks.Modules
                 need.Contains("Range", StringComparison.OrdinalIgnoreCase) ? new[] { "Archer" } : Array.Empty<string>()).ToArray();
         }
 
-        private static readonly Point SidePanelTab = new Point(12, 550);
         private static readonly Point SidePanelCloseHandle = new Point(464, 544);
         private static readonly (string Name, int Y)[] Camps = { ("Infantry", 565), ("Cavalry", 640), ("Archer", 710) };
         private const int CampArrowX = 405;
@@ -102,8 +101,7 @@ namespace Bot.Core.Tasks.Modules
         /// <summary>Opens the side panel and reads each camp: null value = idle, TimeSpan = still training.</summary>
         private async Task<(string Camp, TimeSpan? Left)[]?> ReadCampStatusesAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
         {
-            await ClickAsync(account.InstanceNumber, logger, SidePanelTab);
-            await Task.Delay(1500, cancellationToken);
+            await OpenSidePanelAsync(account.InstanceNumber, logger, cancellationToken);
             var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
             if (screenshot == null) return null;
 
@@ -156,8 +154,7 @@ namespace Bot.Core.Tasks.Modules
         private async Task CollectCampAsync(AccountSettings account, LogService logger, string camp, CancellationToken cancellationToken)
         {
             var y = Camps.First(c => c.Name == camp).Y;
-            await ClickAsync(account.InstanceNumber, logger, SidePanelTab);
-            await Task.Delay(1500, cancellationToken);
+            await OpenSidePanelAsync(account.InstanceNumber, logger, cancellationToken);
             await ClickAsync(account.InstanceNumber, logger, new Point(CampArrowX, y));
             await Task.Delay(2500, cancellationToken);
             logger.LogInfo($"[{account.AccountName}] 🪖 Collecting trained {camp}");
@@ -168,8 +165,7 @@ namespace Bot.Core.Tasks.Modules
         private async Task<bool> TrainCampAsync(AccountSettings account, LogService logger, string camp, CancellationToken cancellationToken)
         {
             var y = Camps.First(c => c.Name == camp).Y;
-            await ClickAsync(account.InstanceNumber, logger, SidePanelTab);
-            await Task.Delay(1500, cancellationToken);
+            await OpenSidePanelAsync(account.InstanceNumber, logger, cancellationToken);
             await ClickAsync(account.InstanceNumber, logger, new Point(CampArrowX, y));
             await Task.Delay(2500, cancellationToken);
 

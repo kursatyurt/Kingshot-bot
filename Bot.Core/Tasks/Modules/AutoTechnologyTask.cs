@@ -22,7 +22,6 @@ namespace Bot.Core.Tasks.Modules
 
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, DateTime> _nextCheck = new();
 
-        private static readonly Point SidePanelTab = new Point(12, 550);
         private static readonly Point SidePanelCloseHandle = new Point(464, 544);
         private static readonly Rectangle ResearchStatusArea = new Rectangle(150, 822, 160, 30);
         private static readonly Point ResearchArrow = new Point(405, 820);
@@ -48,8 +47,7 @@ namespace Bot.Core.Tasks.Modules
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
 
             // 1. Is the Academy free?
-            await ClickAsync(account.InstanceNumber, logger, SidePanelTab);
-            await Task.Delay(1500, cancellationToken);
+            await OpenSidePanelAsync(account.InstanceNumber, logger, cancellationToken);
             var panel = await TakeScreenshotAsync(account.InstanceNumber, logger);
             using (var ocr = new OCRService(logger, new OCRConfiguration { ScaleFactor = 3.0f, PageSegMode = PageSegMode.SingleLine }))
             {

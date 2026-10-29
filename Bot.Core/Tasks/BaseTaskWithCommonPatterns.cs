@@ -391,6 +391,18 @@ namespace Bot.Core.Tasks
         /// Click at specific coordinates with error handling
         /// </summary>
         /// <summary>
+        /// Opens the city's side panel (behind the ▷ tab on the left edge) on its Town tab, which lists the building
+        /// queue, the troop camps and research. It remembers its last tab, so the Town tab is selected explicitly.
+        /// </summary>
+        protected async Task OpenSidePanelAsync(int instanceNumber, LogService logger, CancellationToken cancellationToken)
+        {
+            await ClickAsync(instanceNumber, logger, new Point(12, 550));
+            await Task.Delay(1300, cancellationToken);
+            await ClickAsync(instanceNumber, logger, new Point(80, 268)); // Town tab
+            await Task.Delay(700, cancellationToken);
+        }
+
+        /// <summary>
         /// Taps a button of a building's action ring only where its icon is actually found near the expected spot.
         /// A busy building's ring is laid out differently (Finish for gems, Speedups) and a blind tap could hit those.
         /// </summary>
