@@ -27,7 +27,6 @@ namespace Bot.Core.LDPlayer
         private bool _disposed = false;
         
         // Performance optimization: Reusable screenshot buffer (similar to wosbot-master's ThreadLocal<BufferedImage>)
-        private static readonly ThreadLocal<MemoryStream> _reusableScreenshotBuffer = new(() => new MemoryStream());
         
         // Command batching for performance
         private readonly List<string> _batchedCommands = new();
@@ -65,29 +64,28 @@ namespace Bot.Core.LDPlayer
                     throw new InvalidOperationException($"Device {_device.Serial} is not responsive");
                 }
 
-                // Take screenshot using temporary file approach (more reliable)
-                var tempPath = $"/sdcard/temp_screenshot_{_instanceNumber}.png";
-                
-                // Execute screencap command to save to file
-                var receiver = new ConsoleOutputReceiver();
-                await _adbClient.ExecuteRemoteCommandAsync($"screencap -p {tempPath}", _device, receiver, cancellationToken);
-                
-                // Use reusable buffer to pull the screenshot file
-                var buffer = _reusableScreenshotBuffer.Value;
-                buffer!.SetLength(0);
-                buffer.Seek(0, SeekOrigin.Begin);
-                
-                // Pull the file using SyncService
-                using (var syncService = new SyncService(_device))
+                // Each capture gets its own file and buffer: two captures of one device can overlap (tasks, health
+                // checks), and a shared file or buffer then hands back a cut-off PNG ("PNG input buffer is incomplete")
+                byte[] png = Array.Empty<byte>();
+                for (int attempt = 1; attempt <= 2; attempt++)
                 {
-                    syncService.Pull(tempPath, buffer, null);
+                    var tempPath = $"/sdcard/temp_screenshot_{_instanceNumber}_{Guid.NewGuid():N}.png";
+                    await _adbClient.ExecuteRemoteCommandAsync($"screencap -p {tempPath}", _device, new ConsoleOutputReceiver(), cancellationToken);
+                    using (var buffer = new MemoryStream())
+                    {
+                        using (var syncService = new SyncService(_device))
+                        {
+                            syncService.Pull(tempPath, buffer, null);
+                        }
+                        png = buffer.ToArray();
+                    }
+                    await _adbClient.ExecuteRemoteCommandAsync($"rm {tempPath}", _device, new ConsoleOutputReceiver(), cancellationToken);
+                    if (IsCompletePng(png)) break;
+                    _logger.LogWarning($"[ADBv2] Incomplete screenshot for instance {_instanceNumber} ({png.Length} bytes), retaking");
                 }
-                
-                // Clean up temp file
-                await _adbClient.ExecuteRemoteCommandAsync($"rm {tempPath}", _device, new ConsoleOutputReceiver(), cancellationToken);
-                
+
                 // Convert to byte array at the 720x1280 the templates expect
-                var screenshotBytes = ScreenScaler.Normalize(_device.Serial, buffer.ToArray());
+                var screenshotBytes = ScreenScaler.Normalize(_device.Serial, png);
                 
                 RecordSuccessfulOperation();
                 RecordPerformanceMetric("TakeScreenshot", DateTime.UtcNow - startTime);
@@ -102,6 +100,13 @@ namespace Bot.Core.LDPlayer
                 _logger.LogError($"[ADBv2] Screenshot failed for instance {_instanceNumber}: {ex.Message}");
                 throw;
             }
+        }
+
+        /// <summary>A PNG is complete when it ends with its IEND chunk.</summary>
+        private static bool IsCompletePng(byte[] png)
+        {
+            ReadOnlySpan<byte> iend = stackalloc byte[] { 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82 };
+            return png.Length > 8 && png.AsSpan(png.Length - 8).SequenceEqual(iend);
         }
 
         /// <summary>
