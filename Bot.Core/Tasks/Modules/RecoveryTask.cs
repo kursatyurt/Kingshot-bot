@@ -222,6 +222,19 @@ namespace Bot.Core.Tasks.Modules
             }
 
             logger.LogInfo($"[{account.AccountName}] Enhanced recovery failed after {MAX_RECOVERY_ATTEMPTS} attempts, falling back to instance restart");
+            // Keep the screen the bot could not handle, so it can be taught
+            try
+            {
+                var adb = await ADBMigrationHelper.GetConnectionAsync(account.InstanceNumber, logger, cancellationToken);
+                var lost = adb == null ? null : await ADBMigrationHelper.TakeScreenshotAsync(adb, logger, cancellationToken);
+                if (lost != null)
+                {
+                    var debugDir = Path.Combine(AppContext.BaseDirectory, "logs", "screenshots");
+                    Directory.CreateDirectory(debugDir);
+                    await File.WriteAllBytesAsync(Path.Combine(debugDir, $"recovery-unknown-{account.InstanceNumber}-{DateTime.Now:HHmmss}.png"), lost, cancellationToken);
+                }
+            }
+            catch (Exception ex) { logger.LogWarning($"[{account.AccountName}] Could not save the unknown screen: {ex.Message}"); }
             return false;
         }
 

@@ -608,6 +608,18 @@ namespace Bot.Core.Tasks.Modules
                         }
                         
                         logger.LogInfo($"[{account.AccountName}] ⏱️ Max-march detection timeout reached (5 seconds total). Neither deploy button nor max-march indicator found.");
+                        // Keep what the game showed instead, to teach the bot this screen
+                        var noDeploy = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                        if (noDeploy != null)
+                        {
+                            var debugDir = Path.Combine(AppContext.BaseDirectory, "logs", "screenshots");
+                            Directory.CreateDirectory(debugDir);
+                            await File.WriteAllBytesAsync(Path.Combine(debugDir, $"farming-no-deploy-{account.InstanceNumber}.png"), noDeploy);
+                        }
+                        // Gather with every march queue busy just returns to the map (its notice fades in ~2s);
+                        // lower levels and other resources would fail the same way, so end farming for this cycle
+                        logger.LogInfo($"[{account.AccountName}] 🚫 No deploy screen after Gather: march queue is full.");
+                        throw new NoTroopsAvailableException();
                     }
 
                     if (deployClicked)
