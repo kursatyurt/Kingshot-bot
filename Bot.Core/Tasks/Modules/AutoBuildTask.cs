@@ -202,6 +202,14 @@ namespace Bot.Core.Tasks.Modules
                 return (false, busyFor);
             }
 
+            if (screenshot != null)
+            {
+                // Keep what the tap opened instead, so the bot can be taught it
+                var debugDir = Path.Combine(AppContext.BaseDirectory, "logs", "screenshots");
+                Directory.CreateDirectory(debugDir);
+                await File.WriteAllBytesAsync(Path.Combine(debugDir, $"autobuild-not-town-center-{account.InstanceNumber}.png"), screenshot, cancellationToken);
+            }
+
             // Not the Town Center: return to the city. A blind back key would open the game's exit
             // dialog when the tap opened nothing; the locator only acts on what is actually on screen.
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
@@ -255,11 +263,18 @@ namespace Bot.Core.Tasks.Modules
             var missing = await ReadRequirementsAsync(account, logger, cancellationToken);
             if (missing == null)
             {
-                // e.g. work buildings like the Mill open a furniture page instead of an upgrade dialog
-                logger.LogInfo($"[{account.AccountName}] The required building has no upgrade dialog (furniture building?); leaving it");
+                // Work buildings (Mill, Quarry, ...) open a furniture page instead; upgrading furniture levels the building
+                var furnitureUpgraded = await UpgradeFurnitureAsync(account, logger, cancellationToken);
+                await PressBackAsync(account.InstanceNumber, logger); // the furniture page has no back arrow
+                await Task.Delay(800, cancellationToken);
                 await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
+                if (furnitureUpgraded)
+                {
+                    account.AutoBuildSettings.LastBuildTime = DateTime.UtcNow;
+                    return TaskExecutionDetails.Succeeded();
+                }
                 return TaskExecutionDetails.FailedWith(FailureCategory.GameState, "Step 4: Upgrading required building",
-                    "The required building is upgraded through its furniture, which the bot does not do yet");
+                    "The required building opened neither an upgrade dialog nor an upgradable furniture page");
             }
             if (missing.Count > 0)
             {
@@ -274,13 +289,19 @@ namespace Bot.Core.Tasks.Modules
             var (upgradeFound, upgradeRect, _) = screenshot == null ? (false, Rectangle.Empty, 0.0)
                 : _templateMatcher.MatchTemplate(screenshot, Path.Combine(ImageTemplateFolder, "dialog-upgrade-button.png"),
                     account.InstanceNumber, threshold: 0.88, searchArea: DialogUpgradeButtonArea);
+            if (!upgradeFound && screenshot != null)
+            {
+                // A required building that does not exist yet (e.g. the Embassy) shows a centred Build button instead
+                (upgradeFound, upgradeRect, _) = _templateMatcher.MatchTemplate(screenshot, Path.Combine(ImageTemplateFolder, "build-button.png"),
+                    account.InstanceNumber, threshold: 0.85, searchArea: new Rectangle(150, 1100, 450, 160));
+            }
             if (!upgradeFound)
             {
                 await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
                 return FailDetection("Step 4: Upgrading required building", "the building's Upgrade button");
             }
 
-            logger.LogInfo($"[{account.AccountName}] All requirements of the required building met, tapping Upgrade");
+            logger.LogInfo($"[{account.AccountName}] All requirements of the required building met, tapping Upgrade/Build");
             await ClickRandomInRectAsync(account.InstanceNumber, logger, upgradeRect);
             await RandomDelay(cancellationToken);
             await RequestAllianceHelpAsync(account, logger, cancellationToken);
@@ -288,6 +309,33 @@ namespace Bot.Core.Tasks.Modules
 
             account.AutoBuildSettings.LastBuildTime = DateTime.UtcNow;
             return TaskExecutionDetails.Succeeded();
+        }
+
+        /// <summary>
+        /// On a work building's furniture page, upgrades the selected piece of furniture (its cyan Upgrade button sits at
+        /// the top right). Returns true when it tapped Upgrade.
+        /// </summary>
+        private async Task<bool> UpgradeFurnitureAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
+        {
+            var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            if (screenshot == null) return false;
+            if (!_templateMatcher.MatchTemplate(screenshot, Path.Combine(ImageTemplateFolder, "furniture-tab.png"),
+                    account.InstanceNumber, threshold: 0.9, searchArea: new Rectangle(60, 1150, 280, 110)).found)
+                return false;
+
+            var (upgradeFound, upgradeRect, _) = _templateMatcher.MatchTemplate(screenshot, Path.Combine(ImageTemplateFolder, "furniture-upgrade-button.png"),
+                account.InstanceNumber, threshold: 0.9, searchArea: new Rectangle(480, 590, 240, 140));
+            if (!upgradeFound)
+            {
+                logger.LogInfo($"[{account.AccountName}] Furniture page without an Upgrade button (furniture maxed or busy)");
+                return false;
+            }
+
+            logger.LogInfo($"[{account.AccountName}] 🪑 Upgrading the work building's furniture");
+            await ClickRandomInRectAsync(account.InstanceNumber, logger, upgradeRect);
+            await Task.Delay(1500, cancellationToken);
+            await RequestAllianceHelpAsync(account, logger, cancellationToken);
+            return true;
         }
 
         /// <summary>
