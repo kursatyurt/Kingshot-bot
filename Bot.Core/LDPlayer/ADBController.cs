@@ -57,6 +57,10 @@ namespace Bot.Core.LDPlayer
             };
             using var process = Process.Start(psi);
             if (process == null) return "Failed to start process.";
+            // Disposing a Process leaves its read pipes open until the GC finalizes them; the 10 s health
+            // check alone leaked ~1 pipe a second
+            using var stdout = process.StandardOutput;
+            using var stderr = process.StandardError;
             
             // Create timeout cancellation token
             using var timeoutCts = new CancellationTokenSource(timeoutMs);
@@ -64,8 +68,8 @@ namespace Bot.Core.LDPlayer
             
             try
             {
-                var outputTask = process.StandardOutput.ReadToEndAsync();
-                var errorTask = process.StandardError.ReadToEndAsync();
+                var outputTask = stdout.ReadToEndAsync();
+                var errorTask = stderr.ReadToEndAsync();
                 var waitTask = process.WaitForExitAsync(linkedCts.Token);
                 
                 await Task.WhenAll(outputTask, errorTask, waitTask);
@@ -181,6 +185,8 @@ namespace Bot.Core.LDPlayer
             using var process = Process.Start(psi);
             if (process == null)
                 throw new Exception("Failed to start adb screencap process.");
+            using var stdout = process.StandardOutput;
+            using var stderr = process.StandardError;
 
             // Create timeout for screenshot operation (15 seconds)
             using var timeoutCts = new CancellationTokenSource(15000);
@@ -189,7 +195,7 @@ namespace Bot.Core.LDPlayer
             using var ms = new MemoryStream();
             try
             {
-                await process.StandardOutput.BaseStream.CopyToAsync(ms, linkedCts.Token);
+                await stdout.BaseStream.CopyToAsync(ms, linkedCts.Token);
                 await process.WaitForExitAsync(linkedCts.Token);
             }
             catch (OperationCanceledException) when (timeoutCts.Token.IsCancellationRequested)
