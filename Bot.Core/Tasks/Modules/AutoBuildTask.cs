@@ -187,10 +187,16 @@ namespace Bot.Core.Tasks.Modules
         /// </summary>
         private async Task<(bool opened, TimeSpan? busyFor)> OpenTownCenterAsync(AccountSettings account, LogService logger, LocatorService locator, CancellationToken cancellationToken)
         {
-            await ClickAsync(account.InstanceNumber, logger, TownCenterTapPoint);
-            await RandomDelay(cancellationToken);
-            var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
-            if (screenshot != null && IsTownCenterPage(screenshot, logger)) return (true, null);
+            // The first touch often only moves the camera onto the Town Center; a later press opens it
+            byte[]? screenshot = null;
+            for (int press = 1; press <= 3; press++)
+            {
+                await SwipeAsync(account.InstanceNumber, logger, TownCenterTapPoint, new Point(TownCenterTapPoint.X + 1, TownCenterTapPoint.Y + 1), 150);
+                await RandomDelay(cancellationToken);
+                screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                if (screenshot != null && IsTownCenterPage(screenshot, logger)) return (true, null);
+                if (screenshot != null && ReadConstructionTimeLeft(screenshot, logger) != null) break; // construction page
+            }
 
             // While it upgrades, the Town Center opens a construction page ("Upgrading 00:29:41", Finish for gems,
             // Construction Speedup). Never tap those; back out and wait for the upgrade instead.
