@@ -325,13 +325,13 @@ namespace Bot.Core.Tasks.Modules
             string text = marchOcr.ExtractBrightTextFromScreenArea(screenshot, marchCountRect);
             logger.LogInfo($"[{account.AccountName}] March capacity OCR text: '{text}'");
             
-            if (string.IsNullOrWhiteSpace(text) && justSentMarch) {
-                // Right after a deploy the march panel may not be drawn yet; an empty read then is not a free slot
+            if (string.IsNullOrWhiteSpace(text)) {
+                // The march panel slides in a moment after the map opens (or after a deploy): read once more
                 await Task.Delay(1500, cancellationToken);
                 screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
                 text = screenshot == null ? "" : marchOcr.ExtractBrightTextFromScreenArea(screenshot, marchCountRect);
-                logger.LogInfo($"[{account.AccountName}] March capacity OCR text (re-read after send): '{text}'");
-                if (string.IsNullOrWhiteSpace(text)) {
+                logger.LogInfo($"[{account.AccountName}] March capacity OCR text (re-read): '{text}'");
+                if (string.IsNullOrWhiteSpace(text) && justSentMarch) {
                     logger.LogInfo($"[{account.AccountName}] March counter still unreadable after sending; not risking a send into a full queue.");
                     return 0;
                 }
