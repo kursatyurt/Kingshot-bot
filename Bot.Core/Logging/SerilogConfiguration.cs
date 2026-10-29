@@ -71,15 +71,23 @@ namespace Bot.Core.Logging
         /// <summary>
         /// Gets the instance name with caching to avoid repeated dnconsole calls
         /// </summary>
+        [ThreadStatic] private static bool _resolvingName;
+
         public static async Task<string> GetInstanceNameAsync(int instanceNumber)
         {
-            // Check cache first
-            if (DateTime.UtcNow - _cacheLastUpdated < CacheTimeout && 
-                _instanceNameCache.TryGetValue(instanceNumber, out var cachedName))
+            // Instance names don't change while the bot runs: once known, never ask the emulator console again
+            if (_instanceNameCache.TryGetValue(instanceNumber, out var cachedName))
             {
                 return cachedName;
             }
+            // Looking the name up logs, and logging looks the name up: a failing console (e.g. "Too many open files")
+            // recursed until the stack overflowed and the bot crashed
+            if (_resolvingName)
+            {
+                return $"Instance{instanceNumber}";
+            }
 
+            _resolvingName = true;
             try
             {
                 // Get fresh name from dnconsole
@@ -97,6 +105,10 @@ namespace Bot.Core.Logging
                 var fallbackName = $"Instance{instanceNumber}";
                 _instanceNameCache[instanceNumber] = fallbackName;
                 return fallbackName;
+            }
+            finally
+            {
+                _resolvingName = false;
             }
         }
 
@@ -406,8 +418,7 @@ namespace Bot.Core.Logging
         private static string GetInstanceNameSync(int instanceNumber)
         {
             // Check if we have it in cache and it's recent
-            if (SerilogConfiguration._instanceNameCache.TryGetValue(instanceNumber, out var cachedName) &&
-                DateTime.UtcNow - SerilogConfiguration._cacheLastUpdated < SerilogConfiguration.CacheTimeout)
+            if (SerilogConfiguration._instanceNameCache.TryGetValue(instanceNumber, out var cachedName))
             {
                 return cachedName;
             }

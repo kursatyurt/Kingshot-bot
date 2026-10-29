@@ -13,6 +13,7 @@ using Microsoft.Extensions.DependencyInjection;
 using OpenCvSharp;
 
 var logger = new LogService();
+OpenFileLimit.Raise(logger);
 
 if (args.Contains("--selftest"))
     return SelfTest(logger);
@@ -80,4 +81,30 @@ static int SelfTest(LogService logger)
     var ok = score > 0.99 && read.Contains("12345");
     Console.WriteLine(ok ? "SELFTEST PASSED" : "SELFTEST FAILED");
     return ok ? 0 : 1;
+}
+
+// macOS starts programs with a soft limit of 256 open files; the bot uses ~130 just loading its libraries, so a few
+// leaked handles were enough for "Too many open files" (the emulator console then failed and the bot crashed).
+static class OpenFileLimit
+{
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct RLimit { public ulong Current; public ulong Maximum; }
+
+    [System.Runtime.InteropServices.DllImport("libc", SetLastError = true)]
+    private static extern int getrlimit(int resource, out RLimit limit);
+
+    [System.Runtime.InteropServices.DllImport("libc", SetLastError = true)]
+    private static extern int setrlimit(int resource, ref RLimit limit);
+
+    public static void Raise(LogService logger)
+    {
+        if (OperatingSystem.IsWindows()) return;
+        int resource = OperatingSystem.IsMacOS() ? 8 : 7; // RLIMIT_NOFILE
+        if (getrlimit(resource, out var limit) != 0) return;
+        ulong wanted = Math.Min(limit.Maximum, 10240UL); // macOS caps the soft limit at OPEN_MAX (10240)
+        if (limit.Current >= wanted) return;
+        var raised = new RLimit { Current = wanted, Maximum = limit.Maximum };
+        if (setrlimit(resource, ref raised) == 0)
+            logger.LogInfo($"Open file limit raised from {limit.Current} to {wanted}");
+    }
 }
