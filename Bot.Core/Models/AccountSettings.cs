@@ -27,7 +27,8 @@ namespace Bot.Core.Models
         ResidentWelcome,
         AllianceTechnology,
         AutoTechnology,
-        AutoRally
+        AutoRally,
+        EventRewards
     }
 
     public class AccountSettings : INotifyPropertyChanged

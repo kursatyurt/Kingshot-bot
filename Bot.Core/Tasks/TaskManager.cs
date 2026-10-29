@@ -64,6 +64,7 @@ namespace Bot.Core.Tasks
                 (_serviceProvider.GetService(typeof(UnifiedTemplateMatchingService)) as UnifiedTemplateMatchingService)!);
             _availableTasks[TaskType.AutoShield] = new AutoShieldTask(ConfigurationManager.Instance, _serviceProvider);
             _availableTasks[TaskType.CollectVip] = new CollectVipTask();
+            _availableTasks[TaskType.EventRewards] = new EventRewardsTask();
             _availableTasks[TaskType.ClaimMissions] = new ClaimMissionsTask();
             _availableTasks[TaskType.ResidentWelcome] = new ResidentWelcomeTask();
             _availableTasks[TaskType.AllianceTechnology] = new AllianceTechnologyTask();
@@ -614,6 +615,7 @@ namespace Bot.Core.Tasks
                 { TaskType.AllianceTechnology, 10 },
                 { TaskType.AutoTechnology, 11 },   // Auto Technology after AllianceTechnology
                 { TaskType.CollectVip, 12 },
+                { TaskType.EventRewards, 12 },
                 { TaskType.ClaimMissions, 13 },
                 { TaskType.ResidentWelcome, 14 },
                 { TaskType.ChangeAccount, 999 }    // ChangeAccount should always run last
