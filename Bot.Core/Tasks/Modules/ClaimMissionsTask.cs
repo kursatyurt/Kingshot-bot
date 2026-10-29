@@ -882,9 +882,10 @@ namespace Bot.Core.Tasks.Modules
         /// </summary>
         private static IEnumerable<(byte R, byte G, byte B)> Pixels(OpenCvSharp.Mat image)
         {
-            for (int x = 0; x < image.Width; x++)
+            int width = image.Width, height = image.Height;
+            for (int x = 0; x < width; x++)
             {
-                for (int y = 0; y < image.Height; y++)
+                for (int y = 0; y < height; y++)
                 {
                     var bgr = image.At<OpenCvSharp.Vec3b>(y, x);
                     yield return (bgr.Item2, bgr.Item1, bgr.Item0);

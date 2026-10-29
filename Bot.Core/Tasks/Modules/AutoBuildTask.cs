@@ -359,6 +359,31 @@ namespace Bot.Core.Tasks.Modules
             return true;
         }
 
+        /// <summary>
+        /// Reads the requirement row of the Go button (the building Go would lead to) and checks it against SkipBuildings.
+        /// </summary>
+        private async Task<bool> RequiresSkippedBuildingAsync(AccountSettings account, LogService logger)
+        {
+            var skipBuildings = account.AutoBuildSettings.SkipBuildings;
+            if (skipBuildings.Count == 0) return false;
+
+            var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            if (screenshot == null) return false;
+
+            var (found, goRect, _) = _templateMatcher.MatchTemplate(
+                screenshot, Path.Combine(ImageTemplateFolder, "go-button.png"), account.InstanceNumber,
+                threshold: 0.8, searchArea: goButtonSearchArea);
+            if (!found) return false;
+
+            using var ocr = new OCRService(logger, new OCRConfiguration { ScaleFactor = 2.0f });
+            var rowText = ocr.ExtractTextFromScreenArea(screenshot, new Rectangle(40, goRect.Y - 10, goRect.X - 40, goRect.Height + 20));
+            var skipped = skipBuildings.FirstOrDefault(b => rowText.Contains(b, StringComparison.OrdinalIgnoreCase));
+
+            logger.LogInfo($"[{account.AccountName}] Upgrade requirement: '{rowText}'" +
+                (skipped != null ? $" -> {skipped} is in SkipBuildings, not upgrading it (Kitchen stays blocked until it is upgraded)" : ""));
+            return skipped != null;
+        }
+
         private async Task<bool> HandleUpgradeProcess(AccountSettings account, LogService logger, CancellationToken cancellationToken)
         {
             logger.LogInfo($"[{account.AccountName}] Starting upgrade process");
@@ -386,6 +411,14 @@ namespace Bot.Core.Tasks.Modules
             else
             {
                 logger.LogInfo($"[{account.AccountName}] Red X found, searching for go button in area: {goButtonSearchArea}");
+
+                if (await RequiresSkippedBuildingAsync(account, logger))
+                {
+                    await FindAndClickImageWithDebugAsync("back-button.png", account.InstanceNumber, logger);
+                    await RandomDelay(cancellationToken);
+                    return true; // Skip the rest of the module
+                }
+
                 // Red X found - look for go button
                 if (!await FindAndClickImageWithDebugAsync("go-button.png", account.InstanceNumber, logger, searchArea: goButtonSearchArea, threshold: 0.8))
                 {

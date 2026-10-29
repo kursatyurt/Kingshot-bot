@@ -22,6 +22,7 @@ namespace Bot.Core.Tasks.Modules
     public class AllianceTechnologyTask : BaseTaskWithCommonPatterns
     {
         public override TaskType TaskType => TaskType.AllianceTechnology;
+        protected override string GetImageFolderName() => "alliancetech";
         public override string Name => "Alliance Technology";
 
         private readonly string _templateFolder;

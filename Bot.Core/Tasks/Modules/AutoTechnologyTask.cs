@@ -15,6 +15,7 @@ namespace Bot.Core.Tasks.Modules
     public class AutoTechnologyTask : BaseTaskWithCommonPatterns
     {
         public override TaskType TaskType => TaskType.AutoTechnology;
+        protected override string GetImageFolderName() => "autotech";
         public override string Name => "Auto Technology";
 
         protected override async Task<TaskExecutionDetails> ExecuteTaskLogicAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken, bool isReRun = false, IUserNotificationService? userNotifications = null)
@@ -87,7 +88,8 @@ namespace Bot.Core.Tasks.Modules
                 Point researchTypeLocation;
                 string researchTypeName;
 
-                switch (settings.ResearchType)
+                var researchType = settings.NextResearchType(account.InstanceNumber);
+                switch (researchType)
                 {
                     case ResearchType.Growth:
                         researchTypeLocation = new Point(130, 116);
@@ -102,7 +104,7 @@ namespace Bot.Core.Tasks.Modules
                         researchTypeName = "Battle";
                         break;
                     default:
-                        logger.LogError($"[{account.AccountName}] Invalid research type: {settings.ResearchType}");
+                        logger.LogError($"[{account.AccountName}] Invalid research type: {researchType}");
                         return TaskExecutionDetails.Failed("Invalid research type configured");
                 }
 
@@ -120,7 +122,8 @@ namespace Bot.Core.Tasks.Modules
                     logger.LogInfo($"[{account.AccountName}] Found progress pattern, clicking at {progressPattern.Value}");
                     await ClickAsync(account.InstanceNumber, logger, progressPattern.Value);
                     await Task.Delay(1000, cancellationToken);
-                    
+
+                    AutoTechnologySettings.AdvanceResearchType(account.InstanceNumber);
                     return new TaskExecutionDetails(true, message: $"Successfully started {researchTypeName} research");
                 }
                 else
@@ -153,6 +156,7 @@ namespace Bot.Core.Tasks.Modules
                 }
 
                 using var bitmap = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
+                int width = bitmap.Width, height = bitmap.Height;
                 
                 // Create optimized OCR configuration specifically for x/x patterns
                 var ocrConfig = new OCRConfiguration
@@ -171,9 +175,9 @@ namespace Bot.Core.Tasks.Modules
                 logger.LogInfo($"Starting improved OCR scan for x/x patterns...");
 
                 // Scan in larger, more targeted regions
-                for (int y = 100; y < Math.Min(bitmap.Height - 100, 700); y += 60) // Larger steps
+                for (int y = 100; y < Math.Min(height - 100, 700); y += 60) // Larger steps
                 {
-                    for (int x = 50; x < Math.Min(bitmap.Width - 150, 650); x += 80) // Larger regions
+                    for (int x = 50; x < Math.Min(width - 150, 650); x += 80) // Larger regions
                     {
                         var region = new Rectangle(x, y, 120, 50); // Larger OCR regions
                         
@@ -294,6 +298,7 @@ namespace Bot.Core.Tasks.Modules
                 if (screenshot == null) return null;
 
                 using var bitmap = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
+                int width = bitmap.Width, height = bitmap.Height;
 
                 var numberOcrConfig = new OCRConfiguration
                 {
@@ -314,9 +319,9 @@ namespace Bot.Core.Tasks.Modules
                 };
 
                 // Look for patterns where we have: [number] [slash] [number] in nearby regions
-                for (int y = 100; y < Math.Min(bitmap.Height - 50, 600); y += 40)
+                for (int y = 100; y < Math.Min(height - 50, 600); y += 40)
                 {
-                    for (int x = 50; x < Math.Min(bitmap.Width - 150, 600); x += 60)
+                    for (int x = 50; x < Math.Min(width - 150, 600); x += 60)
                     {
                         try
                         {
@@ -387,6 +392,7 @@ namespace Bot.Core.Tasks.Modules
                 if (screenshot == null) return string.Empty;
 
                 using var bitmap = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
+                int width = bitmap.Width, height = bitmap.Height;
                 
                 // OCR configuration optimized for "idle" text detection
                 var ocrConfig = new OCRConfiguration
@@ -439,6 +445,21 @@ namespace Bot.Core.Tasks.Modules
     public class AutoTechnologySettings
     {
         public ResearchType ResearchType { get; set; } = ResearchType.Growth;
+
+        /// <summary>
+        /// Research categories to alternate between, one research at a time. Overrides ResearchType when set.
+        /// </summary>
+        public List<ResearchType>? ResearchTypes { get; set; }
+
         public bool IsEnabled { get; set; } = true;
+
+        // Per-instance position in ResearchTypes; advances only after a research actually starts
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, int> _nextIndex = new();
+
+        public ResearchType NextResearchType(int instanceNumber) =>
+            ResearchTypes is { Count: > 0 } types ? types[_nextIndex.GetOrAdd(instanceNumber, 0) % types.Count] : ResearchType;
+
+        public static void AdvanceResearchType(int instanceNumber) =>
+            _nextIndex.AddOrUpdate(instanceNumber, 1, (_, i) => i + 1);
     }
 }

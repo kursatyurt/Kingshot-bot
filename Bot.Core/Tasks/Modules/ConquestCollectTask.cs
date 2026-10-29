@@ -17,6 +17,7 @@ namespace Bot.Core.Tasks.Modules
     public class ConquestCollectTask : BaseTaskWithCommonPatterns
     {
         public override TaskType TaskType => TaskType.ConquestCollect;
+        protected override string GetImageFolderName() => "conquest";
         public override string Name => "Conquest Collection";
 
         // Static dictionary to track last collection times per account

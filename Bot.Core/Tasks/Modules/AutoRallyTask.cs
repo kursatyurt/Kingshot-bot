@@ -17,6 +17,7 @@ namespace Bot.Core.Tasks.Modules
     public class AutoRallyTask : BaseTaskWithCommonPatterns
     {
         public override TaskType TaskType => TaskType.AutoRally;
+        protected override string GetImageFolderName() => "Auto Rally";
         public override string Name => "Auto Rally";
 
         // Static session state storage - keyed by account ID for proper isolation
@@ -708,9 +709,10 @@ namespace Bot.Core.Tasks.Modules
                 int greyPixels = 0;
                 int totalPixels = 0;
 
-                for (int x = 0; x < regionMat.Width; x++)
+                int width = regionMat.Width, height = regionMat.Height;
+                for (int x = 0; x < width; x++)
                 {
-                    for (int y = 0; y < regionMat.Height; y++)
+                    for (int y = 0; y < height; y++)
                     {
                         var bgr = regionMat.At<OpenCvSharp.Vec3b>(y, x);
                         int b = bgr.Item0, g = bgr.Item1, r = bgr.Item2;
