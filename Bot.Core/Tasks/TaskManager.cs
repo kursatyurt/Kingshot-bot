@@ -123,6 +123,13 @@ namespace Bot.Core.Tasks
 
                     var completedTask = await Task.WhenAny(startupTask, timeoutTask);
 
+                    // Stopping the bot also cancels the timeout delay; that is not a timeout and must not reboot the emulator
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        contextLogger.LogInfo($"🛑 Startup for instance {account.InstanceNumber} cancelled.");
+                        return false;
+                    }
+
                     if (completedTask == timeoutTask)
                     {
                         await startupCts.CancelAsync();

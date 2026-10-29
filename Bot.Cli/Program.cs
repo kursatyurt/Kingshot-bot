@@ -22,6 +22,7 @@ ADBConnectionManager.StartHealthMonitoring(logger);
 
 var notifications = new UserNotificationService(logger, new GUILogService(Console.WriteLine));
 var taskManager = new TaskManager(logger, new ServiceCollection().BuildServiceProvider(), notifications);
+await taskManager.InitializeAsync(); // loads each task's template matcher, as the GUI does before starting
 var cycle = new CycleManagementService(logger, taskManager);
 BaseTaskWithCommonPatterns.SetCycleManagementService(cycle);
 cycle.OnStatusUpdate += s => Console.WriteLine($"[cycle] {s}");
