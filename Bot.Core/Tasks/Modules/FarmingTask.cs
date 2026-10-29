@@ -58,7 +58,6 @@ namespace Bot.Core.Tasks.Modules
         }
 
         // UI element coordinates
-        private static readonly Rectangle MarchCapacityTextRect = new Rectangle(190, 196, 52, 32);  // 190,196 to 242,228
         private static readonly Rectangle SearchIconRect = new Rectangle(20, 855, 47, 43);  // Search icon in top menu
         private static readonly Rectangle ResourceScrollArea = new Rectangle(0, 850, 718, 150);  // Resource selection area
         private static readonly Rectangle GatherButtonArea = new Rectangle(257, 592, 207, 72);  // 257,592 to 464,664
@@ -167,6 +166,7 @@ namespace Bot.Core.Tasks.Modules
 
                 // Main farming loop
                 int marchesSentSuccessfully = 0;
+                int consecutiveFailures = 0; // one failed resource (e.g. no tile nearby) should not end farming for the cycle
                 var initialMarchesSent = FarmingSettings.GetMarchesSent(account.InstanceNumber);
                 
                 try
@@ -205,6 +205,7 @@ namespace Bot.Core.Tasks.Modules
                         bool marchSent = await ProcessSingleMarchAsync(account, logger, cancellationToken, currentTarget, userNotifications);
                         if (marchSent)
                         {
+                            consecutiveFailures = 0;
                             marchesSentSuccessfully++;
                             FarmingSettings.IncrementMarchesSent(account.InstanceNumber);
                             
@@ -219,8 +220,13 @@ namespace Bot.Core.Tasks.Modules
                         }
                         else
                         {
-                            logger.LogWarning($"[{account.AccountName}] Failed to send march for {currentTarget.ResourceType}. Stopping farming for this cycle.");
-                            break;
+                            if (++consecutiveFailures >= account.FarmingTargets.Count)
+                            {
+                                logger.LogWarning($"[{account.AccountName}] Failed to send march for {currentTarget.ResourceType}; every resource failed in a row. Stopping farming for this cycle.");
+                                break;
+                            }
+                            logger.LogWarning($"[{account.AccountName}] Failed to send march for {currentTarget.ResourceType}; trying the next resource.");
+                            await locator.EnsureViewAsync(ViewType.MapView, account.InstanceNumber); // start the next search from the map
                         }
                         await Task.Delay(POLL_INTERVAL_MS, cancellationToken);
                     }
@@ -257,25 +263,21 @@ namespace Bot.Core.Tasks.Modules
         /// </summary>
         private async Task<int> GetAvailableMarchesAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
         {
-            // 1. Define a much tighter cropping area to isolate *only* the "3/3" text.
-            // This prevents the OCR from seeing other noisy UI elements.
-            var tightMarchCapacityRect = new Rectangle(197, 205, 48, 20); 
+            // 1. The "1/1" counter right of "Marching" in the world map's march panel (white text, dark see-through background)
+            var marchCountRect = new Rectangle(195, 195, 60, 40);
 
-            // 2. Create a hyper-focused OCR configuration just for this task.
+            // 2. Only numbers and a slash, read as one line
             var marchOcrConfig = new OCRConfiguration {
-                ScaleFactor = 4,
-                AdaptiveC = 5,
-                MedianBlurKernelSize = 1,
-                // We ONLY expect numbers and a slash, so we tell Tesseract to ignore everything else.
-                CharacterWhitelist = "0123456789/" 
+                CharacterWhitelist = "0123456789/",
+                PageSegMode = Tesseract.PageSegMode.SingleLine
             };
             using var marchOcr = new OCRService(logger, marchOcrConfig);
 
             var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
             if (screenshot == null) return 1; // Assume at least 1 march available if screenshot fails
 
-            // 3. Use the new tight rectangle for OCR extraction.
-            string text = marchOcr.ExtractTextFromScreenArea(screenshot, tightMarchCapacityRect);
+            // 3. The standard OCR pipeline erases the thin "1" and "/" of this font, so read the bright pixels directly
+            string text = marchOcr.ExtractBrightTextFromScreenArea(screenshot, marchCountRect);
             logger.LogInfo($"[{account.AccountName}] March capacity OCR text: '{text}'");
             
             if (string.IsNullOrWhiteSpace(text)) {
@@ -318,8 +320,9 @@ namespace Bot.Core.Tasks.Modules
                 return false;
             }
 
-            // Try each level from target level down to 1
-            for (int currentLevel = target.Level; currentLevel >= 1; currentLevel--)
+            // Try each level from target level down to 2. Level 1 tiles are scarce and far away, so they are
+            // only searched when level 1 itself is the configured target.
+            for (int currentLevel = target.Level; currentLevel >= Math.Min(2, target.Level); currentLevel--)
             {
                 // Set the desired resource level
                 if (!await AdjustResourceLevelAsync(account, logger, cancellationToken, currentLevel))
@@ -547,7 +550,7 @@ namespace Bot.Core.Tasks.Modules
                 }
             }
 
-            logger.LogWarning($"[{account.AccountName}] ⚠️ Could not find any gatherable resources from level {target.Level} down to 1.");
+            logger.LogWarning($"[{account.AccountName}] ⚠️ Could not find any gatherable resources from level {target.Level} down to {Math.Min(2, target.Level)}.");
             return false;
         }
 

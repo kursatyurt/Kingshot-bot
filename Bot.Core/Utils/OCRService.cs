@@ -244,6 +244,40 @@ namespace Bot.Core.Utils
         }
 
         /// <summary>
+        /// Reads small white HUD text on a dark, see-through background (e.g. the "1/1" march counter).
+        /// The standard pipeline's dilation erases thin glyphs like "1" and "/", so this keeps only the
+        /// bright pixels as black-on-white, enlarges them and adds a margin for Tesseract.
+        /// </summary>
+        public string ExtractBrightTextFromScreenArea(byte[] screenshotData, Rectangle area, int minBrightness = 200)
+        {
+            if (_engine == null) return string.Empty;
+            try
+            {
+                using var full = Cv2.ImDecode(screenshotData, ImreadModes.Color);
+                using var cropped = CropMat(full, area);
+                using var gray = new Mat();
+                Cv2.CvtColor(cropped, gray, ColorConversionCodes.BGR2GRAY);
+                using var scaled = new Mat();
+                Cv2.Resize(gray, scaled, new CvSize(0, 0), 4, 4, InterpolationFlags.Cubic);
+                using var text = new Mat();
+                Cv2.Threshold(scaled, text, minBrightness, 255, ThresholdTypes.BinaryInv);
+                using var padded = new Mat();
+                Cv2.CopyMakeBorder(text, padded, 20, 20, 20, 20, BorderTypes.Constant, Scalar.All(255));
+
+                using var img = Pix.LoadFromMemory(padded.ToBytes(".png"));
+                using var page = _engine.Process(img);
+                var result = page.GetText().Trim();
+                _logger.LogInfo($"OCR (bright text) extracted: '{result}'");
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error extracting bright text from screen area {area}: {ex.Message}");
+                return string.Empty;
+            }
+        }
+
+        /// <summary>
         /// A robust preprocessing pipeline specifically tuned for in-game text.
         /// </summary>
         private Mat PreprocessImage(Mat sourceMat)
