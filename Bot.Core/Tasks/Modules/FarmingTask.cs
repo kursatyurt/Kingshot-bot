@@ -37,6 +37,12 @@ namespace Bot.Core.Tasks.Modules
 
         // Static instance-specific farming rotation indexes to maintain state across runs
         private static readonly ConcurrentDictionary<int, int> _farmingRotationIndexes = new();
+
+        /// <summary>
+        /// When the first march of each instance is back home (UTC), read from the march panel. The cycle manager
+        /// wakes up shortly after the earliest one instead of a fixed wait, so returned marches are not left idle.
+        /// </summary>
+        public static readonly ConcurrentDictionary<int, DateTime> NextMarchReturn = new();
         private readonly string _templateFolder;
 
         // Constants for polling and timeouts
@@ -58,6 +64,8 @@ namespace Bot.Core.Tasks.Modules
         }
 
         // UI element coordinates
+        private static readonly Rectangle FirstMarchStatusRect = new Rectangle(55, 248, 110, 24); // "Returning" / "Gathering" above that timer
+        private static readonly Rectangle FirstMarchTimerRect = new Rectangle(90, 268, 90, 26);  // "00:01:31" under the first march in the map's march panel
         private static readonly Rectangle SearchIconRect = new Rectangle(20, 855, 47, 43);  // Search icon in top menu
         private static readonly Rectangle ResourceScrollArea = new Rectangle(0, 850, 718, 150);  // Resource selection area
         private static readonly Rectangle GatherButtonArea = new Rectangle(257, 592, 207, 72);  // 257,592 to 464,664
@@ -236,6 +244,8 @@ namespace Bot.Core.Tasks.Modules
                     logger.LogInfo($"[{account.AccountName}] 🚫 No troops available for farming. Exiting farming module.");
                 }
 
+                await RecordNextMarchReturnAsync(account, logger);
+
                 logger.LogInfo($"[{account.AccountName}] 🏠 Returning to base view...");
                 await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber);
                 logger.LogInfo($"[{account.AccountName}] ✅ Farming task completed.");
@@ -255,6 +265,35 @@ namespace Bot.Core.Tasks.Modules
             {
                 logger.LogError($"[{account.AccountName}] Error during farming: {ex.Message}");
                 return TaskExecutionDetails.Failed($"Error during farming: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Reads the first march's timer in the world map's march panel ("Returning 00:01:31") and records when it is home.
+        /// ponytail: first panel row only (enough for one march slot); read every row once accounts have more slots.
+        /// </summary>
+        private async Task RecordNextMarchReturnAsync(AccountSettings account, LogService logger)
+        {
+            var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            if (screenshot == null) return;
+            using var timerOcr = new OCRService(logger, new OCRConfiguration { CharacterWhitelist = "0123456789:", PageSegMode = Tesseract.PageSegMode.SingleLine });
+            var text = timerOcr.ExtractBrightTextFromScreenArea(screenshot, FirstMarchTimerRect, 190);
+            if (TimeSpan.TryParseExact(text, @"hh\:mm\:ss", null, out var remaining))
+            {
+                // The timer counts down the current leg: "Returning" = home; otherwise it ends when the march reaches the
+                // tile or finishes gathering, after which the next cycle reads the following leg.
+                using var statusOcr = new OCRService(logger, new OCRConfiguration { CharacterWhitelist = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", PageSegMode = Tesseract.PageSegMode.SingleLine });
+                var status = statusOcr.ExtractBrightTextFromScreenArea(screenshot, FirstMarchStatusRect, 190);
+                var extra = status.Contains("Return", StringComparison.OrdinalIgnoreCase) ? TimeSpan.Zero
+                    : status.Contains("Gather", StringComparison.OrdinalIgnoreCase) ? TimeSpan.FromMinutes(2) // the trip back
+                    : TimeSpan.FromMinutes(1);
+                NextMarchReturn[account.InstanceNumber] = DateTime.UtcNow + remaining + extra;
+                logger.LogInfo($"[{account.AccountName}] ⏱️ First march '{status}' {remaining}; next look in {remaining + extra}");
+            }
+            else
+            {
+                NextMarchReturn.TryRemove(account.InstanceNumber, out _);
+                logger.LogInfo($"[{account.AccountName}] ⏱️ No march timer on screen (read '{text}')");
             }
         }
 

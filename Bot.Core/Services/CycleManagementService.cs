@@ -338,6 +338,20 @@ namespace Bot.Core.Services
                     
                     // Generate a new random wait time for each cycle
                     waitMinutes = random.Next(minWait, maxWait + 1);
+
+                    // Come back as soon as the first gathering march is home, so it doesn't sit idle until the random wait ends
+                    var enabledInstances = config.Accounts.Where(a => a.IsEnabled).Select(a => a.InstanceNumber).ToHashSet();
+                    var marchReturns = Tasks.Modules.FarmingTask.NextMarchReturn.Where(kv => enabledInstances.Contains(kv.Key)).Select(kv => kv.Value).ToList();
+                    if (marchReturns.Count > 0)
+                    {
+                        var minutesUntilReturn = (int)Math.Ceiling((marchReturns.Min() - DateTime.UtcNow).TotalMinutes) + 1;
+                        var marchWait = Math.Clamp(minutesUntilReturn, 1, waitMinutes);
+                        if (marchWait < waitMinutes)
+                        {
+                            _logger.LogInfo($"⏱️ A gathering march is back in about {minutesUntilReturn - 1} min; next cycle in {marchWait} min instead of {waitMinutes}");
+                            waitMinutes = marchWait;
+                        }
+                    }
                     if (waitMinutes > 0 && !cycleToken.IsCancellationRequested)
                     {
                         _logger.LogInfo($"⏳ Waiting {waitMinutes} minutes before next cycle");
