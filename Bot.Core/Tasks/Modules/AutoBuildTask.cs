@@ -35,6 +35,7 @@ namespace Bot.Core.Tasks.Modules
         // so the task restarts the game when it isn't). A building template match would avoid the restart.
         private static readonly Point TownCenterTapPoint = new Point(340, 610);
         private static readonly Point CentredBuildingPoint = new Point(368, 536); // where Go puts the building
+        private static readonly Rectangle CentredBuildingCountdownRect = new Rectangle(330, 512, 110, 30);
         private static readonly Rectangle TownCenterTitleArea = new Rectangle(15, 600, 320, 50); // "Town Center Lv. 6"
         private static readonly Point TownCenterUpgradeButton = new Point(610, 624);
         private static readonly Point RequirementsUpgradeButton = new Point(528, 1215);
@@ -240,6 +241,16 @@ namespace Bot.Core.Tasks.Modules
             return TimeSpan.FromMinutes(30);
         }
 
+        /// <summary>
+        /// Countdown above the building Go centred, while it is being upgraded ("00:08:19" in white), or null.
+        /// </summary>
+        private static TimeSpan? ReadCentredBuildingCountdown(byte[] screenshot, LogService logger)
+        {
+            using var ocr = new OCRService(logger, new OCRConfiguration { ScaleFactor = 3.0f, CharacterWhitelist = "0123456789:", PageSegMode = Tesseract.PageSegMode.SingleLine });
+            var match = System.Text.RegularExpressions.Regex.Match(ocr.ExtractBrightTextFromScreenArea(screenshot, CentredBuildingCountdownRect), @"\d\d:\d\d:\d\d");
+            return match.Success && TimeSpan.TryParseExact(match.Value, @"hh\:mm\:ss", null, out var left) ? left : null;
+        }
+
         private TaskExecutionDetails TownCenterBusy(AccountSettings account, LogService logger, TimeSpan left)
         {
             var wait = left < TimeSpan.FromMinutes(10) ? TimeSpan.FromMinutes(10) : left;
@@ -268,10 +279,13 @@ namespace Bot.Core.Tasks.Modules
 
             // The building's upgrade dialog lists its own requirements with ✓ / ❌
             var missing = await ReadRequirementsAsync(account, logger, cancellationToken);
-            if (missing == null && !await OnFurniturePageAsync(account, logger))
+            for (int retry = 1; retry <= 3 && missing == null && !await OnFurniturePageAsync(account, logger); retry++)
             {
+                // An upgrading building's ring has Speedup where Upgrade would be: never retry on one
+                var check = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                if (check != null && ReadCentredBuildingCountdown(check, logger) != null) break;
                 // Go sometimes only centres the camera without opening the ring: press the building, then Upgrade again
-                logger.LogInfo($"[{account.AccountName}] No upgrade dialog after Go; pressing the centred building to open its ring");
+                logger.LogInfo($"[{account.AccountName}] No upgrade dialog after Go; pressing the centred building to open its ring ({retry}/3)");
                 await SwipeAsync(account.InstanceNumber, logger, CentredBuildingPoint, new Point(CentredBuildingPoint.X + 1, CentredBuildingPoint.Y + 1), 150);
                 await Task.Delay(1200, cancellationToken);
                 await ClickAsync(account.InstanceNumber, logger, BuildingRingUpgradeButton);
@@ -284,6 +298,16 @@ namespace Bot.Core.Tasks.Modules
                 if (!furnitureUpgraded)
                 {
                     var unknown = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                    var busyFor = unknown == null ? null : ReadCentredBuildingCountdown(unknown, logger);
+                    if (busyFor != null)
+                    {
+                        // Still upgrading from the last run: come back when it finishes
+                        var wait = busyFor.Value < TimeSpan.FromMinutes(2) ? TimeSpan.FromMinutes(2) : busyFor.Value;
+                        _nextBuildCheck[account.InstanceNumber] = DateTime.UtcNow + wait;
+                        logger.LogInfo($"[{account.AccountName}] The required building is upgrading ({busyFor} left); next Auto Build check in {wait}");
+                        await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
+                        return new TaskExecutionDetails(true, message: $"Required building upgrading, {busyFor} left");
+                    }
                     if (unknown != null)
                     {
                         // Keep it to teach the bot this page (e.g. the building's own construction progress)
