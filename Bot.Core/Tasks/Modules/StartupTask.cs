@@ -262,7 +262,12 @@ namespace Bot.Core.Tasks.Modules
                         break;
                     }
 
-                    // No UI elements found
+                    // No UI elements found: a forced tutorial may be holding the screen
+                    if (await new LocatorService(logger, account).TryFollowTutorialGloveAsync())
+                    {
+                        continue;
+                    }
+
                     if ((DateTime.UtcNow - startTime).TotalMilliseconds < POST_LOAD_DURATION_MS)
                     {
                         logger.LogInfo($"[{account.AccountName}] ⏳ No UI elements detected, waiting before next attempt...");

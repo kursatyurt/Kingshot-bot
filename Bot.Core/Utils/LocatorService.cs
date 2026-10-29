@@ -421,7 +421,7 @@ namespace Bot.Core.Utils
         /// quest bar (bottom left) is not a tutorial and would start quests such as Conquest battles, so it is ignored.
         /// Returns true when it tapped at least once.
         /// </summary>
-        private async Task<bool> TryFollowTutorialGloveAsync(int maxTaps = 6)
+        public async Task<bool> TryFollowTutorialGloveAsync(int maxTaps = 6)
         {
             var glovePath = Path.Combine(_templateFolder, "tutorial-glove.png");
             if (!File.Exists(glovePath)) return false;

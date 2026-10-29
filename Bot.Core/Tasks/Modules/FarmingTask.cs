@@ -67,7 +67,7 @@ namespace Bot.Core.Tasks.Modules
         private static readonly Rectangle FirstMarchStatusRect = new Rectangle(55, 248, 110, 24); // "Returning" / "Gathering" above that timer
         private static readonly Rectangle FirstMarchTimerRect = new Rectangle(90, 268, 90, 26);  // "00:01:31" under the first march in the map's march panel
         private static readonly Rectangle SearchIconRect = new Rectangle(20, 855, 47, 43);  // Search icon in top menu
-        private static readonly Rectangle ResourceScrollArea = new Rectangle(0, 850, 718, 150);  // Resource selection area
+        private static readonly Rectangle ResourceScrollArea = new Rectangle(0, 820, 718, 180);  // Resource selection area (icons start at y≈842)
         private static readonly Rectangle GatherButtonArea = new Rectangle(257, 592, 207, 72);  // 257,592 to 464,664
         private static readonly Rectangle SearchButtonArea = new Rectangle(117, 1166, 414, 102);  // 117,1166 to 531,1268
         private static readonly Rectangle DeployButtonArea = new Rectangle(388, 1159, 315, 107);  // From AutoHuntTask: 388,1159 to 703,1266
