@@ -44,6 +44,7 @@ namespace Bot.Core.Tasks.Modules
         private static readonly Point BuildingRingUpgradeButton = new Point(360, 750); // ring around a building after Go centres it
         private static readonly Rectangle DialogUpgradeButtonArea = new Rectangle(360, 700, 360, 560); // bottom right of a building's upgrade dialog (lower with more rows)
         private static readonly Rectangle ConstructionStatusRect = new Rectangle(40, 722, 200, 30); // "Upgrading" bar on a building under construction
+        private static readonly Rectangle ConstructionStatusWordRect = new Rectangle(40, 726, 160, 26);
         private static readonly Rectangle ConstructionTimerRect = new Rectangle(515, 722, 120, 30); // its "00:29:41" countdown
         private static readonly Point GetMoreCloseButton = new Point(668, 144); // X of the "Get More" resource dialog
 
@@ -230,7 +231,9 @@ namespace Bot.Core.Tasks.Modules
         private static TimeSpan? ReadConstructionTimeLeft(byte[] screenshot, LogService logger)
         {
             using var words = new OCRService(logger, new OCRConfiguration { ScaleFactor = 2.0f });
-            if (!words.ExtractTextFromScreenArea(screenshot, ConstructionStatusRect).Contains("Upgrading", StringComparison.OrdinalIgnoreCase))
+            // The progress fill behind the label changes how it reads, so try the bar and a tighter crop of the word
+            if (!words.ExtractTextFromScreenArea(screenshot, ConstructionStatusRect).Contains("Upgrading", StringComparison.OrdinalIgnoreCase)
+                && !words.ExtractTextFromScreenArea(screenshot, ConstructionStatusWordRect).Contains("Upgrading", StringComparison.OrdinalIgnoreCase))
                 return null;
             using var digits = new OCRService(logger, new OCRConfiguration { ScaleFactor = 2.0f, CharacterWhitelist = "0123456789:", PageSegMode = Tesseract.PageSegMode.SingleLine });
             var text = digits.ExtractTextFromScreenArea(screenshot, ConstructionTimerRect);
