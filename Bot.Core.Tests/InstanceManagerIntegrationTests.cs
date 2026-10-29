@@ -12,7 +12,7 @@ namespace Bot.Core.Tests
     /// Integration tests for InstanceManager Phase 1 enhancements.
     /// These tests require actual LDPlayer installation and may start/stop instances.
     /// </summary>
-    [TestFixture]
+    [TestFixture, Category("Integration")] // needs a running emulator
     [Category("Integration")]
     public class InstanceManagerIntegrationTests
     {
@@ -197,3 +197,4 @@ namespace Bot.Core.Tests
             InstanceManager.ClearStatusCache();
         }
     }
+}

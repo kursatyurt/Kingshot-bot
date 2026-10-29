@@ -163,9 +163,9 @@ Use **[Issues](https://github.com/KingshotAuto/Kingshot-bot/issues)** to report 
 This project is honest about its rough edges — these are great places to start contributing:
 
 - **Not all tasks work reliably.** Several task modules need fixing or tuning.
-- **Resolution sensitivity.** Template images were captured at a specific emulator resolution, so matching can fail on other resolutions/DPI settings. Making matching resolution-independent is a high-value contribution.
+- **Resolution: non-9:16 screens.** Screenshots are scaled to the 720×1280 the templates were captured at, and taps are scaled back (`ScreenScaler`), so any 9:16 resolution works. Screens with other aspect ratios (e.g. 1080×2400) are stretched and may match poorly.
 - **Flaky ADB / emulator connectivity.** Connection handling can be brittle; improvements to reconnection and recovery are welcome.
-- **Test coverage is thin.** More unit/integration tests would help a lot.
+- **Test coverage is thin.** `dotnet test Bot.Core.Tests --filter "TestCategory!=Integration"` runs the unit tests (CI runs them too); tests tagged `Integration` need a running emulator. More tests would help a lot.
 
 If you want to help, see [CONTRIBUTING.md](CONTRIBUTING.md) and open/claim an issue.
 

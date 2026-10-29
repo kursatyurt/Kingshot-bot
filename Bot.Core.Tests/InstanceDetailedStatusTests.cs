@@ -30,6 +30,20 @@ namespace Bot.Core.Tests
         }
 
         [Test]
+        public void FromList2Parts_MacShimFormat_ParsesRunningAndStopped()
+        {
+            // Lines as printed by tools/macos/ldconsole list2 for Android Studio emulators
+            var running = InstanceDetailedStatus.FromList2Parts("1,Kingshot_1,1,1,1,9088,9088,720,1280,320".Split(','));
+            var stopped = InstanceDetailedStatus.FromList2Parts("0,Kingshot_0,0,0,0,0,0,720,1280,320".Split(','));
+
+            Assert.IsNotNull(running);
+            Assert.AreEqual(1, running.Index);
+            Assert.IsTrue(running.IsFullyBooted);
+            Assert.IsNotNull(stopped);
+            Assert.IsFalse(stopped.IsRunning);
+        }
+
+        [Test]
         public void FromList2Parts_AndroidNotStarted_ReturnsCorrectStatus()
         {
             // Arrange
@@ -194,11 +208,11 @@ namespace Bot.Core.Tests
 
             // Assert
             Assert.IsNotNull(stringValue);
-            Assert.Contains("Instance 0", stringValue);
-            Assert.Contains("LDPlayer", stringValue);
-            Assert.Contains("Fully Ready", stringValue);
-            Assert.Contains("PID: 7456", stringValue);
-            Assert.Contains("VBox: 3500", stringValue);
+            StringAssert.Contains("Instance 0", stringValue);
+            StringAssert.Contains("LDPlayer", stringValue);
+            StringAssert.Contains("Fully Ready", stringValue);
+            StringAssert.Contains("PID: 7456", stringValue);
+            StringAssert.Contains("VBox: 3500", stringValue);
         }
     }
 }

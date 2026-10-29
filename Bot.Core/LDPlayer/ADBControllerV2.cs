@@ -86,8 +86,8 @@ namespace Bot.Core.LDPlayer
                 // Clean up temp file
                 await _adbClient.ExecuteRemoteCommandAsync($"rm {tempPath}", _device, new ConsoleOutputReceiver(), cancellationToken);
                 
-                // Convert to byte array
-                var screenshotBytes = buffer.ToArray();
+                // Convert to byte array at the 720x1280 the templates expect
+                var screenshotBytes = ScreenScaler.Normalize(_device.Serial, buffer.ToArray());
                 
                 RecordSuccessfulOperation();
                 RecordPerformanceMetric("TakeScreenshot", DateTime.UtcNow - startTime);
@@ -134,10 +134,11 @@ namespace Bot.Core.LDPlayer
                 
                 var randomX = minX + random.Next(maxX - minX + 1);
                 var randomY = minY + random.Next(maxY - minY + 1);
-                
+                (randomX, randomY) = ScreenScaler.ToDevice(_device.Serial, randomX, randomY);
+
                 var command = $"input tap {randomX} {randomY}";
                 await ExecuteShellCommandAsync(command, cancellationToken);
-                
+
                 RecordSuccessfulOperation();
                 RecordPerformanceMetric("TapRandom", DateTime.UtcNow - startTime);
                 
@@ -176,7 +177,8 @@ namespace Bot.Core.LDPlayer
                 {
                     var randomX = minX + random.Next(maxX - minX + 1);
                     var randomY = minY + random.Next(maxY - minY + 1);
-                    
+                    (randomX, randomY) = ScreenScaler.ToDevice(_device.Serial, randomX, randomY);
+
                     var command = $"input tap {randomX} {randomY}";
                     await ExecuteShellCommandAsync(command, cancellationToken);
                     
@@ -215,6 +217,8 @@ namespace Bot.Core.LDPlayer
                     return false;
                 }
 
+                (startX, startY) = ScreenScaler.ToDevice(_device.Serial, startX, startY);
+                (endX, endY) = ScreenScaler.ToDevice(_device.Serial, endX, endY);
                 var command = $"input swipe {startX} {startY} {endX} {endY} {durationMs}";
                 await ExecuteShellCommandAsync(command, cancellationToken);
                 

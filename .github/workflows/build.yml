@@ -27,8 +27,7 @@ jobs:
         run: dotnet build BotApp.sln -c Debug --no-restore
 
       - name: Test
-        continue-on-error: true
-        run: dotnet test BotApp.sln -c Debug --no-build --verbosity normal
+        run: dotnet test Bot.Core.Tests -c Debug --no-build --filter "TestCategory!=Integration"
 
   build-macos:
     runs-on: macos-latest
@@ -49,3 +48,6 @@ jobs:
 
       - name: Self-test (OpenCV + Tesseract native libraries)
         run: dotnet Bot.Cli/bin/Release/net10.0/KingshotAuto.Cli.dll --selftest
+
+      - name: Unit tests
+        run: dotnet test Bot.Core.Tests -c Release --filter "TestCategory!=Integration"

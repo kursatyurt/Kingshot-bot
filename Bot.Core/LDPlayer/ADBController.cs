@@ -110,6 +110,7 @@ namespace Bot.Core.LDPlayer
         public async Task TapAsync(int x, int y, CancellationToken cancellationToken = default)
         {
             _logger.LogInfo($"Tapping at coordinates ({x}, {y})");
+            (x, y) = ScreenScaler.ToDevice(_deviceSerial, x, y);
             await RunAdbCommandAsync($"shell input tap {x} {y}", 5000, cancellationToken);
         }
         /// <summary>
@@ -118,6 +119,8 @@ namespace Bot.Core.LDPlayer
         public async Task SwipeAsync(int x1, int y1, int x2, int y2, int durationMs, CancellationToken cancellationToken = default)
         {
             _logger.LogInfo($"Swiping from ({x1}, {y1}) to ({x2}, {y2}) over {durationMs}ms");
+            (x1, y1) = ScreenScaler.ToDevice(_deviceSerial, x1, y1);
+            (x2, y2) = ScreenScaler.ToDevice(_deviceSerial, x2, y2);
             await RunAdbCommandAsync($"shell input swipe {x1} {y1} {x2} {y2} {durationMs}", 5000, cancellationToken);
         }
         /// <summary>
@@ -286,7 +289,7 @@ namespace Bot.Core.LDPlayer
                 }
             }
             // Encode as PNG byte array for compatibility
-            return bgra.ToBytes(".png");
+            return ScreenScaler.Normalize(_deviceSerial, bgra.ToBytes(".png"));
         }
 
         /// <summary>
