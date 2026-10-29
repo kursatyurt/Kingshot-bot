@@ -37,6 +37,28 @@ namespace Bot.Core.Tasks.Modules
 
         // Static instance-specific farming rotation indexes to maintain state across runs
         private static readonly ConcurrentDictionary<int, int> _farmingRotationIndexes = new();
+        // Survives bot restarts, which otherwise always started over with the first resource (Bread got 3x the marches)
+        private static readonly string RotationFile = Path.Combine(AppContext.BaseDirectory, "data", "farming_rotation.json");
+
+        private static int LoadRotationIndex(int instance)
+        {
+            try
+            {
+                var saved = System.Text.Json.JsonSerializer.Deserialize<Dictionary<int, int>>(File.ReadAllText(RotationFile));
+                return saved != null && saved.TryGetValue(instance, out var index) ? index : 0;
+            }
+            catch { return 0; }
+        }
+
+        private static void SaveRotationIndexes()
+        {
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(RotationFile)!);
+                File.WriteAllText(RotationFile, System.Text.Json.JsonSerializer.Serialize(_farmingRotationIndexes.ToDictionary(kv => kv.Key, kv => kv.Value)));
+            }
+            catch { /* rotation is best effort */ }
+        }
 
         /// <summary>
         /// When the first march of each instance is back home (UTC), read from the march panel. The cycle manager
@@ -206,16 +228,18 @@ namespace Bot.Core.Tasks.Modules
                             break;
                         }
 
-                        // Get and increment the rotation index for this instance
-                        int currentIndex = _farmingRotationIndexes.GetOrAdd(account.InstanceNumber, 0);
+                        // Rotate resources across cycles: start from the one after the last march actually sent. A failed
+                        // attempt only moves on within this cycle, so a full queue doesn't skip a resource's turn.
+                        int currentIndex = _farmingRotationIndexes.GetOrAdd(account.InstanceNumber, LoadRotationIndex) + consecutiveFailures;
                         FarmingTarget currentTarget = account.FarmingTargets[currentIndex % account.FarmingTargets.Count];
-                        _farmingRotationIndexes[account.InstanceNumber] = currentIndex + 1;
 
                         logger.LogInfo($"[{account.AccountName}] 🎯 Attempting to send march for {currentTarget.ResourceType} Level {currentTarget.Level}");
 
                         bool marchSent = await ProcessSingleMarchAsync(account, logger, cancellationToken, currentTarget, userNotifications);
                         if (marchSent)
                         {
+                            _farmingRotationIndexes[account.InstanceNumber] = (currentIndex + 1) % account.FarmingTargets.Count;
+                            SaveRotationIndexes();
                             consecutiveFailures = 0;
                             marchesSentSuccessfully++;
                             FarmingSettings.IncrementMarchesSent(account.InstanceNumber);

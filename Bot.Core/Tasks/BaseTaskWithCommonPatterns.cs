@@ -390,6 +390,24 @@ namespace Bot.Core.Tasks
         /// <summary>
         /// Click at specific coordinates with error handling
         /// </summary>
+        /// <summary>
+        /// Taps a button of a building's action ring only where its icon is actually found near the expected spot.
+        /// A busy building's ring is laid out differently (Finish for gems, Speedups) and a blind tap could hit those.
+        /// </summary>
+        protected async Task<bool> TapRingButtonAsync(int instanceNumber, LogService logger, string iconTemplate, Point expected)
+        {
+            var screenshot = await TakeScreenshotAsync(instanceNumber, logger);
+            if (screenshot == null) return false;
+            var (found, rect, confidence) = _templateMatcher.MatchTemplate(screenshot, iconTemplate, instanceNumber, threshold: 0.9,
+                searchArea: new Rectangle(expected.X - 90, expected.Y - 90, 180, 180));
+            if (!found)
+            {
+                logger.LogInfo($"Ring button {Path.GetFileName(iconTemplate)} not shown (best {confidence:F2}); not tapping");
+                return false;
+            }
+            return await ClickAsync(instanceNumber, logger, new Point(rect.X + rect.Width / 2, rect.Y + rect.Height / 2));
+        }
+
         protected async Task<bool> ClickAsync(int instanceNumber, LogService logger, Point point)
         {
             return await WithADBControllerAsync(instanceNumber, logger, async adb =>

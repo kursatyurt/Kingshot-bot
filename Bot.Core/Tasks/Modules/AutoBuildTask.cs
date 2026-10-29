@@ -64,6 +64,8 @@ namespace Bot.Core.Tasks.Modules
         protected override async Task<TaskExecutionDetails> ExecuteTaskLogicAsync(
             AccountSettings account, LogService logger, CancellationToken cancellationToken, bool isReRun = false, IUserNotificationService? userNotifications = null)
         {
+            await BuildNewBuildingsAsync(account, logger, cancellationToken);
+
             if (_nextBuildCheck.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next)
             {
                 logger.LogInfo($"[{account.AccountName}] Auto Build checked recently; next check after {next.ToLocalTime():HH:mm}");
@@ -77,6 +79,57 @@ namespace Bot.Core.Tasks.Modules
             if (cooldown > TimeSpan.Zero)
                 _nextBuildCheck.AddOrUpdate(account.InstanceNumber, DateTime.UtcNow + cooldown, (_, old) => old > DateTime.UtcNow + cooldown ? old : DateTime.UtcNow + cooldown);
             return result;
+        }
+
+        private static readonly ConcurrentDictionary<int, DateTime> _nextNewBuildingCheck = new();
+
+        /// <summary>
+        /// Builds buildings that have unlocked (Storehouse, Barricades, Monument, ...). With the builder idle, the
+        /// city side panel's "Building Queue 1" arrow opens the game's next suggested build; only its Build page
+        /// (a new building, finished in seconds) is tapped, never an upgrade. Repeats while new buildings come up.
+        /// </summary>
+        private async Task BuildNewBuildingsAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
+        {
+            if (_nextNewBuildingCheck.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next) return;
+            _nextNewBuildingCheck[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(30);
+
+            var locator = new LocatorService(logger, account);
+            var buildButton = Path.Combine(ImageTemplateFolder, "build-button.png");
+            using var ocr = new OCRService(logger, new OCRConfiguration { ScaleFactor = 3.0f, PageSegMode = Tesseract.PageSegMode.SingleLine });
+            for (int built = 0; built < 6;)
+            {
+                if (!await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken)) return;
+                await ClickAsync(account.InstanceNumber, logger, new Point(12, 550)); // side panel tab
+                await Task.Delay(1500, cancellationToken);
+                var panel = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                var queueStatus = panel == null ? "" : ocr.ExtractBrightTextFromScreenArea(panel, new Rectangle(150, 376, 160, 30));
+                if (!queueStatus.Contains("Idle", StringComparison.OrdinalIgnoreCase))
+                {
+                    await ClickAsync(account.InstanceNumber, logger, new Point(464, 544)); // close the panel
+                    if (built == 0) logger.LogInfo($"[{account.AccountName}] Builder busy ('{queueStatus}'); no new building now");
+                    return;
+                }
+
+                await ClickAsync(account.InstanceNumber, logger, new Point(405, 370)); // Building Queue 1 → suggested build
+                var (found, rect) = (false, Rectangle.Empty);
+                for (int look = 0; look < 3 && !found; look++) // a tutorial glove can cover the Build button for a moment
+                {
+                    await Task.Delay(look == 0 ? 1800 : 1000, cancellationToken);
+                    var page = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                    if (page != null)
+                        (found, rect, _) = _templateMatcher.MatchTemplate(page, buildButton, account.InstanceNumber, threshold: 0.85, searchArea: new Rectangle(150, 1100, 450, 160));
+                }
+                if (!found)
+                {
+                    logger.LogInfo($"[{account.AccountName}] The suggested build is not a new building; leaving it");
+                    await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
+                    return;
+                }
+                logger.LogInfo($"[{account.AccountName}] 🏗️ Building a newly unlocked building");
+                await ClickRandomInRectAsync(account.InstanceNumber, logger, rect);
+                built++;
+                await Task.Delay(2500, cancellationToken);
+            }
         }
 
         private async Task<TaskExecutionDetails> RunBuildAsync(
@@ -132,6 +185,7 @@ namespace Bot.Core.Tasks.Modules
                 if (missing.Count > 0)
                 {
                     logger.LogInfo($"[{account.AccountName}] Town Center upgrade needs: {string.Join("; ", missing)}");
+                    TroopTrainingTask.HoldCampsForUpgrade(account.InstanceNumber, missing);
 
                     // A missing building has a Go button: upgrade that building instead (one upgrade per cycle)
                     NotifyProgress(userNotifications, "Upgrading a required building", 75);
@@ -159,6 +213,7 @@ namespace Bot.Core.Tasks.Modules
                 // All requirements met
                 NotifyProgress(userNotifications, "Starting upgrade", 90);
                 logger.LogInfo($"[{account.AccountName}] All Town Center requirements met, tapping Upgrade");
+                TroopTrainingTask.HoldCampsForUpgrade(account.InstanceNumber, Array.Empty<string>());
                 await ClickAsync(account.InstanceNumber, logger, RequirementsUpgradeButton);
                 await RandomDelay(cancellationToken);
                 await RequestAllianceHelpAsync(account, logger, cancellationToken);
@@ -258,6 +313,7 @@ namespace Bot.Core.Tasks.Modules
 
         private TaskExecutionDetails TownCenterBusy(AccountSettings account, LogService logger, TimeSpan left)
         {
+            TroopTrainingTask.HoldCampsForUpgrade(account.InstanceNumber, Array.Empty<string>()); // nothing to keep idle for now
             var wait = left < TimeSpan.FromMinutes(10) ? TimeSpan.FromMinutes(10) : left;
             _nextBuildCheck[account.InstanceNumber] = DateTime.UtcNow + wait;
             logger.LogInfo($"[{account.AccountName}] Town Center is upgrading ({left} left); next Auto Build check in {wait}");
@@ -288,7 +344,7 @@ namespace Bot.Core.Tasks.Modules
                 Directory.CreateDirectory(debugDir);
                 await File.WriteAllBytesAsync(Path.Combine(debugDir, $"autobuild-after-go-{account.InstanceNumber}.png"), afterGo, cancellationToken);
             }
-            await ClickAsync(account.InstanceNumber, logger, BuildingRingUpgradeButton);
+            await TapRingButtonAsync(account.InstanceNumber, logger, Path.Combine(ImageTemplateFolder, "ring-upgrade.png"), BuildingRingUpgradeButton);
 
             // The building's upgrade dialog lists its own requirements with ✓ / ❌
             var missing = await ReadRequirementsAsync(account, logger, cancellationToken);
@@ -301,7 +357,7 @@ namespace Bot.Core.Tasks.Modules
                 logger.LogInfo($"[{account.AccountName}] No upgrade dialog after Go; pressing the centred building to open its ring ({retry}/3)");
                 await SwipeAsync(account.InstanceNumber, logger, CentredBuildingPoint, new Point(CentredBuildingPoint.X + 1, CentredBuildingPoint.Y + 1), 150);
                 await Task.Delay(1200, cancellationToken);
-                await ClickAsync(account.InstanceNumber, logger, BuildingRingUpgradeButton);
+                await TapRingButtonAsync(account.InstanceNumber, logger, Path.Combine(ImageTemplateFolder, "ring-upgrade.png"), BuildingRingUpgradeButton);
                 missing = await ReadRequirementsAsync(account, logger, cancellationToken);
             }
             if (missing == null)
