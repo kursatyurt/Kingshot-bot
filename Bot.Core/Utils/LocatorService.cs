@@ -254,6 +254,11 @@ namespace Bot.Core.Utils
                     // when gathering with every march slot busy); Android back closes most of them in a second,
                     // long before the ad loop gives up and restarts the game. Only reached when neither the city
                     // nor the map is detected, so it never opens the game's exit dialog from the city view.
+                    if (await TryFollowTutorialGloveAsync())
+                    {
+                        continue;
+                    }
+
                     if (attempt <= 3)
                     {
                         var adb = await ADBConnectionManager.GetConnectionAsync(_account.InstanceNumber, _logger, CancellationToken.None);
@@ -395,6 +400,8 @@ namespace Bot.Core.Utils
                 {
                     // await SaveDebugScreenshot(screenshot, instanceNumber, $"navigation_timeout_{verifyImageName}"); // DISABLED FOR PERFORMANCE
                 }
+                // A forced tutorial blocks the button until its glove target is tapped; the next attempt retries the navigation
+                if (await TryFollowTutorialGloveAsync()) return false;
                 return await HandleMapNotFound(instanceNumber, cancellationToken);
             }
             catch (Exception ex)
@@ -408,6 +415,83 @@ namespace Bot.Core.Utils
         /// Attempts to close any visible ads or find recovery buttons on the screen
         /// </summary>
         /// <returns>True if an ad or recovery button was found and clicked, false otherwise</returns>
+        /// <summary>
+        /// Forced tutorials (e.g. building the Arena once the Town Center unlocks it) block every other tap until the
+        /// pointing glove's target is tapped. Follows the glove up to a few times. The hint glove that points at the
+        /// quest bar (bottom left) is not a tutorial and would start quests such as Conquest battles, so it is ignored.
+        /// Returns true when it tapped at least once.
+        /// </summary>
+        private async Task<bool> TryFollowTutorialGloveAsync(int maxTaps = 6)
+        {
+            var glovePath = Path.Combine(_templateFolder, "tutorial-glove.png");
+            if (!File.Exists(glovePath)) return false;
+            var adb = await ADBConnectionManager.GetConnectionAsync(_account.InstanceNumber, _logger, CancellationToken.None);
+            if (adb == null) return false;
+
+            var tapped = false;
+            for (int tap = 1; tap <= maxTaps; tap++)
+            {
+                // The glove slides between steps, so look a few times before deciding it's gone
+                (int x, int y, double confidence)? target = null;
+                for (int look = 0; look < 3 && target == null; look++)
+                {
+                    if (look > 0) await Task.Delay(700);
+                    var screenshot = await adb.TakeScreenshotAsync(CancellationToken.None);
+                    if (screenshot != null && screenshot.Length > 0) target = FindTutorialGlove(screenshot, glovePath);
+                }
+                if (target == null) break;
+
+                var (x, y, conf) = target.Value;
+                if (y > 990 && y < 1100 && x < 460) break; // hint glove on the quest bar, not a tutorial
+
+                _logger.LogInfo($"[Locator] 👆 Following the tutorial glove: tapping ({x}, {y}) (confidence {conf:F2}, tap {tap}/{maxTaps})");
+                await adb.TapAsync(x, y, CancellationToken.None);
+                tapped = true;
+                await Task.Delay(2000);
+            }
+            return tapped;
+        }
+
+        /// <summary>
+        /// Finds the tutorial glove's fingertip in 720x1280 coordinates. The glove pulses in size and points down-left or
+        /// (mirrored) down-right, so the template is tried at several scales and both ways. Text panels can score up to
+        /// 0.83 against the glove's outline, so a match also needs the golden cuff. Real gloves score 0.69+, the best
+        /// false match with gold nearby 0.59.
+        /// </summary>
+        private static (int x, int y, double confidence)? FindTutorialGlove(byte[] screenshot, string glovePath)
+        {
+            using var img = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
+            using var glove = OpenCvSharp.Cv2.ImRead(glovePath);
+            if (img.Empty() || glove.Empty()) return null;
+            if (img.Width != 720) OpenCvSharp.Cv2.Resize(img, img, new OpenCvSharp.Size(720, 1280));
+
+            (int x, int y, double confidence)? best = null;
+            foreach (var mirrored in new[] { false, true })
+            foreach (var scale in new[] { 0.9, 1.0, 1.1, 1.2, 1.3 })
+            {
+                using var t = new OpenCvSharp.Mat();
+                OpenCvSharp.Cv2.Resize(glove, t, new OpenCvSharp.Size(), scale, scale);
+                if (mirrored) OpenCvSharp.Cv2.Flip(t, t, OpenCvSharp.FlipMode.Y);
+                using var res = new OpenCvSharp.Mat();
+                OpenCvSharp.Cv2.MatchTemplate(img, t, res, OpenCvSharp.TemplateMatchModes.CCoeffNormed);
+                OpenCvSharp.Cv2.MinMaxLoc(res, out _, out double max, out _, out OpenCvSharp.Point loc);
+                if (max < 0.65 || (best != null && max <= best.Value.confidence)) continue;
+
+                // The cuff is the template's top corner away from the fingertip; the fingertip is below, past the other edge
+                int cw = (int)(47 * scale), ch = (int)(60 * scale);
+                var cuff = new OpenCvSharp.Rect(mirrored ? loc.X : loc.X + t.Width - cw, loc.Y, cw, ch) & new OpenCvSharp.Rect(0, 0, img.Width, img.Height);
+                if (cuff.Width <= 0 || cuff.Height <= 0) continue;
+                using var roi = new OpenCvSharp.Mat(img, cuff);
+                using var gold = new OpenCvSharp.Mat();
+                OpenCvSharp.Cv2.InRange(roi, new OpenCvSharp.Scalar(0, 140, 200), new OpenCvSharp.Scalar(110, 255, 255), gold);
+                if (OpenCvSharp.Cv2.CountNonZero(gold) < cuff.Width * cuff.Height * 0.04) continue;
+
+                int tipX = mirrored ? loc.X + t.Width + (int)(23 * scale) : loc.X - (int)(23 * scale);
+                best = (tipX, loc.Y + (int)(150 * scale), max);
+            }
+            return best;
+        }
+
         private async Task<bool> TryCloseAdsAsync()
         {
             try
