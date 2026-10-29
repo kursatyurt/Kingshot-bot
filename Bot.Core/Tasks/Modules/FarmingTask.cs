@@ -365,6 +365,21 @@ namespace Bot.Core.Tasks.Modules
             }
 
             // Click search icon to open resource search
+            // The map's gear menu (Balanced Mode) swallows taps and swipes until the gear is tapped again
+            var menuShot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            if (menuShot != null)
+            {
+                if (_templateMatcher == null) _templateMatcher = new UnifiedTemplateMatchingService(logger);
+                var (menuOpen, _, _) = _templateMatcher.MatchTemplate(menuShot, Path.Combine(ImageTemplateFolder, "balanced-mode-menu.png"),
+                    account.InstanceNumber, threshold: 0.85, searchArea: new Rectangle(60, 700, 400, 140));
+                if (menuOpen)
+                {
+                    logger.LogInfo($"[{account.AccountName}] ⚙️ Closing the map's graphics menu...");
+                    await ClickRandomInRectAsync(account.InstanceNumber, logger, new Rectangle(38, 770, 20, 20));
+                    await Task.Delay(800, cancellationToken);
+                }
+            }
+
             logger.LogInfo($"[{account.AccountName}] 🖱️ Clicking search icon...");
             if (!await ClickRandomInRectAsync(account.InstanceNumber, logger, SearchIconRect)) return false;
             await Task.Delay(GameCoordinates.Delays.AfterClick, cancellationToken);
