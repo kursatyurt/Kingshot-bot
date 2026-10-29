@@ -101,16 +101,31 @@ namespace Bot.Core.Tasks.Modules
         /// <summary>Opens the side panel and reads each camp: null value = idle, TimeSpan = still training.</summary>
         private async Task<(string Camp, TimeSpan? Left)[]?> ReadCampStatusesAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
         {
-            await OpenSidePanelAsync(account.InstanceNumber, logger, cancellationToken);
-            var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
-            if (screenshot == null) return null;
-
             using var ocr = new OCRService(logger, new OCRConfiguration { ScaleFactor = 3.0f, PageSegMode = Tesseract.PageSegMode.SingleLine });
             var result = new (string Camp, TimeSpan? Left)[Camps.Length];
             int readable = 0;
+            byte[]? screenshot = null;
+            for (int open = 0; open < 2 && readable == 0; open++)
+            {
+                // The ▷ tab toggles: if the panel was already open, the first tap closed it
+                await OpenSidePanelAsync(account.InstanceNumber, logger, cancellationToken);
+                screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                if (screenshot == null) return null;
+                readable = ReadCamps(screenshot, ocr, result, account, logger);
+            }
+            if (readable == 0 && screenshot != null) await SaveDebugAsync($"training-panel-unreadable-{account.InstanceNumber}.png", screenshot);
+            await ClickAsync(account.InstanceNumber, logger, SidePanelCloseHandle); // the back key would open "Quit game?"
+            await Task.Delay(800, cancellationToken);
+            return readable == 0 ? null : result;
+        }
+
+        private int ReadCamps(byte[] screenshot, OCRService ocr, (string Camp, TimeSpan? Left)[] result, AccountSettings account, LogService logger)
+        {
+            int readable = 0;
             for (int i = 0; i < Camps.Length; i++)
             {
-                var text = ocr.ExtractBrightTextFromScreenArea(screenshot, new Rectangle(150, Camps[i].Y - 2, 160, 30));
+                // 140, not the default 200: "Completed" is green and "Upgrading" orange, which the default reads as noise
+                var text = ocr.ExtractBrightTextFromScreenArea(screenshot, new Rectangle(150, Camps[i].Y - 2, 160, 30), 140);
                 var timer = Regex.Match(text, @"\d\d:\d\d:\d\d");
                 if (timer.Success && TimeSpan.TryParseExact(timer.Value, @"hh\:mm\:ss", null, out var left))
                 {
@@ -133,9 +148,7 @@ namespace Bot.Core.Tasks.Modules
                 }
                 logger.LogInfo($"[{account.AccountName}] {Camps[i].Name}: '{text}'");
             }
-            await ClickAsync(account.InstanceNumber, logger, SidePanelCloseHandle); // the back key would open "Quit game?"
-            await Task.Delay(800, cancellationToken);
-            return readable == 0 ? null : result;
+            return readable;
         }
 
         /// <summary>A building's info/build page: its cyan "Back" button sits at the top right.</summary>

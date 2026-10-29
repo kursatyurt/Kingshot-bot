@@ -394,12 +394,26 @@ namespace Bot.Core.Tasks
         /// Opens the city's side panel (behind the ▷ tab on the left edge) on its Town tab, which lists the building
         /// queue, the troop camps and research. It remembers its last tab, so the Town tab is selected explicitly.
         /// </summary>
-        protected async Task OpenSidePanelAsync(int instanceNumber, LogService logger, CancellationToken cancellationToken)
+        protected async Task<bool> OpenSidePanelAsync(int instanceNumber, LogService logger, CancellationToken cancellationToken)
         {
-            await ClickAsync(instanceNumber, logger, new Point(12, 550));
-            await Task.Delay(1300, cancellationToken);
-            await ClickAsync(instanceNumber, logger, new Point(80, 268)); // Town tab
-            await Task.Delay(700, cancellationToken);
+            // The ▷ tab toggles the panel, so check for the open panel's ◁ handle before and after tapping. Tapping the
+            // Town tab spot with the panel closed would hit a city shortcut (it opened Hero Recruitment).
+            var handle = Path.Combine(AppContext.BaseDirectory, "templates", "images", "locator", "side-panel-handle.png");
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                var screenshot = await TakeScreenshotAsync(instanceNumber, logger);
+                if (screenshot != null && _templateMatcher.MatchTemplate(screenshot, handle, instanceNumber, threshold: 0.88,
+                        searchArea: new Rectangle(400, 460, 140, 170)).found)
+                {
+                    await ClickAsync(instanceNumber, logger, new Point(80, 268)); // Town tab
+                    await Task.Delay(700, cancellationToken);
+                    return true;
+                }
+                await ClickAsync(instanceNumber, logger, new Point(12, 550));
+                await Task.Delay(1300, cancellationToken);
+            }
+            logger.LogInfo("The city side panel did not open");
+            return false;
         }
 
         /// <summary>
