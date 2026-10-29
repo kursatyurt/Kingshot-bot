@@ -619,13 +619,12 @@ namespace Bot.Core.Tasks.Modules
                     continue;
                 }
 
-                // Convert byte array to bitmap for color validation
-                System.Drawing.Bitmap? screenshot = null;
+                // Decode the screenshot for color validation
+                OpenCvSharp.Mat? screenshot = null;
                 try
                 {
-                    using var ms = new System.IO.MemoryStream(screenshotBytes);
-                    screenshot = new System.Drawing.Bitmap(ms);
-                    
+                    screenshot = OpenCvSharp.Cv2.ImDecode(screenshotBytes, OpenCvSharp.ImreadModes.Color);
+
                     if (_templateMatcher == null) _templateMatcher = new UnifiedTemplateMatchingService(logger);
                     
                     logger.LogInfo($"[{account.AccountName}] 🔍 Searching for {templateName} in area {searchArea?.ToString() ?? "full screen"}...");
@@ -697,33 +696,31 @@ namespace Bot.Core.Tasks.Modules
         /// <summary>
         /// Simple check: Is the button region more green than grey?
         /// </summary>
-        private bool IsGreenNotGrey(System.Drawing.Bitmap screenshot, System.Drawing.Rectangle region, LogService logger, string accountName)
+        private bool IsGreenNotGrey(OpenCvSharp.Mat screenshot, System.Drawing.Rectangle region, LogService logger, string accountName)
         {
             try
             {
                 // Extract the region of interest
-                var regionBitmap = new System.Drawing.Bitmap(region.Width, region.Height);
-                using (var g = System.Drawing.Graphics.FromImage(regionBitmap))
-                {
-                    g.DrawImage(screenshot, new System.Drawing.Rectangle(0, 0, region.Width, region.Height), region, System.Drawing.GraphicsUnit.Pixel);
-                }
+                var roi = System.Drawing.Rectangle.Intersect(region, new System.Drawing.Rectangle(0, 0, screenshot.Width, screenshot.Height));
+                using var regionMat = new OpenCvSharp.Mat(screenshot, new OpenCvSharp.Rect(roi.X, roi.Y, roi.Width, roi.Height));
 
                 int greenPixels = 0;
                 int greyPixels = 0;
                 int totalPixels = 0;
-                
-                for (int x = 0; x < regionBitmap.Width; x++)
+
+                for (int x = 0; x < regionMat.Width; x++)
                 {
-                    for (int y = 0; y < regionBitmap.Height; y++)
+                    for (int y = 0; y < regionMat.Height; y++)
                     {
-                        var pixel = regionBitmap.GetPixel(x, y);
+                        var bgr = regionMat.At<OpenCvSharp.Vec3b>(y, x);
+                        int b = bgr.Item0, g = bgr.Item1, r = bgr.Item2;
                         totalPixels++;
-                        
+
                         // Check if pixel is green-ish (green component higher than red and blue)
-                        bool isGreen = pixel.G > pixel.R + 10 && pixel.G > pixel.B + 10 && pixel.G > 60;
-                        
+                        bool isGreen = g > r + 10 && g > b + 10 && g > 60;
+
                         // Check if pixel is grey-ish (R, G, B values are close to each other)
-                        bool isGrey = Math.Abs(pixel.R - pixel.G) <= 20 && Math.Abs(pixel.G - pixel.B) <= 20 && Math.Abs(pixel.R - pixel.B) <= 20;
+                        bool isGrey = Math.Abs(r - g) <= 20 && Math.Abs(g - b) <= 20 && Math.Abs(r - b) <= 20;
                         
                         if (isGreen && !isGrey)
                         {
@@ -737,9 +734,7 @@ namespace Bot.Core.Tasks.Modules
                 }
                 
                 logger.LogInfo($"[{accountName}] 🎨 Color analysis: Green pixels: {greenPixels}, Grey pixels: {greyPixels}, Total: {totalPixels}");
-                
-                regionBitmap.Dispose();
-                
+
                 // Button is green if it has more green pixels than grey pixels
                 bool isGreenButton = greenPixels > greyPixels;
                 logger.LogInfo($"[{accountName}] 🎨 Button color: {(isGreenButton ? "GREEN" : "GREY")} (Green: {greenPixels} vs Grey: {greyPixels})");

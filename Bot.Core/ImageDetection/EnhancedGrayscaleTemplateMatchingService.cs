@@ -5,7 +5,6 @@ using System.Linq;
 using System.Collections.Concurrent;
 using Bot.Core.Logging;
 using OpenCvSharp;
-using OpenCvSharp.Extensions;
 using Point = OpenCvSharp.Point;
 using Size = OpenCvSharp.Size;
 using Rectangle = System.Drawing.Rectangle;
@@ -350,9 +349,7 @@ namespace Bot.Core.ImageDetection
 
             try
             {
-                using var ms = new MemoryStream(screenshot);
-                using var bmp = new Bitmap(ms);
-                sourceMat = BitmapConverter.ToMat(bmp);
+                sourceMat = Cv2.ImDecode(screenshot, ImreadModes.Unchanged);
 
                 if (sourceMat.Channels() == 4)
                 {
@@ -610,9 +607,7 @@ namespace Bot.Core.ImageDetection
 
             try
             {
-                using var ms = new MemoryStream(screenshot);
-                using var bmp = new Bitmap(ms);
-                sourceMat = BitmapConverter.ToMat(bmp);
+                sourceMat = Cv2.ImDecode(screenshot, ImreadModes.Unchanged);
 
                 // Convert to grayscale
                 if (sourceMat.Channels() == 4)

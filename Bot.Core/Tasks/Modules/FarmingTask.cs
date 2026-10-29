@@ -387,8 +387,8 @@ namespace Bot.Core.Tasks.Modules
                     // Log template details before starting detection
                     if (File.Exists(deployButtonPath))
                     {
-                        using var templateBmp = new Bitmap(deployButtonPath);
-                        logger.LogInfo($"[{account.AccountName}] 🔍 Deploy button template details: Size={templateBmp.Width}x{templateBmp.Height}, PixelFormat={templateBmp.PixelFormat}");
+                        using var templateMat = OpenCvSharp.Cv2.ImRead(deployButtonPath, OpenCvSharp.ImreadModes.Unchanged);
+                        logger.LogInfo($"[{account.AccountName}] 🔍 Deploy button template details: Size={templateMat.Width}x{templateMat.Height}, Type={templateMat.Type()}");
                         logger.LogInfo($"[{account.AccountName}] 🔍 Deploy button search area: {DeployButtonArea}");
                     }
 

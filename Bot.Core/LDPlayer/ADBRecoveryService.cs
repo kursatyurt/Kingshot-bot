@@ -172,10 +172,13 @@ namespace Bot.Core.LDPlayer
         
         private async Task<bool> FixPortConflictsAsync(int instanceNumber, CancellationToken cancellationToken)
         {
+            // On macOS the Android Studio emulator itself owns this port, so there is nothing safe to kill
+            if (!OperatingSystem.IsWindows()) return true;
+
             try
             {
                 var port = 5554 + (instanceNumber * 2);
-                
+
                 // Kill processes using the port
                 var netstatInfo = new ProcessStartInfo
                 {

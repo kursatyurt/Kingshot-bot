@@ -10,7 +10,6 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Drawing;
-using System.Drawing.Imaging;
 using System.Linq;
 using Tesseract;
 
@@ -748,10 +747,9 @@ namespace Bot.Core.Tasks.Modules
         {
             try
             {
-                using var ms = new MemoryStream(screenshot);
-                using var fullBitmap = new Bitmap(ms);
-                using var croppedBitmap = CropBitmap(fullBitmap, area);
-                croppedBitmap.Save(filePath);
+                using var full = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
+                using var cropped = CropMat(full, area);
+                cropped.SaveImage(filePath);
                 logger.LogInfo($"Debug image saved: {filePath}");
             }
             catch (Exception ex)
@@ -767,11 +765,10 @@ namespace Bot.Core.Tasks.Modules
         {
             try
             {
-                using var ms = new MemoryStream(screenshot);
-                using var fullBitmap = new Bitmap(ms);
-                using var croppedBitmap = CropBitmap(fullBitmap, area);
-                using var preprocessedBitmap = PreprocessImageForDebug(croppedBitmap, config);
-                preprocessedBitmap.Save(filePath);
+                using var full = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
+                using var cropped = CropMat(full, area);
+                using var preprocessed = PreprocessImageForDebug(cropped, config);
+                preprocessed.SaveImage(filePath);
                 logger.LogInfo($"Debug preprocessed image saved: {filePath}");
             }
             catch (Exception ex)
@@ -781,9 +778,9 @@ namespace Bot.Core.Tasks.Modules
         }
 
         /// <summary>
-        /// Crops a bitmap to the specified area
+        /// Crops an image to the specified area
         /// </summary>
-        private Bitmap CropBitmap(Bitmap source, Rectangle cropArea)
+        private OpenCvSharp.Mat CropMat(OpenCvSharp.Mat source, Rectangle cropArea)
         {
             try
             {
@@ -791,26 +788,24 @@ namespace Bot.Core.Tasks.Modules
                 
                 if (validCropArea.IsEmpty || validCropArea.Width <= 0 || validCropArea.Height <= 0)
                 {
-                    return new Bitmap(1, 1);
+                    return new OpenCvSharp.Mat(1, 1, OpenCvSharp.MatType.CV_8UC3, OpenCvSharp.Scalar.All(0));
                 }
 
-                return source.Clone(validCropArea, source.PixelFormat);
+                return new OpenCvSharp.Mat(source, new OpenCvSharp.Rect(validCropArea.X, validCropArea.Y, validCropArea.Width, validCropArea.Height)).Clone();
             }
             catch (Exception)
             {
-                return new Bitmap(1, 1);
+                return new OpenCvSharp.Mat(1, 1, OpenCvSharp.MatType.CV_8UC3, OpenCvSharp.Scalar.All(0));
             }
         }
 
         /// <summary>
         /// Applies the same preprocessing as OCRService for debug visualization
         /// </summary>
-        private Bitmap PreprocessImageForDebug(Bitmap bmp, OCRConfiguration config)
+        private OpenCvSharp.Mat PreprocessImageForDebug(OpenCvSharp.Mat sourceMat, OCRConfiguration config)
         {
             try
             {
-                using var sourceMat = OpenCvSharp.Extensions.BitmapConverter.ToMat(bmp);
-                
                 // Convert to Grayscale
                 using var gray = new OpenCvSharp.Mat();
                 OpenCvSharp.Cv2.CvtColor(sourceMat, gray, OpenCvSharp.ColorConversionCodes.BGR2GRAY);
@@ -836,14 +831,14 @@ namespace Bot.Core.Tasks.Modules
 
                 // Dilate the text
                 using var kernel = OpenCvSharp.Cv2.GetStructuringElement(OpenCvSharp.MorphShapes.Rect, new OpenCvSharp.Size(2, 2));
-                using var dilated = new OpenCvSharp.Mat();
+                var dilated = new OpenCvSharp.Mat();
                 OpenCvSharp.Cv2.Dilate(thresholded, dilated, kernel);
 
-                return OpenCvSharp.Extensions.BitmapConverter.ToBitmap(dilated);
+                return dilated;
             }
             catch (Exception)
             {
-                return new Bitmap(bmp); // Return copy of original on error
+                return sourceMat.Clone(); // Return copy of original on error
             }
         }
 
@@ -854,27 +849,26 @@ namespace Bot.Core.Tasks.Modules
         {
             try
             {
-                using var ms = new MemoryStream(screenshot);
-                using var fullBitmap = new Bitmap(ms);
-                using var croppedBitmap = CropBitmap(fullBitmap, area);
+                using var full = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
+                using var cropped = CropMat(full, area);
 
                 // Basic image properties
-                logger.LogInfo($"[{tabName}] Area analysis - Size: {croppedBitmap.Width}x{croppedBitmap.Height}, Format: {croppedBitmap.PixelFormat}");
+                logger.LogInfo($"[{tabName}] Area analysis - Size: {cropped.Width}x{cropped.Height}, Type: {cropped.Type()}");
 
                 // Color analysis
-                var dominantColors = AnalyzeDominantColors(croppedBitmap);
+                var dominantColors = AnalyzeDominantColors(cropped);
                 logger.LogInfo($"[{tabName}] Dominant colors: {string.Join(", ", dominantColors.Select(c => $"#{c.R:X2}{c.G:X2}{c.B:X2}"))}");
 
                 // Contrast analysis
-                var contrast = CalculateContrast(croppedBitmap);
+                var contrast = CalculateContrast(cropped);
                 logger.LogInfo($"[{tabName}] Image contrast score: {contrast:F2}");
 
                 // Pixel intensity distribution
-                var (minIntensity, maxIntensity, avgIntensity) = AnalyzeIntensity(croppedBitmap);
+                var (minIntensity, maxIntensity, avgIntensity) = AnalyzeIntensity(cropped);
                 logger.LogInfo($"[{tabName}] Intensity - Min: {minIntensity}, Max: {maxIntensity}, Avg: {avgIntensity:F1}");
 
                 // Check if area appears to contain any text-like shapes
-                bool hasTextLikeShapes = DetectTextLikeShapes(croppedBitmap);
+                bool hasTextLikeShapes = DetectTextLikeShapes(cropped);
                 logger.LogInfo($"[{tabName}] Contains text-like shapes: {hasTextLikeShapes}");
             }
             catch (Exception ex)
@@ -884,46 +878,43 @@ namespace Bot.Core.Tasks.Modules
         }
 
         /// <summary>
-        /// Analyzes the dominant colors in the image
+        /// Enumerates the pixels of a BGR image as (R, G, B)
         /// </summary>
-        private List<Color> AnalyzeDominantColors(Bitmap bitmap)
+        private static IEnumerable<(byte R, byte G, byte B)> Pixels(OpenCvSharp.Mat image)
         {
-            var colorCounts = new Dictionary<Color, int>();
-            
-            for (int x = 0; x < bitmap.Width; x++)
+            for (int x = 0; x < image.Width; x++)
             {
-                for (int y = 0; y < bitmap.Height; y++)
+                for (int y = 0; y < image.Height; y++)
                 {
-                    var pixel = bitmap.GetPixel(x, y);
-                    if (colorCounts.ContainsKey(pixel))
-                        colorCounts[pixel]++;
-                    else
-                        colorCounts[pixel] = 1;
+                    var bgr = image.At<OpenCvSharp.Vec3b>(y, x);
+                    yield return (bgr.Item2, bgr.Item1, bgr.Item0);
                 }
             }
-            
-            return colorCounts.OrderByDescending(kv => kv.Value).Take(3).Select(kv => kv.Key).ToList();
+        }
+
+        /// <summary>
+        /// Analyzes the dominant colors in the image
+        /// </summary>
+        private List<(byte R, byte G, byte B)> AnalyzeDominantColors(OpenCvSharp.Mat image)
+        {
+            return Pixels(image).GroupBy(p => p).OrderByDescending(g => g.Count()).Take(3).Select(g => g.Key).ToList();
         }
 
         /// <summary>
         /// Calculates the contrast of the image
         /// </summary>
-        private double CalculateContrast(Bitmap bitmap)
+        private double CalculateContrast(OpenCvSharp.Mat image)
         {
             double sumSquares = 0;
             double sum = 0;
             int pixelCount = 0;
             
-            for (int x = 0; x < bitmap.Width; x++)
+            foreach (var pixel in Pixels(image))
             {
-                for (int y = 0; y < bitmap.Height; y++)
-                {
-                    var pixel = bitmap.GetPixel(x, y);
-                    var intensity = (pixel.R + pixel.G + pixel.B) / 3.0;
-                    sum += intensity;
-                    sumSquares += intensity * intensity;
-                    pixelCount++;
-                }
+                var intensity = (pixel.R + pixel.G + pixel.B) / 3.0;
+                sum += intensity;
+                sumSquares += intensity * intensity;
+                pixelCount++;
             }
             
             double mean = sum / pixelCount;
@@ -934,23 +925,19 @@ namespace Bot.Core.Tasks.Modules
         /// <summary>
         /// Analyzes the intensity distribution of the image
         /// </summary>
-        private (int min, int max, double avg) AnalyzeIntensity(Bitmap bitmap)
+        private (int min, int max, double avg) AnalyzeIntensity(OpenCvSharp.Mat image)
         {
             int min = 255, max = 0;
             double sum = 0;
             int pixelCount = 0;
             
-            for (int x = 0; x < bitmap.Width; x++)
+            foreach (var pixel in Pixels(image))
             {
-                for (int y = 0; y < bitmap.Height; y++)
-                {
-                    var pixel = bitmap.GetPixel(x, y);
-                    var intensity = (pixel.R + pixel.G + pixel.B) / 3;
-                    min = Math.Min(min, intensity);
-                    max = Math.Max(max, intensity);
-                    sum += intensity;
-                    pixelCount++;
-                }
+                var intensity = (pixel.R + pixel.G + pixel.B) / 3;
+                min = Math.Min(min, intensity);
+                max = Math.Max(max, intensity);
+                sum += intensity;
+                pixelCount++;
             }
             
             return (min, max, sum / pixelCount);
@@ -959,11 +946,10 @@ namespace Bot.Core.Tasks.Modules
         /// <summary>
         /// Detects if the image contains text-like shapes using edge detection
         /// </summary>
-        private bool DetectTextLikeShapes(Bitmap bitmap)
+        private bool DetectTextLikeShapes(OpenCvSharp.Mat mat)
         {
             try
             {
-                using var mat = OpenCvSharp.Extensions.BitmapConverter.ToMat(bitmap);
                 using var gray = new OpenCvSharp.Mat();
                 OpenCvSharp.Cv2.CvtColor(mat, gray, OpenCvSharp.ColorConversionCodes.BGR2GRAY);
                 
@@ -1134,24 +1120,19 @@ namespace Bot.Core.Tasks.Modules
                     return;
                 }
 
-                using var stream = new MemoryStream(screenshot);
-                using var image = System.Drawing.Image.FromStream(stream);
-                using var bitmap = new Bitmap(image);
-                using var graphics = Graphics.FromImage(bitmap);
-                
+                using var image = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
+                var red = new OpenCvSharp.Scalar(0, 0, 255);
+
                 // Draw red rectangle around best match
-                using var pen = new Pen(Color.Red, 3);
-                graphics.DrawRectangle(pen, bestMatchRect);
-                
+                OpenCvSharp.Cv2.Rectangle(image, new OpenCvSharp.Rect(bestMatchRect.X, bestMatchRect.Y, bestMatchRect.Width, bestMatchRect.Height), red, 3);
+
                 // Draw confidence text near the box
-                using var brush = new SolidBrush(Color.Red);
-                using var font = new Font("Arial", 12, FontStyle.Bold);
                 string confidenceText = $"{confidence:F3}";
-                var textLocation = new PointF(bestMatchRect.X, Math.Max(0, bestMatchRect.Y - 20));
-                graphics.DrawString(confidenceText, font, brush, textLocation);
+                var textLocation = new OpenCvSharp.Point(bestMatchRect.X, Math.Max(16, bestMatchRect.Y - 6));
+                OpenCvSharp.Cv2.PutText(image, confidenceText, textLocation, OpenCvSharp.HersheyFonts.HersheySimplex, 0.6, red, 2);
 
                 // Save the modified image
-                await Task.Run(() => bitmap.Save(filePath, System.Drawing.Imaging.ImageFormat.Png));
+                await Task.Run(() => image.SaveImage(filePath));
             }
             catch (Exception ex)
             {

@@ -47,15 +47,23 @@
   <ItemGroup>
     <PackageReference Include="AdvancedSharpAdbClient" Version="3.6.16" />
     <PackageReference Include="OpenCVSharp4" Version="4.13.0.20260627" />
-    <PackageReference Include="OpenCVSharp4.Extensions" Version="4.13.0.20260627" />
     <PackageReference Include="OpenCVSharp4.runtime.win" Version="4.13.0.20260627" />
     <PackageReference Include="Serilog" Version="4.3.1" />
     <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
     <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
     <PackageReference Include="Serilog.Sinks.Map" Version="2.0.0" />
     <PackageReference Include="Serilog.Extensions.Logging" Version="10.0.0" />
-    <PackageReference Include="System.Drawing.Common" Version="10.0.9" />
     <PackageReference Include="Tesseract" Version="5.2.0" />
+  </ItemGroup>
+
+  <!-- macOS (Apple Silicon): OpenCV native runtime and the ldconsole shim for Android Studio emulators -->
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+    <PackageReference Include="Sdcb.OpenCvSharp4.mini.runtime.osx-arm64" Version="4.13.0.45" />
+    <Content Include="..\tools\macos\ldconsole">
+      <Link>ldconsole</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
+    </Content>
   </ItemGroup>
   
 

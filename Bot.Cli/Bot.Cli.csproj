@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>KingshotAuto.Cli</AssemblyName>
+    <HomebrewPrefix Condition="'$(HomebrewPrefix)' == ''">/opt/homebrew</HomebrewPrefix>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Bot.Core\Bot.Core.csproj" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.9" />
+  </ItemGroup>
+
+  <!-- macOS: link Homebrew's tesseract/leptonica under the names the Tesseract package loads -->
+  <Target Name="LinkHomebrewTesseract" AfterTargets="Build" Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+    <Error Condition="!Exists('$(HomebrewPrefix)/opt/tesseract/lib/libtesseract.dylib')" Text="Tesseract not found. Run: brew install tesseract" />
+    <MakeDir Directories="$(OutDir)x64" />
+    <Exec Command="ln -sf &quot;$(HomebrewPrefix)/opt/leptonica/lib/libleptonica.dylib&quot; &quot;$(OutDir)x64/libleptonica-1.82.0.dylib&quot;" />
+    <Exec Command="ln -sf &quot;$(HomebrewPrefix)/opt/tesseract/lib/libtesseract.dylib&quot; &quot;$(OutDir)x64/libtesseract50.dylib&quot;" />
+    <Exec Command="chmod +x &quot;$(OutDir)ldconsole&quot;" />
+  </Target>
+
+</Project>

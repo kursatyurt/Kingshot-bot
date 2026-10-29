@@ -5,7 +5,6 @@ using Bot.Core.ImageDetection;
 using Bot.Core.Services;
 using System;
 using System.Drawing;
-using System.Drawing.Imaging;
 using System.Threading;
 using System.Threading.Tasks;
 using System.IO;

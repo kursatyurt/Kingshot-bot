@@ -32,7 +32,7 @@ namespace Bot.Core.Utils
             path = Path.GetFullPath(path);
             
             // If the path contains non-ASCII characters, get the 8.3 short path name
-            if (path.Any(c => c > 127))
+            if (OperatingSystem.IsWindows() && path.Any(c => c > 127))
             {
                 var shortPath = GetShortPath(path);
                 if (!string.IsNullOrEmpty(shortPath))
@@ -264,8 +264,18 @@ namespace Bot.Core.Utils
             return null;
         }
 
+        // macOS has no LDPlayer: tools/macos/ldconsole implements the same commands on Android Studio emulators
+        private static string MacConsolePath => Path.Combine(AppContext.BaseDirectory, "ldconsole");
+
+        private static string MacAdbPath => Path.Combine(
+            Environment.GetEnvironmentVariable("ANDROID_HOME")
+                ?? Environment.GetEnvironmentVariable("ANDROID_SDK_ROOT")
+                ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Library", "Android", "sdk"),
+            "platform-tools", "adb");
+
         public static string GetLDPlayerConsolePath()
         {
+            if (OperatingSystem.IsMacOS()) return MacConsolePath;
             if (_ldConsolePath == null || !File.Exists(_ldConsolePath))
             {
                 var installPath = GetLDPlayerInstallPath();
@@ -279,6 +289,7 @@ namespace Bot.Core.Utils
 
         public static string GetDNPlayerConsolePath()
         {
+            if (OperatingSystem.IsMacOS()) return MacConsolePath;
             if (_dnConsolePath == null || !File.Exists(_dnConsolePath))
             {
                 var installPath = GetLDPlayerInstallPath();
@@ -292,6 +303,12 @@ namespace Bot.Core.Utils
 
         public static string GetADBPath()
         {
+            if (OperatingSystem.IsMacOS())
+            {
+                if (!File.Exists(MacAdbPath))
+                    throw new FileNotFoundException($"adb not found at {MacAdbPath}. Install Android Studio or set ANDROID_HOME.");
+                return MacAdbPath;
+            }
             if (_adbPath == null || !File.Exists(_adbPath))
             {
                 var installPath = GetLDPlayerInstallPath();

@@ -125,6 +125,8 @@ namespace Bot.Core.Logging
 
         private static void SetLogFilePermissions(string logDirectory)
         {
+            if (!OperatingSystem.IsWindows()) return; // ACLs are Windows-only; Unix file modes are already fine
+
             try
             {
                 // Get the directory info

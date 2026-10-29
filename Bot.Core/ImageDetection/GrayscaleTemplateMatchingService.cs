@@ -5,7 +5,6 @@ using System.Linq;
 using System.Collections.Concurrent;
 using Bot.Core.Logging;
 using OpenCvSharp;
-using OpenCvSharp.Extensions;
 using Point = OpenCvSharp.Point;
 using Size = OpenCvSharp.Size;
 using Rectangle = System.Drawing.Rectangle;
@@ -175,9 +174,7 @@ namespace Bot.Core.ImageDetection
 
             try
             {
-                using var ms = new MemoryStream(screenshot);
-                using var bmp = new Bitmap(ms);
-                using var sourceMat = BitmapConverter.ToMat(bmp);
+                using var sourceMat = Cv2.ImDecode(screenshot, ImreadModes.Unchanged);
 
                 Mat screenshotGray;
                 if (sourceMat.Channels() == 4)

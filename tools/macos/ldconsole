@@ -1,0 +1,81 @@
+#!/bin/sh
+# macOS stand-in for LDPlayer's ldconsole/dnconsole, backed by Android Studio emulators (AVDs).
+# Instance N = AVD "Kingshot_N" on console port 5554+2N (ADB serial emulator-<port>),
+# the same serial scheme the bot uses for LDPlayer.
+# Supported verbs: list2, launch, quit [--force], reboot, isrunning, runapp --packagename P.
+# modify, zoomOut and globalsetting are accepted no-ops (configure resolution in the AVD instead).
+
+SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}}"
+ADB="$SDK/platform-tools/adb"
+EMULATOR="$SDK/emulator/emulator"
+
+verb="$1"; shift
+index=""; pkg=""; force=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --index) index="$2"; shift ;;
+    --index=*) index="${1#--index=}" ;;
+    --packagename) pkg="$2"; shift ;;
+    --force) force=1 ;;
+  esac
+  shift
+done
+
+name() { echo "Kingshot_$1"; }
+port() { echo $((5554 + 2 * $1)); }
+serial() { echo "emulator-$(port "$1")"; }
+pattern() { echo "-avd $(name "$1")( |\$)"; }
+pid_of() { pgrep -f -- "$(pattern "$1")" | head -n 1; }
+booted() { [ "$("$ADB" -s "$(serial "$1")" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; }
+
+require_index() {
+  case "$index" in
+    ''|*[!0-9]*) echo "error: --index <number> required" >&2; exit 1 ;;
+  esac
+}
+
+case "$verb" in
+  list2)
+    "$EMULATOR" -list-avds 2>/dev/null | sed -n 's/^Kingshot_\([0-9][0-9]*\)$/\1/p' | sort -n | while read -r i; do
+      pid=$(pid_of "$i"); pid=${pid:-0}
+      if [ "$pid" -gt 0 ]; then h=1; else h=0; fi
+      a=0; [ "$pid" -gt 0 ] && booted "$i" && a=1
+      echo "$i,$(name "$i"),$h,$h,$a,$pid,$pid,720,1280,320"
+    done
+    ;;
+  isrunning)
+    require_index
+    if [ -n "$(pid_of "$index")" ]; then echo running; else echo stop; fi
+    ;;
+  launch)
+    require_index
+    if ! "$EMULATOR" -list-avds 2>/dev/null | grep -qx "$(name "$index")"; then
+      echo "Instance not found: no AVD named $(name "$index")"; exit 1
+    fi
+    if [ -n "$(pid_of "$index")" ]; then echo "already running"; exit 0; fi
+    nohup "$EMULATOR" -avd "$(name "$index")" -port "$(port "$index")" -no-boot-anim -no-audio >/dev/null 2>&1 &
+    ;;
+  quit)
+    require_index
+    [ -z "$(pid_of "$index")" ] && exit 0
+    if [ -n "$force" ]; then pkill -9 -f -- "$(pattern "$index")"
+    else "$ADB" -s "$(serial "$index")" emu kill >/dev/null 2>&1 || pkill -f -- "$(pattern "$index")"; fi
+    ;;
+  reboot)
+    require_index
+    if [ -n "$(pid_of "$index")" ]; then
+      "$ADB" -s "$(serial "$index")" reboot
+    else
+      exec "$0" launch --index "$index"
+    fi
+    ;;
+  runapp)
+    require_index
+    "$ADB" -s "$(serial "$index")" shell monkey -p "$pkg" -c android.intent.category.LAUNCHER 1 >/dev/null
+    ;;
+  modify|zoomOut|globalsetting)
+    ;;
+  *)
+    echo "Usage: ldconsole list2|launch|quit|reboot|isrunning|runapp --index N" >&2; exit 1
+    ;;
+esac

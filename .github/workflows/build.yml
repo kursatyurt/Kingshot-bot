@@ -29,3 +29,23 @@ jobs:
       - name: Test
         continue-on-error: true
         run: dotnet test BotApp.sln -c Debug --no-build --verbosity normal
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install Tesseract
+        run: brew install tesseract
+
+      - name: Build CLI
+        run: dotnet build Bot.Cli -c Release
+
+      - name: Self-test (OpenCV + Tesseract native libraries)
+        run: dotnet Bot.Cli/bin/Release/net10.0/KingshotAuto.Cli.dll --selftest

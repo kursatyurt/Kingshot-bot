@@ -365,7 +365,7 @@ namespace Bot.Core.LDPlayer
                 
                 var psi = new ProcessStartInfo
                 {
-                    FileName = $"\"{_ldConsolePath}\"",
+                    FileName = _ldConsolePath,
                     Arguments = arguments,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
@@ -650,7 +650,7 @@ namespace Bot.Core.LDPlayer
 
                 var psi = new ProcessStartInfo
                 {
-                    FileName = $"\"{_dnConsolePath}\"",
+                    FileName = _dnConsolePath,
                     Arguments = arguments,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,

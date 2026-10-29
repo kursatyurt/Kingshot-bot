@@ -11,7 +11,6 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Drawing;
-using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -1290,41 +1289,26 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                 var filename = $"blocking_{account.InstanceNumber}_{account.AccountName}_{action}_{timestamp}.png";
                 var filepath = Path.Combine(logDirectory, filename);
                 
-                using var originalImage = Image.FromStream(new MemoryStream(screenshotBytes));
-                using var bitmap = new Bitmap(originalImage);
-                using var graphics = Graphics.FromImage(bitmap);
+                using var image = OpenCvSharp.Cv2.ImDecode(screenshotBytes, OpenCvSharp.ImreadModes.Color);
+                using var fills = image.Clone();
+                var red = new OpenCvSharp.Scalar(0, 0, 255);
+                var green = new OpenCvSharp.Scalar(0, 255, 0);
+                var areas = (blockedAreas ?? Enumerable.Empty<Rectangle>()).Select(a => (Area: a, Color: red, Label: "BLOCKED"))
+                    .Concat((foundTargets ?? Enumerable.Empty<TargetInfo>()).Select(t => (Area: t.TargetArea, Color: green, Label: t.Type.ToUpper())))
+                    .ToList();
 
-                // Set up drawing tools
-                using var blockedPen = new Pen(Color.Red, 3);
-                using var availablePen = new Pen(Color.Green, 3);
-                using var font = new Font("Arial", 8, FontStyle.Bold);
-                using var blockedBrush = new SolidBrush(Color.FromArgb(100, Color.Red));
-                using var availableBrush = new SolidBrush(Color.FromArgb(100, Color.Green));
-                using var textBrush = new SolidBrush(Color.White);
+                // Translucent fills for blocked areas (red) and available/found targets (green)
+                foreach (var (area, color, _) in areas)
+                    OpenCvSharp.Cv2.Rectangle(fills, new OpenCvSharp.Rect(area.X, area.Y, area.Width, area.Height), color, -1);
+                OpenCvSharp.Cv2.AddWeighted(fills, 0.4, image, 0.6, 0, image);
 
-                // Draw blocked areas (red)
-                if (blockedAreas != null)
+                foreach (var (area, color, label) in areas)
                 {
-                    foreach (var blockedArea in blockedAreas)
-                    {
-                        graphics.FillRectangle(blockedBrush, blockedArea);
-                        graphics.DrawRectangle(blockedPen, blockedArea);
-                        graphics.DrawString("BLOCKED", font, textBrush, blockedArea.X + 2, blockedArea.Y + 2);
-                    }
+                    OpenCvSharp.Cv2.Rectangle(image, new OpenCvSharp.Rect(area.X, area.Y, area.Width, area.Height), color, 3);
+                    OpenCvSharp.Cv2.PutText(image, label, new OpenCvSharp.Point(area.X + 2, area.Y + 14), OpenCvSharp.HersheyFonts.HersheySimplex, 0.4, OpenCvSharp.Scalar.White, 1);
                 }
 
-                // Draw available/found targets (green)
-                if (foundTargets != null)
-                {
-                    foreach (var target in foundTargets)
-                    {
-                        graphics.FillRectangle(availableBrush, target.TargetArea);
-                        graphics.DrawRectangle(availablePen, target.TargetArea);
-                        graphics.DrawString($"{target.Type.ToUpper()}", font, textBrush, target.TargetArea.X + 2, target.TargetArea.Y + 2);
-                    }
-                }
-
-                bitmap.Save(filepath, ImageFormat.Png);
+                image.SaveImage(filepath);
                 logger.LogInfo($"[{account.AccountName}] Visual blocking log saved: {filepath}");
             }
             catch (Exception ex)

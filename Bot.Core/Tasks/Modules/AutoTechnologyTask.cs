@@ -152,8 +152,7 @@ namespace Bot.Core.Tasks.Modules
                     return null;
                 }
 
-                using var ms = new System.IO.MemoryStream(screenshot);
-                using var bitmap = new Bitmap(ms);
+                using var bitmap = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
                 
                 // Create optimized OCR configuration specifically for x/x patterns
                 var ocrConfig = new OCRConfiguration
@@ -182,15 +181,7 @@ namespace Bot.Core.Tasks.Modules
                         {
                             using var ocr = new OCRService(logger, ocrConfig);
                             
-                            // Convert region to byte array for OCR
-                            using var regionMs = new System.IO.MemoryStream();
-                            using (var regionBitmap = bitmap.Clone(region, bitmap.PixelFormat))
-                            {
-                                regionBitmap.Save(regionMs, System.Drawing.Imaging.ImageFormat.Png);
-                            }
-                            var regionBytes = regionMs.ToArray();
-                            
-                            string ocrText = ocr.ExtractTextFromScreenArea(regionBytes, new Rectangle(0, 0, region.Width, region.Height));
+                            string ocrText = ocr.ExtractTextFromScreenArea(screenshot, region);
                             
                             if (!string.IsNullOrEmpty(ocrText))
                             {
@@ -302,8 +293,7 @@ namespace Bot.Core.Tasks.Modules
                 var screenshot = await TakeScreenshotAsync(instanceNumber, logger);
                 if (screenshot == null) return null;
 
-                using var ms = new System.IO.MemoryStream(screenshot);
-                using var bitmap = new Bitmap(ms);
+                using var bitmap = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
 
                 var numberOcrConfig = new OCRConfiguration
                 {
@@ -340,37 +330,19 @@ namespace Bot.Core.Tasks.Modules
                             // OCR left region (number)
                             using (var leftOcr = new OCRService(logger, numberOcrConfig))
                             {
-                                using var leftMs = new System.IO.MemoryStream();
-                                using (var leftBitmap = bitmap.Clone(leftRegion, bitmap.PixelFormat))
-                                {
-                                    leftBitmap.Save(leftMs, System.Drawing.Imaging.ImageFormat.Png);
-                                }
-                                leftText = leftOcr.ExtractTextFromScreenArea(leftMs.ToArray(), 
-                                    new Rectangle(0, 0, leftRegion.Width, leftRegion.Height)).Trim();
+                                leftText = leftOcr.ExtractTextFromScreenArea(screenshot, leftRegion).Trim();
                             }
 
                             // OCR middle region (slash)
                             using (var middleOcr = new OCRService(logger, slashOcrConfig))
                             {
-                                using var middleMs = new System.IO.MemoryStream();
-                                using (var middleBitmap = bitmap.Clone(middleRegion, bitmap.PixelFormat))
-                                {
-                                    middleBitmap.Save(middleMs, System.Drawing.Imaging.ImageFormat.Png);
-                                }
-                                middleText = middleOcr.ExtractTextFromScreenArea(middleMs.ToArray(), 
-                                    new Rectangle(0, 0, middleRegion.Width, middleRegion.Height)).Trim();
+                                middleText = middleOcr.ExtractTextFromScreenArea(screenshot, middleRegion).Trim();
                             }
 
                             // OCR right region (number)
                             using (var rightOcr = new OCRService(logger, numberOcrConfig))
                             {
-                                using var rightMs = new System.IO.MemoryStream();
-                                using (var rightBitmap = bitmap.Clone(rightRegion, bitmap.PixelFormat))
-                                {
-                                    rightBitmap.Save(rightMs, System.Drawing.Imaging.ImageFormat.Png);
-                                }
-                                rightText = rightOcr.ExtractTextFromScreenArea(rightMs.ToArray(), 
-                                    new Rectangle(0, 0, rightRegion.Width, rightRegion.Height)).Trim();
+                                rightText = rightOcr.ExtractTextFromScreenArea(screenshot, rightRegion).Trim();
                             }
 
                             // Check if we found a pattern
@@ -414,8 +386,7 @@ namespace Bot.Core.Tasks.Modules
                 var screenshot = await TakeScreenshotAsync(instanceNumber, logger);
                 if (screenshot == null) return string.Empty;
 
-                using var ms = new System.IO.MemoryStream(screenshot);
-                using var bitmap = new Bitmap(ms);
+                using var bitmap = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
                 
                 // OCR configuration optimized for "idle" text detection
                 var ocrConfig = new OCRConfiguration
@@ -429,15 +400,7 @@ namespace Bot.Core.Tasks.Modules
 
                 using var ocr = new OCRService(logger, ocrConfig);
                 
-                // Convert region to byte array for OCR
-                using var regionMs = new System.IO.MemoryStream();
-                using (var regionBitmap = bitmap.Clone(region, bitmap.PixelFormat))
-                {
-                    regionBitmap.Save(regionMs, System.Drawing.Imaging.ImageFormat.Png);
-                }
-                var regionBytes = regionMs.ToArray();
-                
-                string ocrText = ocr.ExtractTextFromScreenArea(regionBytes, new Rectangle(0, 0, region.Width, region.Height));
+                string ocrText = ocr.ExtractTextFromScreenArea(screenshot, region);
                 
                 return ocrText?.Trim() ?? string.Empty;
             }

@@ -231,13 +231,11 @@ namespace Bot.Core.LDPlayer
             if (raw.Length < 12 + expectedLen)
                 throw new Exception($"Raw screencap data too short: expected {expectedLen} bytes, got {raw.Length - 12}");
 
-            // Convert raw framebuffer to Bitmap
-            using var bmp = new System.Drawing.Bitmap(width, height, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
-            var bmpData = bmp.LockBits(new System.Drawing.Rectangle(0, 0, width, height),
-                System.Drawing.Imaging.ImageLockMode.WriteOnly, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            // Convert raw framebuffer to a BGRA image
+            using var bgra = new OpenCvSharp.Mat(height, width, OpenCvSharp.MatType.CV_8UC4);
             unsafe
             {
-                byte* dst = (byte*)bmpData.Scan0;
+                byte* dst = (byte*)bgra.DataPointer;
                 int srcIdx = 12;
                 for (int y = 0; y < height; y++)
                 {
@@ -277,7 +275,7 @@ namespace Bot.Core.LDPlayer
                                 a = raw[srcIdx + 3];
                                 break;
                         }
-                        // ARGB in memory: [b, g, r, a]
+                        // BGRA in memory: [b, g, r, a]
                         dst[0] = b;
                         dst[1] = g;
                         dst[2] = r;
@@ -287,11 +285,8 @@ namespace Bot.Core.LDPlayer
                     }
                 }
             }
-            bmp.UnlockBits(bmpData);
-            // Convert Bitmap to PNG byte array for compatibility
-            using var outStream = new MemoryStream();
-            bmp.Save(outStream, System.Drawing.Imaging.ImageFormat.Png);
-            return outStream.ToArray();
+            // Encode as PNG byte array for compatibility
+            return bgra.ToBytes(".png");
         }
 
         /// <summary>

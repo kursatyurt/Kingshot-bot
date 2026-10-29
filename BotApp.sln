@@ -6,6 +6,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Bot.Core", "Bot.Core\Bot.Co
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Bot.GUI", "Bot.GUI\Bot.GUI.csproj", "{FC055C2D-BF0F-4D64-96B8-2B50D5C57952}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Bot.Cli", "Bot.Cli\Bot.Cli.csproj", "{543E2C96-B710-4679-BA46-27317E87780D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -23,5 +25,9 @@ Global
 		{FC055C2D-BF0F-4D64-96B8-2B50D5C57952}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{FC055C2D-BF0F-4D64-96B8-2B50D5C57952}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{FC055C2D-BF0F-4D64-96B8-2B50D5C57952}.Release|Any CPU.Build.0 = Release|Any CPU
+		{543E2C96-B710-4679-BA46-27317E87780D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{543E2C96-B710-4679-BA46-27317E87780D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{543E2C96-B710-4679-BA46-27317E87780D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{543E2C96-B710-4679-BA46-27317E87780D}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

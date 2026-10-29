@@ -1,5 +1,5 @@
 <Project>
-  <PropertyGroup>
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
     <!-- Default to x64 if not specified -->
     <PlatformTarget Condition="'$(PlatformTarget)' == ''">x64</PlatformTarget>
     <Platform Condition="'$(Platform)' == '' OR '$(Platform)' == 'AnyCPU'">x64</Platform>

@@ -82,6 +82,35 @@ Maintainers can produce a portable packaged build:
 ./Build.ps1 -Version 0.1.0
 ```
 
+## macOS (Apple Silicon)
+
+On a Mac the bot runs headless (`Bot.Cli`, no GUI) against **Android Studio emulators** instead of LDPlayer. Account `InstanceNumber` **N** maps to an emulator (AVD) named **`Kingshot_N`**. The bot launches it on console port `5554 + 2N` (ADB serial `emulator-5554`, `emulator-5556`, …) and stops or reboots it when recovery needs to. Several accounts run in parallel, one AVD each. Git LFS is not needed on macOS.
+
+1. **Install the tools**
+   ```sh
+   brew install dotnet tesseract
+   brew install --cask android-studio
+   ```
+   Open Android Studio once so it installs the SDK at `~/Library/Android/sdk`. If your SDK is elsewhere, set `ANDROID_HOME`.
+2. **Create one AVD per account** in Android Studio's Device Manager:
+   - Name them `Kingshot_0`, `Kingshot_1`, and so on.
+   - Use a phone with a **Google Play arm64** system image.
+   - Set the display to **720 × 1280, 320 dpi**. The bot's templates assume this size, and on Windows it forces the same size on LDPlayer.
+   - Start each AVD once, install Kingshot from the Play Store, sign in, then close it.
+3. **Configure the accounts**
+   ```sh
+   cp configs/default_config.example.json configs/default_config.json
+   ```
+   Edit `configs/default_config.json`: one entry per account under `Accounts`, with `InstanceNumber` matching the AVD number.
+4. **Check the native libraries, then run** from the repository root:
+   ```sh
+   dotnet run -c Release --project Bot.Cli -- --selftest   # verifies OpenCV + Tesseract load
+   dotnet run -c Release --project Bot.Cli                 # runs the cycle; Ctrl+C to stop
+   ```
+   You can pass a config path as the last argument. Logs go to `logs/`.
+
+LDPlayer commands (`launch`, `quit`, `list2`, …) are provided on macOS by [`tools/macos/ldconsole`](tools/macos/ldconsole), a small script that implements them with `emulator` and `adb`. LDPlayer-only features, such as instance settings (`modify`) and macro playback, are skipped.
+
 ## Configuration
 
 - On first run, the app **auto-creates** its configuration at `configs/config.json`. If that file is missing it falls back to a built-in default, so you can start without any manual setup.

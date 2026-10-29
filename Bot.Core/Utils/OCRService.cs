@@ -4,14 +4,12 @@ using System.IO;
 using Bot.Core.Logging;
 using Tesseract;
 using OpenCvSharp;
-using OpenCvSharp.Extensions;
 using System.Runtime.InteropServices;
 using System.Collections.Generic;
 using System.Linq;
 
 // Disambiguate conflicting types by using aliases.
 using CvSize = OpenCvSharp.Size;
-using SysImageFormat = System.Drawing.Imaging.ImageFormat;
 
 namespace Bot.Core.Utils
 {
@@ -130,28 +128,32 @@ namespace Bot.Core.Utils
                 var x86Dir = Path.Combine(baseDir, "x86");
                 var currentPath = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
                 
-                // Try to preload the DLLs to ensure they're available
-                TryPreloadNativeDlls(baseDir, x64Dir, x86Dir);
-                
-                var pathsToAdd = new List<string>();
-                if (Directory.Exists(x64Dir) && !currentPath.Contains(x64Dir))
+                // On macOS the Tesseract package finds the Homebrew libs the build links into x64/
+                if (OperatingSystem.IsWindows())
                 {
-                    pathsToAdd.Add(x64Dir);
-                }
-                if (Directory.Exists(x86Dir) && !currentPath.Contains(x86Dir))
-                {
-                    pathsToAdd.Add(x86Dir);
-                }
-                if (!currentPath.Contains(baseDir))
-                {
-                    pathsToAdd.Add(baseDir);
-                }
+                    // Try to preload the DLLs to ensure they're available
+                    TryPreloadNativeDlls(baseDir, x64Dir, x86Dir);
 
-                if (pathsToAdd.Any())
-                {
-                    var newPath = string.Join(";", pathsToAdd) + ";" + currentPath;
-                    Environment.SetEnvironmentVariable("PATH", newPath);
-                    _logger.LogInfo($"Updated process PATH to: {newPath}");
+                    var pathsToAdd = new List<string>();
+                    if (Directory.Exists(x64Dir) && !currentPath.Contains(x64Dir))
+                    {
+                        pathsToAdd.Add(x64Dir);
+                    }
+                    if (Directory.Exists(x86Dir) && !currentPath.Contains(x86Dir))
+                    {
+                        pathsToAdd.Add(x86Dir);
+                    }
+                    if (!currentPath.Contains(baseDir))
+                    {
+                        pathsToAdd.Add(baseDir);
+                    }
+
+                    if (pathsToAdd.Any())
+                    {
+                        var newPath = string.Join(";", pathsToAdd) + ";" + currentPath;
+                        Environment.SetEnvironmentVariable("PATH", newPath);
+                        _logger.LogInfo($"Updated process PATH to: {newPath}");
+                    }
                 }
 
                 try
@@ -196,7 +198,7 @@ namespace Bot.Core.Utils
             }
         }
 
-        public string ExtractTextFromBitmap(Bitmap bmp)
+        public string ExtractTextFromMat(Mat image)
         {
             if (_engine == null)
             {
@@ -206,15 +208,11 @@ namespace Bot.Core.Utils
 
             try
             {
-                using var processedBitmap = PreprocessImage(bmp);
+                using var processed = PreprocessImage(image);
 
                 // Debug image saving removed to reduce log spam
 
-                using var ms = new MemoryStream();
-                processedBitmap.Save(ms, SysImageFormat.Bmp);
-                ms.Position = 0;
-                
-                using var img = Pix.LoadFromMemory(ms.ToArray());
+                using var img = Pix.LoadFromMemory(processed.ToBytes(".bmp"));
                 using var page = _engine.Process(img);
                 string text = page.GetText();
                 
@@ -233,10 +231,9 @@ namespace Bot.Core.Utils
         {
             try
             {
-                using var ms = new MemoryStream(screenshotData);
-                using var fullBitmap = new Bitmap(ms);
-                using var croppedBitmap = CropBitmap(fullBitmap, area);
-                return ExtractTextFromBitmap(croppedBitmap);
+                using var full = Cv2.ImDecode(screenshotData, ImreadModes.Color);
+                using var cropped = CropMat(full, area);
+                return ExtractTextFromMat(cropped);
             }
             catch (Exception ex)
             {
@@ -249,12 +246,10 @@ namespace Bot.Core.Utils
         /// <summary>
         /// A robust preprocessing pipeline specifically tuned for in-game text.
         /// </summary>
-        private Bitmap PreprocessImage(Bitmap bmp)
+        private Mat PreprocessImage(Mat sourceMat)
         {
             try
             {
-                using var sourceMat = BitmapConverter.ToMat(bmp);
-                
                 // 1. Convert to Grayscale
                 using var gray = new Mat();
                 Cv2.CvtColor(sourceMat, gray, ColorConversionCodes.BGR2GRAY);
@@ -283,20 +278,20 @@ namespace Bot.Core.Utils
                 // 5. (Optional but recommended) Dilate the text to make it thicker and repair any breaks
                 // in the character strokes that may have occurred during scaling or thresholding.
                 using var kernel = Cv2.GetStructuringElement(MorphShapes.Rect, new CvSize(2, 2));
-                using var dilated = new Mat();
+                var dilated = new Mat();
                 Cv2.Dilate(thresholded, dilated, kernel);
 
-                return BitmapConverter.ToBitmap(dilated);
+                return dilated;
             }
             catch (Exception ex)
             {
                 _logger.LogError($"Error preprocessing image: {ex.Message}");
                 _logger.LogError($"Stack trace: {ex.StackTrace}");
-                return new Bitmap(bmp); // Return copy of original on error
+                return sourceMat.Clone(); // Return copy of original on error
             }
         }
 
-        private Bitmap CropBitmap(Bitmap source, Rectangle cropArea)
+        private Mat CropMat(Mat source, Rectangle cropArea)
         {
             try
             {
@@ -305,16 +300,16 @@ namespace Bot.Core.Utils
                 if (validCropArea.IsEmpty || validCropArea.Width <= 0 || validCropArea.Height <= 0)
                 {
                     _logger.LogError($"Crop area {cropArea} is invalid or outside image bounds ({source.Width}x{source.Height})");
-                    return new Bitmap(1, 1);
+                    return new Mat(1, 1, MatType.CV_8UC3, Scalar.All(0));
                 }
 
-                return source.Clone(validCropArea, source.PixelFormat);
+                return new Mat(source, new OpenCvSharp.Rect(validCropArea.X, validCropArea.Y, validCropArea.Width, validCropArea.Height)).Clone();
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Error cropping bitmap: {ex.Message}");
+                _logger.LogError($"Error cropping image: {ex.Message}");
                 _logger.LogError($"Stack trace: {ex.StackTrace}");
-                return new Bitmap(1, 1);
+                return new Mat(1, 1, MatType.CV_8UC3, Scalar.All(0));
             }
         }
 
