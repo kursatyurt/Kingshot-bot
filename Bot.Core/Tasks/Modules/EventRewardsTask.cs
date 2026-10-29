@@ -97,9 +97,13 @@ namespace Bot.Core.Tasks.Modules
 
             var feast = await TakeScreenshotAsync(account.InstanceNumber, logger);
             var claim = new Rectangle(300, 935, 160, 30);
-            if (feast != null && IsLitGreen(feast, claim))
+            // Without a feast ready the row button goes straight to the Storehouse: that spot is then green grass
+            if (feast != null && HasDimmedBackdrop(feast) && IsLitGreen(feast, claim))
             {
                 logger.LogInfo($"[{account.AccountName}] 🍗 Claiming the Gourmet Feast");
+                var debugDir = Path.Combine(AppContext.BaseDirectory, "logs", "screenshots");
+                Directory.CreateDirectory(debugDir);
+                await File.WriteAllBytesAsync(Path.Combine(debugDir, $"feast-claim-{account.InstanceNumber}-{DateTime.Now:HHmm}.png"), feast, cancellationToken);
                 await ClickAsync(account.InstanceNumber, logger, new Point(380, 952));
                 await Task.Delay(2500, cancellationToken);
             }
@@ -114,9 +118,21 @@ namespace Bot.Core.Tasks.Modules
             {
                 var city = await TakeScreenshotAsync(account.InstanceNumber, logger);
                 if (city == null) break;
+                if (chest == 0)
+                {
+                    var debugDir = Path.Combine(AppContext.BaseDirectory, "logs", "screenshots");
+                    Directory.CreateDirectory(debugDir);
+                    await File.WriteAllBytesAsync(Path.Combine(debugDir, $"storehouse-view-{account.InstanceNumber}.png"), city, cancellationToken);
+                }
                 var (found, rect, _) = _templateMatcher.MatchTemplate(city, Path.Combine(ImageTemplateFolder, "storehouse-chest-bubble.png"),
-                    account.InstanceNumber, threshold: 0.88);
-                if (!found) break;
+                    account.InstanceNumber, threshold: 0.8); // the bubble bobs: 0.87-0.99; nothing else above 0.74
+                if (!found)
+                {
+                    // A tutorial glove often sits on the bubble, pointing at it: its fingertip marks the chest
+                    var glove = LocatorService.FindTutorialGlove(city, Path.Combine(AppContext.BaseDirectory, "templates", "images", "locator", "tutorial-glove.png"));
+                    if (glove is not { } g || g.x < 300 || g.x > 440 || g.y < 380 || g.y > 500) break;
+                    rect = new Rectangle(g.x - 5, g.y - 5, 10, 10);
+                }
                 logger.LogInfo($"[{account.AccountName}] 🎁 Collecting the Storehouse online chest");
                 await ClickRandomInRectAsync(account.InstanceNumber, logger, rect);
                 await Task.Delay(2500, cancellationToken);
