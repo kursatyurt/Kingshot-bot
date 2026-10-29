@@ -26,7 +26,8 @@ port() { echo $((5554 + 2 * $1)); }
 serial() { echo "emulator-$(port "$1")"; }
 pattern() { echo "-avd $(name "$1")( |\$)"; }
 pid_of() { pgrep -f -- "$(pattern "$1")" | head -n 1; }
-booted() { [ "$("$ADB" -s "$(serial "$1")" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; }
+# </dev/null: adb shell would otherwise swallow the rest of list2's AVD list from stdin
+booted() { [ "$("$ADB" -s "$(serial "$1")" shell getprop sys.boot_completed </dev/null 2>/dev/null | tr -d '\r')" = "1" ]; }
 
 require_index() {
   case "$index" in
@@ -71,7 +72,7 @@ case "$verb" in
     ;;
   runapp)
     require_index
-    "$ADB" -s "$(serial "$index")" shell monkey -p "$pkg" -c android.intent.category.LAUNCHER 1 >/dev/null
+    "$ADB" -s "$(serial "$index")" shell monkey -p "$pkg" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
     ;;
   modify|zoomOut|globalsetting)
     ;;
