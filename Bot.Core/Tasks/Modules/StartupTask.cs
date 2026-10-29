@@ -179,6 +179,7 @@ namespace Bot.Core.Tasks.Modules
                     var adResult2 = (found: false, position: Rectangle.Empty, confidence: 0.0);
                     var adResult3 = (found: false, position: Rectangle.Empty, confidence: 0.0);
                     var defenceResult = (found: false, position: Rectangle.Empty, confidence: 0.0);
+                    var storySkipResult = (found: false, position: Rectangle.Empty, confidence: 0.0);
 
                     if (!baseViewFound && !mapViewFound)
                     {
@@ -202,12 +203,20 @@ namespace Bot.Core.Tasks.Modules
                             defenceResult = await WaitForImageWithPositionAsync("defence.png", account.InstanceNumber, logger,
                                 cancellationToken, timeoutMs: 500, threshold: 0.65, searchArea: adCloseArea);
                         }
+
+                        // Story scenes (e.g. when the Arena unlocks) cover the city until "Skip" is tapped
+                        if (!adResult1.found && !adResult2.found && !adResult3.found && !defenceResult.found)
+                        {
+                            storySkipResult = await WaitForImageWithPositionAsync("story-skip.png", account.InstanceNumber, logger,
+                                cancellationToken, timeoutMs: 500, threshold: 0.7, searchArea: adCloseArea);
+                        }
                     }
 
                     bool adFound = adResult1.found;
                     bool adFound2 = adResult2.found;
                     bool adFound3 = adResult3.found;
                     bool defenceFound = defenceResult.found;
+                    bool storySkipFound = storySkipResult.found;
 
                     // Check if base view was found early
                     if (baseViewFound)
@@ -217,16 +226,16 @@ namespace Bot.Core.Tasks.Modules
                         break;
                     }
 
-                    logger.LogInfo($"[{account.AccountName}] Sequential check results - Ad: {adFound}, Ad2: {adFound2}, Ad3: {adFound3}, Defence: {defenceFound}, Map: {mapViewFound}, Base: {baseViewFound}");
+                    logger.LogInfo($"[{account.AccountName}] Sequential check results - Ad: {adFound}, Ad2: {adFound2}, Ad3: {adFound3}, Defence: {defenceFound}, StorySkip: {storySkipFound}, Map: {mapViewFound}, Base: {baseViewFound}");
 
                     // Process results based on priority
                     // Priority 1: Ads and Defence
-                    if (adFound || adFound2 || adFound3 || defenceFound)
+                    if (adFound || adFound2 || adFound3 || defenceFound || storySkipFound)
                     {
                         logger.LogInfo($"[{account.AccountName}] 🖱️ Found ad close button or defence image, clicking on detected position...");
 
                         // Find the highest confidence ad detection and click on its position
-                        var adResults = new[] { adResult1, adResult2, adResult3, defenceResult };
+                        var adResults = new[] { adResult1, adResult2, adResult3, defenceResult, storySkipResult };
                         var bestAd = adResults.Where(r => r.found).OrderByDescending(r => r.confidence).FirstOrDefault();
                         
                         if (bestAd.found)

@@ -436,7 +436,8 @@ namespace Bot.Core.Utils
                 {
                     Path.Combine(startupFolder, "ad-close.png"),
                     Path.Combine(startupFolder, "ad-close2.png"),
-                    Path.Combine(startupFolder, "ad-close3.png")
+                    Path.Combine(startupFolder, "ad-close3.png"),
+                    Path.Combine(startupFolder, "story-skip.png") // "Skip" on story scenes the game plays when a feature unlocks
                 };
 
                 // Check for each ad close image

@@ -235,6 +235,8 @@ namespace Bot.Core.Tasks.Modules
                                 break;
                             }
                             logger.LogWarning($"[{account.AccountName}] Failed to send march for {currentTarget.ResourceType}; trying the next resource.");
+                            await PressBackAsync(account.InstanceNumber, logger); // close the resource search panel left open
+                            await Task.Delay(800, cancellationToken);
                             await locator.EnsureViewAsync(ViewType.MapView, account.InstanceNumber); // start the next search from the map
                         }
                         await Task.Delay(POLL_INTERVAL_MS, cancellationToken);
@@ -690,6 +692,16 @@ namespace Bot.Core.Tasks.Modules
                 }
             }
             logger.LogError($"[{account.AccountName}] ❌ Failed to find '{resourceImageName}' after all scroll attempts.");
+            // Keep what the search bar looked like, to refresh the template when the game's art changes
+            var notFound = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            if (notFound != null)
+            {
+                var debugDir = Path.Combine(AppContext.BaseDirectory, "logs", "screenshots");
+                Directory.CreateDirectory(debugDir);
+                var debugPath = Path.Combine(debugDir, $"farming-not-found-{Path.GetFileNameWithoutExtension(resourceImageName)}-{account.InstanceNumber}.png");
+                await File.WriteAllBytesAsync(debugPath, notFound);
+                logger.LogInfo($"[{account.AccountName}] Saved the resource bar to {debugPath}");
+            }
             return false;
         }
 
