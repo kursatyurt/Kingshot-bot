@@ -68,6 +68,8 @@ namespace Bot.Core.Tasks.Modules
         private static readonly Rectangle FirstMarchTimerRect = new Rectangle(90, 268, 90, 26);  // "00:01:31" under the first march in the map's march panel
         private static readonly Rectangle SearchIconRect = new Rectangle(20, 855, 47, 43);  // Search icon in top menu
         private static readonly Rectangle ResourceScrollArea = new Rectangle(0, 820, 718, 180);  // Resource selection area (icons start at y≈842)
+        // The bar ignores fast swipes from the screen edge and swipes above y≈920; a slow 600→120 drag at y=925 scrolls it
+        private const int ResourceSwipeY = 925;
         private static readonly Rectangle GatherButtonArea = new Rectangle(257, 592, 207, 72);  // 257,592 to 464,664
         private static readonly Rectangle SearchButtonArea = new Rectangle(117, 1166, 414, 102);  // 117,1166 to 531,1268
         private static readonly Rectangle DeployButtonArea = new Rectangle(388, 1159, 315, 107);  // From AutoHuntTask: 388,1159 to 703,1266
@@ -642,9 +644,9 @@ namespace Bot.Core.Tasks.Modules
                 if (isLaterResource && scrollAttempt == 0)
                 {
                     logger.LogInfo($"[{account.AccountName}] 📜 Resource is {resourceImageName}, swiping first to reach later resources...");
-                    Point swipeStart = new Point(ResourceScrollArea.Right - 50, ResourceScrollArea.Y + ResourceScrollArea.Height / 2);
-                    Point swipeEnd = new Point(ResourceScrollArea.Left + 50, ResourceScrollArea.Y + ResourceScrollArea.Height / 2);
-                    await SwipeAsync(account.InstanceNumber, logger, swipeStart, swipeEnd, 300);
+                    Point swipeStart = new Point(600, ResourceSwipeY);
+                    Point swipeEnd = new Point(120, ResourceSwipeY);
+                    await SwipeAsync(account.InstanceNumber, logger, swipeStart, swipeEnd, 1000);
                     await Task.Delay(POLL_INTERVAL_MS, cancellationToken);
                 }
 
@@ -667,7 +669,7 @@ namespace Bot.Core.Tasks.Modules
                         screenshot,
                         resourcePath,
                         account.InstanceNumber,
-                        threshold: TEMPLATE_MATCH_THRESHOLD,
+                        threshold: 0.8, // real icons score 0.91+; beasts on the same bar reach 0.66
                         scales: resourceScales,
                         verboseLogging: true,
                         searchArea: ResourceScrollArea
@@ -699,9 +701,9 @@ namespace Bot.Core.Tasks.Modules
                     if (!(isLaterResource && scrollAttempt == 0))
                     {
                         logger.LogInfo($"[{account.AccountName}] 📜 Resource not found after {MAX_WAIT_TIME_MS}ms. Scrolling resource list...");
-                        Point swipeStart = new Point(ResourceScrollArea.Right - 50, ResourceScrollArea.Y + ResourceScrollArea.Height / 2);
-                        Point swipeEnd = new Point(ResourceScrollArea.Left + 50, ResourceScrollArea.Y + ResourceScrollArea.Height / 2);
-                        await SwipeAsync(account.InstanceNumber, logger, swipeStart, swipeEnd, 300);
+                        Point swipeStart = new Point(600, ResourceSwipeY);
+                        Point swipeEnd = new Point(120, ResourceSwipeY);
+                        await SwipeAsync(account.InstanceNumber, logger, swipeStart, swipeEnd, 1000);
                         await Task.Delay(POLL_INTERVAL_MS, cancellationToken);
                     }
                 }
