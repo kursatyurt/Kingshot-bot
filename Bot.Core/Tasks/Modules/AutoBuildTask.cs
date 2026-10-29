@@ -34,6 +34,7 @@ namespace Bot.Core.Tasks.Modules
         // ponytail: fixed tap point, valid while the camera is on the Town Center (true after a game start,
         // so the task restarts the game when it isn't). A building template match would avoid the restart.
         private static readonly Point TownCenterTapPoint = new Point(340, 610);
+        private static readonly Point CentredBuildingPoint = new Point(368, 536); // where Go puts the building
         private static readonly Rectangle TownCenterTitleArea = new Rectangle(15, 600, 320, 50); // "Town Center Lv. 6"
         private static readonly Point TownCenterUpgradeButton = new Point(610, 624);
         private static readonly Point RequirementsUpgradeButton = new Point(528, 1215);
@@ -267,10 +268,30 @@ namespace Bot.Core.Tasks.Modules
 
             // The building's upgrade dialog lists its own requirements with ✓ / ❌
             var missing = await ReadRequirementsAsync(account, logger, cancellationToken);
+            if (missing == null && !await OnFurniturePageAsync(account, logger))
+            {
+                // Go sometimes only centres the camera without opening the ring: press the building, then Upgrade again
+                logger.LogInfo($"[{account.AccountName}] No upgrade dialog after Go; pressing the centred building to open its ring");
+                await SwipeAsync(account.InstanceNumber, logger, CentredBuildingPoint, new Point(CentredBuildingPoint.X + 1, CentredBuildingPoint.Y + 1), 150);
+                await Task.Delay(1200, cancellationToken);
+                await ClickAsync(account.InstanceNumber, logger, BuildingRingUpgradeButton);
+                missing = await ReadRequirementsAsync(account, logger, cancellationToken);
+            }
             if (missing == null)
             {
                 // Work buildings (Mill, Quarry, ...) open a furniture page instead; upgrading furniture levels the building
                 var furnitureUpgraded = await UpgradeFurnitureAsync(account, logger, cancellationToken);
+                if (!furnitureUpgraded)
+                {
+                    var unknown = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                    if (unknown != null)
+                    {
+                        // Keep it to teach the bot this page (e.g. the building's own construction progress)
+                        var debugDir = Path.Combine(AppContext.BaseDirectory, "logs", "screenshots");
+                        Directory.CreateDirectory(debugDir);
+                        await File.WriteAllBytesAsync(Path.Combine(debugDir, $"autobuild-required-building-{account.InstanceNumber}.png"), unknown, cancellationToken);
+                    }
+                }
                 await PressBackAsync(account.InstanceNumber, logger); // the furniture page has no back arrow
                 await Task.Delay(800, cancellationToken);
                 await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
@@ -315,6 +336,13 @@ namespace Bot.Core.Tasks.Modules
 
             account.AutoBuildSettings.LastBuildTime = DateTime.UtcNow;
             return TaskExecutionDetails.Succeeded();
+        }
+
+        private async Task<bool> OnFurniturePageAsync(AccountSettings account, LogService logger)
+        {
+            var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            return screenshot != null && _templateMatcher.MatchTemplate(screenshot, Path.Combine(ImageTemplateFolder, "furniture-tab.png"),
+                account.InstanceNumber, threshold: 0.9, searchArea: new Rectangle(60, 1150, 280, 110)).found;
         }
 
         /// <summary>
