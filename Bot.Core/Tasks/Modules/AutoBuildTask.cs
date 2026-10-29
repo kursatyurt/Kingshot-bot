@@ -206,6 +206,8 @@ namespace Bot.Core.Tasks.Modules
             var busyFor = screenshot == null ? null : ReadConstructionTimeLeft(screenshot, logger);
             if (busyFor != null)
             {
+                // Its handshake bubble shows above it until help was asked for
+                await RequestAllianceHelpAsync(account, logger, cancellationToken);
                 await PressBackAsync(account.InstanceNumber, logger);
                 await RandomDelay(cancellationToken);
                 return (false, busyFor);
@@ -304,7 +306,8 @@ namespace Bot.Core.Tasks.Modules
                     var busyFor = unknown == null ? null : ReadCentredBuildingCountdown(unknown, logger);
                     if (busyFor != null)
                     {
-                        // Still upgrading from the last run: come back when it finishes
+                        // Still upgrading from the last run: ask the alliance for help if not done yet, come back when it finishes
+                        await RequestAllianceHelpAsync(account, logger, cancellationToken);
                         var wait = busyFor.Value < TimeSpan.FromMinutes(2) ? TimeSpan.FromMinutes(2) : busyFor.Value;
                         _nextBuildCheck[account.InstanceNumber] = DateTime.UtcNow + wait;
                         logger.LogInfo($"[{account.AccountName}] The required building is upgrading ({busyFor} left); next Auto Build check in {wait}");
@@ -458,14 +461,15 @@ namespace Bot.Core.Tasks.Modules
         /// </summary>
         private async Task RequestAllianceHelpAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
         {
-            var handshake = Path.Combine(Path.GetDirectoryName(ImageTemplateFolder)!, "alliance", "alliance-help.png");
+            // The white handshake bubble over our own upgrading building asks for help (0.89+); the green one helps allies
+            var handshake = Path.Combine(Path.GetDirectoryName(ImageTemplateFolder)!, "alliance", "request-help-bubble.png");
             for (int attempt = 1; attempt <= 3; attempt++)
             {
                 await Task.Delay(1000, cancellationToken);
                 var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
                 if (screenshot == null) continue;
 
-                var (found, rect, confidence) = _templateMatcher.MatchTemplate(screenshot, handshake, account.InstanceNumber, threshold: 0.8);
+                var (found, rect, confidence) = _templateMatcher.MatchTemplate(screenshot, handshake, account.InstanceNumber, threshold: 0.85);
                 if (found)
                 {
                     logger.LogInfo($"[{account.AccountName}] Requesting alliance help for the upgrade (confidence {confidence:F2})");
@@ -474,7 +478,7 @@ namespace Bot.Core.Tasks.Modules
                     return;
                 }
             }
-            logger.LogInfo($"[{account.AccountName}] No alliance help button after the upgrade (not in an alliance?)");
+            logger.LogInfo($"[{account.AccountName}] No alliance help bubble (already requested, or not in an alliance)");
         }
 
         /// <summary>

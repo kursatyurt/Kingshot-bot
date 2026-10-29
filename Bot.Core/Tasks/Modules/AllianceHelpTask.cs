@@ -71,6 +71,18 @@ namespace Bot.Core.Tasks.Modules
                         useEnhancedMatching: true // This will use multiple scales
                     );
 
+                    // Our own upgrading buildings show a white handshake bubble that asks the alliance for help
+                    if (!helpButtonFound)
+                    {
+                        helpButtonFound = await FindAndClickImageAsync(
+                            "request-help-bubble.png",
+                            account.InstanceNumber,
+                            logger,
+                            threshold: 0.85,
+                            useEnhancedMatching: true
+                        );
+                    }
+
                     if (helpButtonFound)
                     {
                         logger.LogInfo($"[{account.AccountName}] ✅ Found and clicked alliance help button on attempt {attempt}");

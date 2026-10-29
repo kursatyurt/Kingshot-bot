@@ -113,6 +113,9 @@ namespace Bot.Core.Tasks.Modules
                 if (cancellationToken.IsCancellationRequested) return TaskExecutionDetails.Failed("Task was cancelled");
                 await Task.Delay(500, cancellationToken); // Wait for menu to open
 
+                // Alliance loot chests (from members' rallies) wait under Chests; claiming them is free
+                await ClaimAllianceChestsAsync(account, logger, cancellationToken);
+
                 // Step 2: Find and click alliance tech button
                 logger.LogInfo($"[{account.AccountName}] 🔍 Looking for alliance tech button...");
                 var allianceTechPath = Path.Combine(_templateFolder, "alliance-tech.png");
@@ -360,6 +363,51 @@ namespace Bot.Core.Tasks.Modules
         /// <summary>
         /// Helper method to find and click an image with timeout and interval checking
         /// </summary>
+        /// <summary>
+        /// From the alliance menu: Chests → Claim All (only when it is lit green; greyed out means nothing to claim)
+        /// → dismiss the rewards → back to the alliance menu. Never touches the Alliance Gift tab, whose only
+        /// button leads to buying gift packs. Best effort: a miss never fails the technology part.
+        /// </summary>
+        private async Task ClaimAllianceChestsAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
+        {
+            if (!await FindAndClickWithTimeoutAsync(account, logger, cancellationToken, Path.Combine(_templateFolder, "chests-button.png"),
+                    "alliance chests", 3000, SEARCH_INTERVAL_MS))
+                return;
+            await Task.Delay(1500, cancellationToken);
+
+            var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            if (screenshot == null) return;
+            if (_templateMatcher == null) _templateMatcher = new UnifiedTemplateMatchingService(logger);
+            var (found, claimRect, _) = _templateMatcher.MatchTemplate(screenshot, Path.Combine(_templateFolder, "claim-all.png"),
+                account.InstanceNumber, threshold: 0.9, searchArea: new Rectangle(150, 1150, 420, 120));
+            if (found && IsLitGreen(screenshot, claimRect))
+            {
+                logger.LogInfo($"[{account.AccountName}] 🎁 Claiming all alliance loot chests");
+                await ClickRandomInRectAsync(account.InstanceNumber, logger, claimRect);
+                await Task.Delay(2500, cancellationToken);
+                await ClickAsync(account.InstanceNumber, logger, new Point(360, 1150)); // "Tap anywhere to exit" the rewards
+                await Task.Delay(1500, cancellationToken);
+            }
+            else
+            {
+                logger.LogInfo($"[{account.AccountName}] No alliance loot chests to claim");
+            }
+
+            await ClickAsync(account.InstanceNumber, logger, new Point(40, 40)); // Chests page back arrow → alliance menu
+            await Task.Delay(1500, cancellationToken);
+        }
+
+        /// <summary>True when the button is the green "Claim All" rather than its grey, disabled version.</summary>
+        private static bool IsLitGreen(byte[] screenshot, Rectangle rect)
+        {
+            using var img = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
+            if (img.Empty()) return false;
+            var r = new OpenCvSharp.Rect(rect.X, rect.Y, rect.Width, rect.Height) & new OpenCvSharp.Rect(0, 0, img.Width, img.Height);
+            using var roi = new OpenCvSharp.Mat(img, r);
+            var mean = OpenCvSharp.Cv2.Mean(roi); // BGR
+            return mean.Val1 - mean.Val2 > 40;
+        }
+
         private async Task<bool> FindAndClickWithTimeoutAsync(
             AccountSettings account, 
             LogService logger, 
