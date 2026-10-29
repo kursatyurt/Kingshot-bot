@@ -2,7 +2,7 @@
 # macOS stand-in for LDPlayer's ldconsole/dnconsole, backed by Android Studio emulators (AVDs).
 # Instance N = AVD "Kingshot_N" on console port 5554+2N (ADB serial emulator-<port>),
 # the same serial scheme the bot uses for LDPlayer.
-# Supported verbs: list2, launch, quit [--force], reboot, isrunning, runapp --packagename P.
+# Supported verbs: list2, launch, quit [--force], reboot, isrunning, runapp|killapp --packagename P.
 # modify, zoomOut and globalsetting are accepted no-ops (configure resolution in the AVD instead).
 
 SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}}"
@@ -54,7 +54,9 @@ case "$verb" in
       echo "Instance not found: no AVD named $(name "$index")"; exit 1
     fi
     if [ -n "$(pid_of "$index")" ]; then echo "already running"; exit 0; fi
-    nohup "$EMULATOR" -avd "$(name "$index")" -port "$(port "$index")" -no-boot-anim -no-audio >/dev/null 2>&1 &
+    # -no-snapshot: always cold boot. A quick-boot snapshot saved at quit can come back "not compatible",
+    # which makes the emulator exit at launch. Emulator output goes to a log for diagnosis.
+    nohup "$EMULATOR" -avd "$(name "$index")" -port "$(port "$index")" -no-boot-anim -no-audio -no-snapshot >"${TMPDIR:-/tmp}/kingshot-emulator-$index.log" 2>&1 &
     ;;
   quit)
     require_index
@@ -72,11 +74,18 @@ case "$verb" in
     ;;
   runapp)
     require_index
+    # Gesture navigation reserves the left screen edge for "back", so the bot's taps there (e.g. the side
+    # menu tab at x=12) closed the game. Turn off the left back-gesture zone; the screen layout is unchanged.
+    "$ADB" -s "$(serial "$index")" shell settings put secure back_gesture_inset_scale_left 0 </dev/null
     "$ADB" -s "$(serial "$index")" shell monkey -p "$pkg" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
+    ;;
+  killapp)
+    require_index
+    "$ADB" -s "$(serial "$index")" shell am force-stop "$pkg" </dev/null
     ;;
   modify|zoomOut|globalsetting)
     ;;
   *)
-    echo "Usage: ldconsole list2|launch|quit|reboot|isrunning|runapp --index N" >&2; exit 1
+    echo "Usage: ldconsole list2|launch|quit|reboot|isrunning|runapp|killapp --index N" >&2; exit 1
     ;;
 esac

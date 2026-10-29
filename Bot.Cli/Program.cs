@@ -39,7 +39,14 @@ if (config.Accounts.Count == 0)
 }
 
 using var cts = new CancellationTokenSource();
-Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
+Console.CancelKeyPress += (_, e) =>
+{
+    e.Cancel = true;
+    if (cts.IsCancellationRequested) Environment.Exit(130); // second Ctrl+C: stop right away
+    cts.Cancel();
+    // Some long steps (e.g. emulator recovery) don't observe cancellation; never let them keep running
+    _ = Task.Delay(TimeSpan.FromSeconds(30)).ContinueWith(_ => Environment.Exit(130));
+};
 Console.WriteLine($"Running {config.Accounts.Count} account(s) from {Path.GetFullPath(configPath)}. Ctrl+C to stop.");
 
 try

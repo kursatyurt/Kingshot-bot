@@ -250,6 +250,22 @@ namespace Bot.Core.Utils
                         return viewResult;
                     }
                     
+                    // Unknown screens are usually a page or pop-up the bot has no template for (e.g. the screen shown
+                    // when gathering with every march slot busy); Android back closes most of them in a second,
+                    // long before the ad loop gives up and restarts the game. Only reached when neither the city
+                    // nor the map is detected, so it never opens the game's exit dialog from the city view.
+                    if (attempt <= 3)
+                    {
+                        var adb = await ADBConnectionManager.GetConnectionAsync(_account.InstanceNumber, _logger, CancellationToken.None);
+                        if (adb != null)
+                        {
+                            _logger.LogInfo($"[{_account.AccountName}] No ads or views found, pressing back to close the unknown screen...");
+                            await adb.InputKeyEventAsync(4); // KEYCODE_BACK
+                            await Task.Delay(1500);
+                            continue;
+                        }
+                    }
+
                     _logger.LogInfo($"[{_account.AccountName}] No ads or views found, waiting before retry...");
                     await Task.Delay(AD_CHECK_DELAY);
                 }

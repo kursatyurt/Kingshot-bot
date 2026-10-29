@@ -266,8 +266,22 @@ namespace Bot.Core.Tasks.Modules
                         return TaskExecutionDetails.Succeeded();
                     }
 
-                    // If enhanced recovery fails, proceed with full instance restart
-                    userNotifications?.ShowWarning("Navigation recovery failed, restarting emulator...", "This may take a few minutes");
+                    // Next, restart just the game: far faster than an emulator restart and usually enough
+                    // (StartupTask relaunches the app and gets past the loading screen and launch pop-ups)
+                    userNotifications?.ShowWarning("Navigation recovery failed, restarting the game...", "This takes about a minute");
+                    logger.LogInfo($"[{account.AccountName}] Restarting the game app...");
+                    await RunGameConsoleCommandAsync("killapp", account.InstanceNumber, cancellationToken);
+                    var gameRestart = new StartupTask();
+                    await gameRestart.InitializeAsync(logger, cancellationToken);
+                    if ((await gameRestart.ExecuteAsync(account, logger, cancellationToken, false, userNotifications)).Success)
+                    {
+                        logger.LogInfo($"[{account.AccountName}] ✅ Recovered by restarting the game");
+                        userNotifications?.ShowSuccess("Bot recovered after restarting the game!");
+                        return TaskExecutionDetails.Succeeded();
+                    }
+
+                    // If that fails too, proceed with full instance restart
+                    userNotifications?.ShowWarning("Game restart did not recover, restarting emulator...", "This may take a few minutes");
                     
                     var ldConsolePath = LDPlayerHelper.GetLDPlayerConsolePath();
                     var dnConsolePath = LDPlayerHelper.GetDNPlayerConsolePath();

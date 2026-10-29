@@ -400,6 +400,31 @@ namespace Bot.Core.Tasks
             }, false);
         }
         
+        protected const string GamePackage = "com.run.tower.defense";
+
+        /// <summary>
+        /// Runs an emulator console command for the game app, e.g. "killapp" or "runapp"
+        /// (ldconsole on Windows, tools/macos/ldconsole on macOS).
+        /// </summary>
+        protected static async Task RunGameConsoleCommandAsync(string verb, int instanceNumber, CancellationToken cancellationToken)
+        {
+            using var process = Process.Start(new ProcessStartInfo(LDPlayerHelper.GetDNPlayerConsolePath(),
+                $"{verb} --index {instanceNumber} --packagename {GamePackage}")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true
+            });
+            if (process != null) await process.WaitForExitAsync(cancellationToken);
+        }
+
+        /// <summary>
+        /// Press the Android back key (closes the current game page or dialog)
+        /// </summary>
+        protected async Task<bool> PressBackAsync(int instanceNumber, LogService logger)
+        {
+            return await WithADBControllerAsync(instanceNumber, logger, adb => ADBMigrationHelper.PressBackAsync(adb), false);
+        }
+
         /// <summary>
         /// Click at center location within rectangle bounds
         /// </summary>

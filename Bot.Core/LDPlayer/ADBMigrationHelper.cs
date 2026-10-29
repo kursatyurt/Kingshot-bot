@@ -83,6 +83,21 @@ namespace Bot.Core.LDPlayer
         }
 
         /// <summary>
+        /// Press the Android back key using V2 system
+        /// </summary>
+        public static async Task<bool> PressBackAsync(object connection, CancellationToken cancellationToken = default)
+        {
+            if (connection is ADBControllerV2 v2Controller)
+            {
+                return await v2Controller.PressBackButtonAsync(cancellationToken);
+            }
+            else
+            {
+                throw new ArgumentException("Invalid connection type - expected ADBControllerV2");
+            }
+        }
+
+        /// <summary>
         /// Execute a random tap in rectangle using V2 system
         /// </summary>
         public static async Task<bool> TapRandomInRectAsync(object connection, int x1, int y1, int x2, int y2, LogService logger, CancellationToken cancellationToken = default)
