@@ -32,10 +32,12 @@ namespace Bot.Core.Tasks.Modules
 
         protected override async Task<TaskExecutionDetails> ExecuteTaskLogicAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken, bool isReRun = false, IUserNotificationService? userNotifications = null)
         {
+            var locator = new LocatorService(logger, account, TaskType);
+            await ClaimStorehouseRewardsAsync(account, logger, locator, cancellationToken);
+
             if (_lastRun.TryGetValue(account.InstanceNumber, out var last) && DateTime.UtcNow - last < Interval)
                 return new TaskExecutionDetails(true, message: "Skipped: checked recently");
 
-            var locator = new LocatorService(logger, account, TaskType);
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
 
             // The previous task may still be closing its page: look a few times
@@ -72,6 +74,64 @@ namespace Bot.Core.Tasks.Modules
             await Task.Delay(1500, cancellationToken);
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
             return new TaskExecutionDetails(true, message: $"Claimed {claimed} event reward(s)");
+        }
+
+        private static readonly ConcurrentDictionary<int, DateTime> _nextStorehouseCheck = new();
+
+        /// <summary>
+        /// The Storehouse gives a Gourmet Feast (twice a day) and an online chest every few minutes. The side panel's
+        /// Daily tab has the feast row: its button opens the feast (green Claim when ready) and centres the Storehouse,
+        /// whose chest bubble is then tapped.
+        /// </summary>
+        private async Task ClaimStorehouseRewardsAsync(AccountSettings account, LogService logger, LocatorService locator, CancellationToken cancellationToken)
+        {
+            if (_nextStorehouseCheck.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next) return;
+            _nextStorehouseCheck[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(15);
+
+            await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
+            if (!await OpenSidePanelAsync(account.InstanceNumber, logger, cancellationToken)) return;
+            await ClickAsync(account.InstanceNumber, logger, new Point(370, 268)); // Daily tab
+            await Task.Delay(1200, cancellationToken);
+            await ClickAsync(account.InstanceNumber, logger, new Point(408, 378)); // Gourmet Feast row button
+            await Task.Delay(2500, cancellationToken);
+
+            var feast = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            var claim = new Rectangle(300, 935, 160, 30);
+            if (feast != null && IsLitGreen(feast, claim))
+            {
+                logger.LogInfo($"[{account.AccountName}] 🍗 Claiming the Gourmet Feast");
+                await ClickAsync(account.InstanceNumber, logger, new Point(380, 952));
+                await Task.Delay(2500, cancellationToken);
+            }
+            else if (feast != null && HasDimmedBackdrop(feast))
+            {
+                await ClickAsync(account.InstanceNumber, logger, new Point(608, 182)); // close the feast without claiming
+                await Task.Delay(1500, cancellationToken);
+            }
+
+            // The Storehouse is centred now; its chest bubble shows when the online chest is ready
+            for (int chest = 0; chest < 3; chest++)
+            {
+                var city = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                if (city == null) break;
+                var (found, rect, _) = _templateMatcher.MatchTemplate(city, Path.Combine(ImageTemplateFolder, "storehouse-chest-bubble.png"),
+                    account.InstanceNumber, threshold: 0.88);
+                if (!found) break;
+                logger.LogInfo($"[{account.AccountName}] 🎁 Collecting the Storehouse online chest");
+                await ClickRandomInRectAsync(account.InstanceNumber, logger, rect);
+                await Task.Delay(2500, cancellationToken);
+                await ClickAsync(account.InstanceNumber, logger, new Point(360, 1150)); // dismiss "Next Chest Ready In"
+                await Task.Delay(1500, cancellationToken);
+            }
+            await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
+        }
+
+        private static bool HasDimmedBackdrop(byte[] screenshot)
+        {
+            using var img = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
+            if (img.Empty()) return false;
+            using var roi = new OpenCvSharp.Mat(img, new OpenCvSharp.Rect(0, 0, 720, 60));
+            return OpenCvSharp.Cv2.Mean(roi).Val2 < 85;
         }
 
         /// <summary>True for a green, claimable button; its grey version (mission not done) has G ≈ R.</summary>
