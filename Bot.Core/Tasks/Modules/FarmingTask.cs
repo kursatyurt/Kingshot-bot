@@ -170,12 +170,22 @@ namespace Bot.Core.Tasks.Modules
                 
                 logger.LogInfo($"[{account.AccountName}] 🧭 Ensuring bot is in MapView for farming...");
                 var locator = new LocatorService(logger, account);
-                await locator.EnsureViewAsync(ViewType.MapView, account.InstanceNumber);
-
-                // Add 1 second delay after map view
-                await WaitIfPausedAsync(cancellationToken);
-                if (cancellationToken.IsCancellationRequested) return TaskExecutionDetails.Failed("Task was cancelled");
-                await Task.Delay(1000, cancellationToken);
+                // After a game restart or a recovery we can end up in the city, where the march counter is missing too:
+                // read as "no march out", the bot then tried to send from the city. Confirm the map before reading it.
+                bool onMap = false;
+                for (int look = 0; look < 2 && !onMap; look++)
+                {
+                    await locator.EnsureViewAsync(ViewType.MapView, account.InstanceNumber, cancellationToken);
+                    await WaitIfPausedAsync(cancellationToken);
+                    await Task.Delay(1000, cancellationToken);
+                    try { onMap = await locator.DetectCurrentViewAsync(account.InstanceNumber, cancellationToken) == ViewType.MapView; }
+                    catch (Exception ex) when (ex is not OperationCanceledException) { }
+                }
+                if (!onMap)
+                {
+                    logger.LogWarning($"[{account.AccountName}] Could not reach the world map; farming again next cycle");
+                    return TaskExecutionDetails.Failed("World map not reached");
+                }
 
                 // Check and activate gathering boost if enabled
                 await CheckAndActivateGatheringBoostAsync(account, logger, cancellationToken);
