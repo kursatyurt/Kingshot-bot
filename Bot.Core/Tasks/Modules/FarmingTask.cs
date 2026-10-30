@@ -407,13 +407,20 @@ namespace Bot.Core.Tasks.Modules
             }
 
             // 4. Use a reliable Regex to parse the "current/max" pattern.
+            // The thin slash is often read as a "1": "1/1" comes back as "111", "2/2" as "212" or "221"
             Match match = Regex.Match(text, @"(\d+)\s*/\s*(\d+)");
+            if (!match.Success) match = Regex.Match(text.Trim(), @"^(\d)\d(\d)$");
             if (match.Success && int.TryParse(match.Groups[1].Value, out int current) && int.TryParse(match.Groups[2].Value, out int max)) {
                 int available = max - current;
                 logger.LogInfo($"[{account.AccountName}] Parsed Marches: {current}/{max}. Available: {available}");
                 return available > 0 ? available : 0;
             }
 
+            if (justSentMarch)
+            {
+                logger.LogInfo($"[{account.AccountName}] Could not parse march capacity from '{text}' after sending; not risking a send into a full queue.");
+                return 0;
+            }
             logger.LogInfo($"[{account.AccountName}] Could not parse march capacity from '{text}'. Assuming at least 1 march is available.");
             return 1; // Assume at least 1 march is available when parsing fails
         }
