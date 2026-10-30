@@ -68,6 +68,10 @@ namespace Bot.Core.Tasks.Modules
         {
             try
             {
+                // Accounts that haven't farmed since the bot started aren't loaded yet: keep their saved place, or the
+                // first account to send after a restart reset the others to Bread
+                if (File.Exists(RotationFile) && System.Text.Json.JsonSerializer.Deserialize<Dictionary<int, int>>(File.ReadAllText(RotationFile)) is { } saved)
+                    foreach (var (instance, index) in saved) _farmingRotationIndexes.TryAdd(instance, index);
                 Directory.CreateDirectory(Path.GetDirectoryName(RotationFile)!);
                 File.WriteAllText(RotationFile, System.Text.Json.JsonSerializer.Serialize(_farmingRotationIndexes.ToDictionary(kv => kv.Key, kv => kv.Value)));
             }
