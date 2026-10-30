@@ -115,6 +115,7 @@ namespace Bot.Core.Tasks.Modules
 
                 // Alliance loot chests (from members' rallies) wait under Chests; claiming them is free
                 await ClaimAllianceChestsAsync(account, logger, cancellationToken);
+                await RenewTerrorAutoJoinAsync(account, logger, cancellationToken);
 
                 // Step 2: Find and click alliance tech button
                 logger.LogInfo($"[{account.AccountName}] 🔍 Looking for alliance tech button...");
@@ -399,6 +400,48 @@ namespace Bot.Core.Tasks.Modules
 
             await ClickAsync(account.InstanceNumber, logger, new Point(40, 40)); // Chests page back arrow → alliance menu
             await Task.Delay(1500, cancellationToken);
+        }
+
+        private static readonly Point WarButton = new(190, 678);
+        private static readonly Point AutoJoinButton = new(360, 1225);
+        private static readonly Rectangle AutoJoinEnableButton = new(345, 1060, 315, 65); // "Enable", or "Restart" while on
+        private static readonly Point AutoJoinClose = new(668, 147);
+
+        /// <summary>
+        /// Alliance menu → War → Auto-Join → Enable/Restart: the game then joins Terror (and Desert Trial) rallies
+        /// by itself for 8 hours, so renewing it every alliance run (4 h) keeps it on. Its queue limit is set to 1
+        /// in the game once, leaving the other march for gathering. Best effort.
+        /// </summary>
+        private async Task RenewTerrorAutoJoinAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
+        {
+            await ClickAsync(account.InstanceNumber, logger, WarButton);
+            await Task.Delay(2000, cancellationToken);
+            await ClickAsync(account.InstanceNumber, logger, AutoJoinButton);
+            await Task.Delay(1500, cancellationToken);
+            var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            if (screenshot != null && IsCyan(screenshot, AutoJoinEnableButton))
+            {
+                logger.LogInfo($"[{account.AccountName}] ⚔️ Renewing Terror rally Auto-Join");
+                await ClickRandomInRectAsync(account.InstanceNumber, logger, AutoJoinEnableButton);
+                await Task.Delay(1500, cancellationToken);
+            }
+            else
+            {
+                logger.LogInfo($"[{account.AccountName}] Auto-Join dialog not found; Terror rallies not renewed");
+            }
+            await ClickAsync(account.InstanceNumber, logger, AutoJoinClose);
+            await Task.Delay(1000, cancellationToken);
+            await ClickAsync(account.InstanceNumber, logger, new Point(40, 40)); // War page back arrow → alliance menu
+            await Task.Delay(1500, cancellationToken);
+        }
+
+        private static bool IsCyan(byte[] screenshot, Rectangle rect)
+        {
+            using var img = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
+            if (img.Empty()) return false;
+            using var roi = new OpenCvSharp.Mat(img, new OpenCvSharp.Rect(rect.X, rect.Y, rect.Width, rect.Height));
+            var mean = OpenCvSharp.Cv2.Mean(roi); // BGR
+            return mean.Val0 > 150 && mean.Val1 > 150 && mean.Val2 < 120;
         }
 
         private static readonly Point LootChestTab = new(190, 400);
