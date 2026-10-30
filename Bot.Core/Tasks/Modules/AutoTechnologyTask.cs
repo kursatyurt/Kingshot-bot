@@ -170,7 +170,7 @@ namespace Bot.Core.Tasks.Modules
         /// speed). One distinctive word each, since OCR adds stray letters inside titles ("CommandjTiactics]ll").
         /// </summary>
         private static readonly string[] PriorityResearch = { "Command", "Enhanc" };
-        private static readonly Rectangle ResearchTitleArea = new Rectangle(110, 178, 500, 48); // "Stone Output I" in the dialog's header
+        private static readonly Rectangle ResearchTitleArea = new Rectangle(60, 120, 600, 140); // the dialog header with "Stone Output I"; tall, as the dialog sits at different heights
 
         private async Task<TaskExecutionDetails> StartResearchAsync(AccountSettings account, LogService logger, LocatorService locator,
             ResearchType researchType, Point button, string what, CancellationToken cancellationToken)
