@@ -1198,5 +1198,31 @@ namespace Bot.Core.Tasks
             logger.LogInfo($"[{account.AccountName}] Could not parse march capacity from '{text}'. Assuming at least 1 march is available.");
             return 1; // Assume at least 1 march is available when parsing fails
         }
+
+        /// <summary>
+        /// After an upgrade or a research starts, the game shows the alliance help handshake; tapping it asks alliance
+        /// members to speed the upgrade up. No handshake (e.g. not in an alliance) is fine.
+        /// </summary>
+        protected async Task RequestAllianceHelpAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
+        {
+            // The white handshake bubble over our own upgrading building asks for help (0.89+); the green one helps allies
+            var handshake = Path.Combine(Path.GetDirectoryName(ImageTemplateFolder)!, "alliance", "request-help-bubble.png");
+            for (int attempt = 1; attempt <= 3; attempt++)
+            {
+                await Task.Delay(1000, cancellationToken);
+                var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                if (screenshot == null) continue;
+
+                var (found, rect, confidence) = _templateMatcher.MatchTemplate(screenshot, handshake, account.InstanceNumber, threshold: 0.85);
+                if (found)
+                {
+                    logger.LogInfo($"[{account.AccountName}] Requesting alliance help (confidence {confidence:F2})");
+                    await ClickRandomInRectAsync(account.InstanceNumber, logger, rect);
+                    await Task.Delay(1000, cancellationToken);
+                    return;
+                }
+            }
+            logger.LogInfo($"[{account.AccountName}] No alliance help bubble (already requested, or not in an alliance)");
+        }
     }
 }

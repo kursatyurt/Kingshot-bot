@@ -801,32 +801,6 @@ namespace Bot.Core.Tasks.Modules
         }
 
         /// <summary>
-        /// After an upgrade starts, the game shows the alliance help handshake; tapping it asks alliance
-        /// members to speed the upgrade up. No handshake (e.g. not in an alliance) is fine.
-        /// </summary>
-        private async Task RequestAllianceHelpAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
-        {
-            // The white handshake bubble over our own upgrading building asks for help (0.89+); the green one helps allies
-            var handshake = Path.Combine(Path.GetDirectoryName(ImageTemplateFolder)!, "alliance", "request-help-bubble.png");
-            for (int attempt = 1; attempt <= 3; attempt++)
-            {
-                await Task.Delay(1000, cancellationToken);
-                var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
-                if (screenshot == null) continue;
-
-                var (found, rect, confidence) = _templateMatcher.MatchTemplate(screenshot, handshake, account.InstanceNumber, threshold: 0.85);
-                if (found)
-                {
-                    logger.LogInfo($"[{account.AccountName}] Requesting alliance help for the upgrade (confidence {confidence:F2})");
-                    await ClickRandomInRectAsync(account.InstanceNumber, logger, rect);
-                    await RandomDelay(cancellationToken);
-                    return;
-                }
-            }
-            logger.LogInfo($"[{account.AccountName}] No alliance help bubble (already requested, or not in an alliance)");
-        }
-
-        /// <summary>
         /// Closes and relaunches the game through the emulator console (ldconsole killapp/runapp), then waits
         /// for it to load. A fresh start puts the city camera back on the Town Center.
         /// </summary>

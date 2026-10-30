@@ -80,8 +80,14 @@ namespace Bot.Core.Tasks.Modules
             await Task.Delay(1500, cancellationToken);
 
             // The tree runs far below one screen (Command Tactics II, the next march queue, is deep in Growth):
-            // find the items on each page by their level badges, then scroll on until the page stops changing
+            // find the items on each page by their level badges, then scroll on until the page stops changing.
+            // Strategy: a priority research (march queue, construction speed) or a new item (level 0, which unlocks
+            // the items below it) starts at once; levelling an item already started is only the fallback, so the
+            // tree is opened toward Command Tactics instead of maxing every item on the way.
             // ponytail: rescans the overlap between pages; fine while a scan only runs every 20 minutes
+            using var badgeOcr = new OCRService(logger, new OCRConfiguration { ScaleFactor = 3.0f, PageSegMode = PageSegMode.SingleLine, CharacterWhitelist = "0123456789/" });
+            using var titleOcr = new OCRService(logger, new OCRConfiguration { ScaleFactor = 2.0f });
+            (int page, Point item, double progress, string title)? fallback = null;
             byte[]? previousPage = null;
             for (int page = 0; page < 15; page++)
             {
@@ -91,23 +97,28 @@ namespace Bot.Core.Tasks.Modules
                 previousPage = pageShot;
                 foreach (var item in FindTreeItems(pageShot))
                 {
+                    var badge = badgeOcr.ExtractBrightTextFromScreenArea(pageShot, new Rectangle(item.X - 35, item.Y + 46, 70, 28));
                     await ClickAsync(account.InstanceNumber, logger, item);
                     await Task.Delay(1500, cancellationToken);
                     var dialog = await TakeScreenshotAsync(account.InstanceNumber, logger);
                     var research = dialog == null ? null : FindResearchButton(dialog);
                     if (research is Point button)
                     {
-                        logger.LogInfo($"[{account.AccountName}] 🔬 Starting {researchType} research (item at {item.X},{item.Y}, page {page})");
-                        await ClickAsync(account.InstanceNumber, logger, button);
-                        await Task.Delay(2000, cancellationToken);
-                        AutoTechnologySettings.AdvanceResearchType(account.InstanceNumber);
-                        _nextCheck[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(5); // short researches finish fast
-                        await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
-                        return new TaskExecutionDetails(true, message: $"Started {researchType} research");
+                        // The outlined title font gets stray marks from OCR: compare its letters only ("CommandTacticsII")
+                        var title = System.Text.RegularExpressions.Regex.Replace(titleOcr.ExtractTextFromScreenArea(dialog!, ResearchTitleArea), "[^A-Za-z]", "");
+                        var level = System.Text.RegularExpressions.Regex.Match(badge, @"(\d+)\s*/\s*(\d+)");
+                        bool isNew = level.Success && level.Groups[1].Value == "0";
+                        bool isPriority = PriorityResearch.Any(p => title.Contains(p, StringComparison.OrdinalIgnoreCase));
+                        if (isPriority || isNew)
+                            return await StartResearchAsync(account, logger, locator, researchType, button,
+                                $"{(isPriority ? "priority" : "new")} '{title}' ({badge.Trim()}), page {page}", cancellationToken);
+                        double progress = level.Success && int.TryParse(level.Groups[2].Value, out var max) && max > 0
+                            ? int.Parse(level.Groups[1].Value) / (double)max : 1;
+                        if (fallback == null || progress < fallback.Value.progress) fallback = (page, item, progress, title);
                     }
                     if (dialog != null && HasDialogOpen(dialog))
                     {
-                        await PressBackAsync(account.InstanceNumber, logger); // close a locked or maxed item
+                        await PressBackAsync(account.InstanceNumber, logger); // close a locked, maxed or deferred item
                         await Task.Delay(1000, cancellationToken);
                     }
                 }
@@ -115,10 +126,60 @@ namespace Bot.Core.Tasks.Modules
                 await Task.Delay(1200, cancellationToken);
             }
 
+            if (fallback is { } f)
+            {
+                // Nothing new or prioritised: level up the least-researched item that can start. Back to the top,
+                // then the same slow swipes land on the same page.
+                for (int up = 0; up < 15; up++)
+                {
+                    var before = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                    await SwipeAsync(account.InstanceNumber, logger, new Point(360, 300), new Point(360, 1100), 300);
+                    await Task.Delay(800, cancellationToken);
+                    var after = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                    if (before != null && after != null && SamePage(before, after)) break;
+                }
+                for (int page = 0; page < f.page; page++)
+                {
+                    await SwipeAsync(account.InstanceNumber, logger, new Point(360, 1000), new Point(360, 420), 1500);
+                    await Task.Delay(1200, cancellationToken);
+                }
+                var shot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                var target = shot == null ? (Point?)null : FindTreeItems(shot).OrderBy(p => Math.Abs(p.X - f.item.X) + Math.Abs(p.Y - f.item.Y)).Cast<Point?>().FirstOrDefault();
+                if (target is Point t && Math.Abs(t.X - f.item.X) + Math.Abs(t.Y - f.item.Y) < 60)
+                {
+                    await ClickAsync(account.InstanceNumber, logger, t);
+                    await Task.Delay(1500, cancellationToken);
+                    var dialog = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                    if (dialog != null && FindResearchButton(dialog) is Point button)
+                        return await StartResearchAsync(account, logger, locator, researchType, button, $"levelling '{f.title}', page {f.page}", cancellationToken);
+                }
+                logger.LogInfo($"[{account.AccountName}] Could not get back to '{f.title}' to level it up");
+            }
+
             logger.LogInfo($"[{account.AccountName}] No {researchType} research available right now");
             AutoTechnologySettings.AdvanceResearchType(account.InstanceNumber); // try the other category next time
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
             return new TaskExecutionDetails(true, message: $"No {researchType} research available");
+        }
+
+        /// <summary>
+        /// Researches started as soon as they can be: Command Tactics (march queue) and Tool Enhancement (construction
+        /// speed). One distinctive word each, since OCR adds stray letters inside titles ("CommandjTiactics]ll").
+        /// </summary>
+        private static readonly string[] PriorityResearch = { "Command", "Enhanc" };
+        private static readonly Rectangle ResearchTitleArea = new Rectangle(110, 178, 500, 48); // "Stone Output I" in the dialog's header
+
+        private async Task<TaskExecutionDetails> StartResearchAsync(AccountSettings account, LogService logger, LocatorService locator,
+            ResearchType researchType, Point button, string what, CancellationToken cancellationToken)
+        {
+            logger.LogInfo($"[{account.AccountName}] 🔬 Starting {researchType} research: {what}");
+            await ClickAsync(account.InstanceNumber, logger, button);
+            await Task.Delay(2000, cancellationToken);
+            AutoTechnologySettings.AdvanceResearchType(account.InstanceNumber);
+            _nextCheck[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(5); // short researches finish fast
+            await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
+            await RequestAllianceHelpAsync(account, logger, cancellationToken); // the Academy's handshake bubble
+            return new TaskExecutionDetails(true, message: $"Started {researchType} research");
         }
 
         /// <summary>
