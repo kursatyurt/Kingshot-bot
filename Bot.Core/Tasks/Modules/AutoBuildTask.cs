@@ -64,6 +64,8 @@ namespace Bot.Core.Tasks.Modules
         protected override async Task<TaskExecutionDetails> ExecuteTaskLogicAsync(
             AccountSettings account, LogService logger, CancellationToken cancellationToken, bool isReRun = false, IUserNotificationService? userNotifications = null)
         {
+            if (account.AutoBuildSettings.EnableAutoSpeedup && await SpeedUpConstructionAsync(account, logger, cancellationToken))
+                _nextBuildCheck.TryRemove(account.InstanceNumber, out _); // the builder is free again: build now
             if (_nextBuildCheck.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next)
             {
                 logger.LogInfo($"[{account.AccountName}] Auto Build checked recently; next check after {next.ToLocalTime():HH:mm}");
@@ -91,11 +93,9 @@ namespace Bot.Core.Tasks.Modules
         /// </summary>
         private async Task UpgradeSuggestedBuildingAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
         {
-            if (FarmingTask.TownCenterIsShortOfResources(account.InstanceNumber))
-            {
-                logger.LogInfo($"[{account.AccountName}] Saving resources for the Town Center; no other upgrade now");
-                return;
-            }
+            // An idle builder is the bigger waste: houses, the Infirmary and resource buildings level up on what is on
+            // hand. Only backpack items stay unopened while the Town Center waits for resources.
+            var townCenterShort = FarmingTask.TownCenterIsShortOfResources(account.InstanceNumber);
             await SwipeAsync(account.InstanceNumber, logger, CentredBuildingPoint, new Point(CentredBuildingPoint.X + 1, CentredBuildingPoint.Y + 1), 150);
             await Task.Delay(1500, cancellationToken);
             if (!await TapRingButtonAsync(account.InstanceNumber, logger, Path.Combine(ImageTemplateFolder, "ring-upgrade.png"), BuildingRingUpgradeButton))
@@ -117,7 +117,7 @@ namespace Bot.Core.Tasks.Modules
                 }
             }
 
-            if (missing.Count > 0 && await UseBackpackResourcesAsync(account, logger, cancellationToken))
+            if (missing.Count > 0 && !townCenterShort && await UseBackpackResourcesAsync(account, logger, cancellationToken))
                 missing = await ReadRequirementsAsync(account, logger, cancellationToken) ?? missing;
             if (missing.Count > 0)
             {
@@ -154,7 +154,7 @@ namespace Bot.Core.Tasks.Modules
         private async Task BuildNewBuildingsAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
         {
             if (_nextNewBuildingCheck.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next) return;
-            _nextNewBuildingCheck[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(30);
+            _nextNewBuildingCheck[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(10); // an idle builder should not wait long
 
             var locator = new LocatorService(logger, account);
             var buildButton = Path.Combine(ImageTemplateFolder, "build-button.png");
@@ -315,6 +315,99 @@ namespace Bot.Core.Tasks.Modules
         /// <summary>
         /// Taps the middle of the city view and checks that the Town Center page opened; closes whatever opened otherwise.
         /// </summary>
+        private static readonly ConcurrentDictionary<int, DateTime> _nextSpeedupCheck = new();
+
+        /// <summary>Side panel rows that can be sped up: name, its arrow, and where its countdown shows.</summary>
+        private static readonly (string name, Point arrow, Rectangle status)[] SpeedupRows =
+        {
+            ("Construction", new Point(405, 378), new Rectangle(150, 376, 160, 30)),
+            ("Infantry training", new Point(405, 563), new Rectangle(150, 563, 160, 30)),
+            ("Cavalry training", new Point(405, 636), new Rectangle(150, 636, 160, 30)),
+            ("Archer training", new Point(405, 709), new Rectangle(150, 709, 160, 30)),
+            ("Research", new Point(405, 820), new Rectangle(150, 822, 160, 30)),
+        };
+
+        /// <summary>
+        /// For each busy queue (building, troop camps, research): side panel → its arrow (centres the building, ring
+        /// open) → Speedups → Quick Use, which picks owned speedups that fit the time left → Use. Never Finish (gems).
+        /// Returns true when the builder was sped up.
+        /// </summary>
+        private async Task<bool> SpeedUpConstructionAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
+        {
+            if (_nextSpeedupCheck.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next) return false;
+            _nextSpeedupCheck[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(10);
+            var locator = new LocatorService(logger, account);
+            bool builderSpedUp = false;
+            using var ocr = new OCRService(logger, new OCRConfiguration { ScaleFactor = 3.0f, PageSegMode = Tesseract.PageSegMode.SingleLine });
+            foreach (var (name, arrow, status) in SpeedupRows)
+            {
+                if (!await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken)) return builderSpedUp;
+                if (!await OpenSidePanelAsync(account.InstanceNumber, logger, cancellationToken)) return builderSpedUp;
+                var panel = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                var text = panel == null ? "" : ocr.ExtractBrightTextFromScreenArea(panel, status);
+                if (!System.Text.RegularExpressions.Regex.IsMatch(text, @"\d\d:\d\d:\d\d"))
+                {
+                    await ClickAsync(account.InstanceNumber, logger, new Point(464, 544)); // close the panel
+                    continue; // idle (or unreadable): nothing to speed up
+                }
+                await ClickAsync(account.InstanceNumber, logger, arrow);
+                await Task.Delay(2500, cancellationToken);
+                if (await UseQuickSpeedupsOnRingAsync(account, logger, name, cancellationToken) && name == "Construction")
+                    builderSpedUp = true;
+            }
+            await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
+            return builderSpedUp;
+        }
+
+        private async Task<bool> UseQuickSpeedupsOnRingAsync(AccountSettings account, LogService logger, string name, CancellationToken cancellationToken)
+        {
+            var ring = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            var (found, label, _) = ring == null ? (false, Rectangle.Empty, 0.0)
+                : _templateMatcher.MatchTemplate(ring, Path.Combine(ImageTemplateFolder, "ring-speedups.png"), account.InstanceNumber,
+                    threshold: 0.9, searchArea: new Rectangle(0, 600, 720, 350));
+            if (!found)
+            {
+                logger.LogInfo($"[{account.AccountName}] {name}: no Speedups on the ring; not speeding up");
+                return false;
+            }
+            await ClickAsync(account.InstanceNumber, logger, new Point(label.X + label.Width / 2, label.Y - 40)); // icon above its label
+            await Task.Delay(2000, cancellationToken);
+
+            var dialog = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            if (dialog == null || !IsCyan(dialog, QuickUseButton))
+            {
+                logger.LogInfo($"[{account.AccountName}] {name}: Speedup dialog not found");
+                return false;
+            }
+            await ClickRandomInRectAsync(account.InstanceNumber, logger, QuickUseButton);
+            await Task.Delay(1800, cancellationToken);
+            var confirm = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            // The confirmation lists the items; the first dialog's orange Finish (gems) must be gone
+            if (confirm == null || IsOrange(confirm, FinishButton) || !IsCyan(confirm, QuickUseConfirmButton))
+            {
+                logger.LogInfo($"[{account.AccountName}] {name}: no speedups to use (Quick Use offered none)");
+                return false;
+            }
+            logger.LogInfo($"[{account.AccountName}] ⏩ {name}: using speedups (Quick Use)");
+            await ClickRandomInRectAsync(account.InstanceNumber, logger, QuickUseConfirmButton);
+            await Task.Delay(2500, cancellationToken);
+            return true;
+        }
+
+        private static readonly Rectangle QuickUseButton = new(235, 940, 250, 60);
+        private static readonly Rectangle QuickUseConfirmButton = new(235, 962, 250, 56);
+        private static readonly Rectangle FinishButton = new(90, 835, 250, 60);
+
+        private static OpenCvSharp.Scalar MeanColor(byte[] screenshot, Rectangle rect)
+        {
+            using var img = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
+            if (img.Empty()) return default;
+            using var roi = new OpenCvSharp.Mat(img, new OpenCvSharp.Rect(rect.X, rect.Y, rect.Width, rect.Height));
+            return OpenCvSharp.Cv2.Mean(roi); // BGR
+        }
+        private static bool IsCyan(byte[] screenshot, Rectangle rect) { var m = MeanColor(screenshot, rect); return m.Val0 > 170 && m.Val1 > 160 && m.Val2 < 120; }
+        private static bool IsOrange(byte[] screenshot, Rectangle rect) { var m = MeanColor(screenshot, rect); return m.Val2 > 200 && m.Val0 < 110; }
+
         /// <summary>Building Queue 1's countdown on the city side panel, or null when the builder is idle or it can't be read.</summary>
         private async Task<TimeSpan?> ReadBuilderBusyForAsync(AccountSettings account, LogService logger, LocatorService locator, CancellationToken cancellationToken)
         {
