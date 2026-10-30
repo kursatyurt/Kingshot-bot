@@ -544,6 +544,17 @@ namespace Bot.Core.Tasks.Modules
         /// <summary>
         /// Detects if there are notification numbers in the specified area using OCR with enhanced debugging
         /// </summary>
+        private static bool HasRedBadge(byte[] screenshot, Rectangle area)
+        {
+            using var img = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
+            if (img.Empty()) return false;
+            var r = new OpenCvSharp.Rect(area.X, area.Y, area.Width, area.Height) & new OpenCvSharp.Rect(0, 0, img.Width, img.Height);
+            using var roi = new OpenCvSharp.Mat(img, r);
+            using var red = new OpenCvSharp.Mat();
+            OpenCvSharp.Cv2.InRange(roi, new OpenCvSharp.Scalar(0, 0, 170), new OpenCvSharp.Scalar(90, 90, 255), red); // BGR
+            return OpenCvSharp.Cv2.CountNonZero(red) > r.Width * r.Height / 20; // a badge fills ~15%, none 0%
+        }
+
         private async Task<bool> DetectNotificationNumber(Rectangle area, int instanceNumber, LogService logger, string tabName)
         {
             try
@@ -553,6 +564,13 @@ namespace Bot.Core.Tasks.Modules
                 if (screenshot == null)
                 {
                     logger.LogWarning($"Failed to take screenshot for {tabName} notification detection");
+                    return false;
+                }
+
+                // Badges are red circles; without one, OCR reads the scroll's own lines as "4"
+                if (!HasRedBadge(screenshot, area))
+                {
+                    logger.LogInfo($"[{tabName}] No notifications detected");
                     return false;
                 }
 
