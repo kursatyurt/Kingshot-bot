@@ -276,6 +276,18 @@ namespace Bot.Core.Tasks.Modules
                         if (cancellationToken.IsCancellationRequested) break;
                     }
                     
+                    // Stop once the button is gone (charges spent or a gem prompt appeared); never trust the count blindly.
+                    {
+                        var check = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                        if (check == null || !_templateMatcher.MatchTemplate(check, contributePath, account.InstanceNumber,
+                                threshold: TEMPLATE_MATCH_THRESHOLD, scales: UnifiedTemplateMatchingService.StandardScales,
+                                searchArea: ContributeButtonArea).found)
+                        {
+                            logger.LogInfo($"[{account.AccountName}] Contribute button gone after {i} taps; stopping");
+                            break;
+                        }
+                    }
+
                     if (!await ClickRandomInRectAsync(account.InstanceNumber, logger, matchRect))
                     {
                         logger.LogWarning($"[{account.AccountName}] ⚠️ Failed to click contribute button on attempt {i + 1}");
