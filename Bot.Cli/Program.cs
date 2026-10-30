@@ -14,6 +14,9 @@ using OpenCvSharp;
 
 var logger = new LogService();
 OpenFileLimit.Raise(logger);
+// An idle Mac sleeps and freezes the bot and the emulators with it: keep the system (not the display) awake until we exit
+if (OperatingSystem.IsMacOS())
+    System.Diagnostics.Process.Start("/usr/bin/caffeinate", $"-i -w {Environment.ProcessId}")?.Dispose();
 
 if (args.Contains("--selftest"))
     return SelfTest(logger);
