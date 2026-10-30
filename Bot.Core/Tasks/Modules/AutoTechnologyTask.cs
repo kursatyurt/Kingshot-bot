@@ -88,6 +88,22 @@ namespace Bot.Core.Tasks.Modules
             using var badgeOcr = new OCRService(logger, new OCRConfiguration { ScaleFactor = 3.0f, PageSegMode = PageSegMode.SingleLine, CharacterWhitelist = "0123456789/" });
             using var titleOcr = new OCRService(logger, new OCRConfiguration { ScaleFactor = 2.0f });
             (int page, Point item, double progress, string title)? fallback = null;
+            // Pass 0 starts a priority or new item; pass 1 rescans from the top for the fallback's title (scrolling
+            // back to a remembered page position is not repeatable enough to find it again)
+            for (int pass = 0; pass < 2; pass++)
+            {
+            if (pass == 1)
+            {
+                if (fallback == null) break;
+                for (int up = 0; up < 15; up++)
+                {
+                    var before = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                    await SwipeAsync(account.InstanceNumber, logger, new Point(360, 300), new Point(360, 1100), 300);
+                    await Task.Delay(800, cancellationToken);
+                    var after = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                    if (before != null && after != null && SamePage(before, after)) break;
+                }
+            }
             byte[]? previousPage = null;
             for (int page = 0; page < 15; page++)
             {
@@ -112,12 +128,14 @@ namespace Bot.Core.Tasks.Modules
                         var level = System.Text.RegularExpressions.Regex.Match(badge, @"(\d+)\s*/\s*(\d+)");
                         bool isNew = level.Success && level.Groups[1].Value == "0";
                         bool isPriority = PriorityResearch.Any(p => title.Contains(p, StringComparison.OrdinalIgnoreCase));
-                        if (isPriority || isNew)
+                        if (pass == 1 && title == fallback!.Value.title)
+                            return await StartResearchAsync(account, logger, locator, researchType, button, $"levelling '{title}' ({badge.Trim()}), page {page}", cancellationToken);
+                        if (pass == 0 && (isPriority || isNew))
                             return await StartResearchAsync(account, logger, locator, researchType, button,
                                 $"{(isPriority ? "priority" : "new")} '{title}' ({badge.Trim()}), page {page}", cancellationToken);
                         double progress = level.Success && int.TryParse(level.Groups[2].Value, out var max) && max > 0
                             ? int.Parse(level.Groups[1].Value) / (double)max : 1;
-                        if (fallback == null || progress < fallback.Value.progress) fallback = (page, item, progress, title);
+                        if (pass == 0 && (fallback == null || progress < fallback.Value.progress)) fallback = (page, item, progress, title);
                     }
                     if (dialog != null && HasDialogOpen(dialog))
                     {
@@ -129,35 +147,8 @@ namespace Bot.Core.Tasks.Modules
                 await Task.Delay(1200, cancellationToken);
             }
 
-            if (fallback is { } f)
-            {
-                // Nothing new or prioritised: level up the least-researched item that can start. Back to the top,
-                // then the same slow swipes land on the same page.
-                for (int up = 0; up < 15; up++)
-                {
-                    var before = await TakeScreenshotAsync(account.InstanceNumber, logger);
-                    await SwipeAsync(account.InstanceNumber, logger, new Point(360, 300), new Point(360, 1100), 300);
-                    await Task.Delay(800, cancellationToken);
-                    var after = await TakeScreenshotAsync(account.InstanceNumber, logger);
-                    if (before != null && after != null && SamePage(before, after)) break;
-                }
-                for (int page = 0; page < f.page; page++)
-                {
-                    await SwipeAsync(account.InstanceNumber, logger, new Point(360, 1000), new Point(360, 420), 1500);
-                    await Task.Delay(1200, cancellationToken);
-                }
-                var shot = await TakeScreenshotAsync(account.InstanceNumber, logger);
-                var target = shot == null ? (Point?)null : FindTreeItems(shot).OrderBy(p => Math.Abs(p.X - f.item.X) + Math.Abs(p.Y - f.item.Y)).Cast<Point?>().FirstOrDefault();
-                if (target is Point t && Math.Abs(t.X - f.item.X) + Math.Abs(t.Y - f.item.Y) < 60)
-                {
-                    await ClickAsync(account.InstanceNumber, logger, t);
-                    await Task.Delay(1500, cancellationToken);
-                    var dialog = await TakeScreenshotAsync(account.InstanceNumber, logger);
-                    if (dialog != null && FindResearchButton(dialog) is Point button)
-                        return await StartResearchAsync(account, logger, locator, researchType, button, $"levelling '{f.title}', page {f.page}", cancellationToken);
-                }
-                logger.LogInfo($"[{account.AccountName}] Could not get back to '{f.title}' to level it up");
             }
+            if (fallback is { } f) logger.LogInfo($"[{account.AccountName}] Could not find '{f.title}' again to level it up");
 
             logger.LogInfo($"[{account.AccountName}] No {researchType} research available right now");
             AutoTechnologySettings.AdvanceResearchType(account.InstanceNumber); // try the other category next time
