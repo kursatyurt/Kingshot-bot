@@ -162,6 +162,18 @@ namespace Bot.Core.Tasks.Modules
         /// </summary>
         private static readonly string[] PriorityResearch = { "Command", "Enhanc" };
         private static readonly Rectangle GetMoreUseButton = new Rectangle(510, 390, 140, 40); // first row of "Get More": green Use for an owned pack
+        /// <summary>The lowest green Use on "Get More" (rows 142 px apart); an orange gem row ends the owned packs.</summary>
+        private static Point? BiggestOwnedPack(byte[] screenshot)
+        {
+            Point? best = null;
+            for (int y = GetMoreUseButton.Y; y + GetMoreUseButton.Height < 1070; y += 142)
+            {
+                var row = new Rectangle(GetMoreUseButton.X, y, GetMoreUseButton.Width, GetMoreUseButton.Height);
+                if (!IsGreen(screenshot, row)) break;
+                best = new Point(row.X + row.Width / 2, row.Y + row.Height / 2);
+            }
+            return best;
+        }
         private static bool IsGreen(byte[] screenshot, Rectangle rect)
         {
             using var img = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
@@ -183,11 +195,12 @@ namespace Bot.Core.Tasks.Modules
             for (int attempt = 0; attempt < 3; attempt++)
             {
                 var shot = await TakeScreenshotAsync(account.InstanceNumber, logger);
-                if (shot == null || !IsGreen(shot, GetMoreUseButton)) break;
-                for (int use = 0; use < 10 && shot != null && IsGreen(shot, GetMoreUseButton); use++)
+                if (shot == null || BiggestOwnedPack(shot) == null) break;
+                // Rows run from small packs (100) to big ones (10K): use the biggest owned one, the lowest green Use
+                for (int use = 0; use < 10 && shot != null && BiggestOwnedPack(shot) is Point pack; use++)
                 {
                     logger.LogInfo($"[{account.AccountName}] Research short of a resource: using an owned pack");
-                    await ClickAsync(account.InstanceNumber, logger, new Point(GetMoreUseButton.X + GetMoreUseButton.Width / 2, GetMoreUseButton.Y + GetMoreUseButton.Height / 2));
+                    await ClickAsync(account.InstanceNumber, logger, pack);
                     await Task.Delay(1500, cancellationToken);
                     shot = await TakeScreenshotAsync(account.InstanceNumber, logger);
                 }

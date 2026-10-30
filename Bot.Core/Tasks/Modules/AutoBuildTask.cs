@@ -400,6 +400,17 @@ namespace Bot.Core.Tasks.Modules
             logger.LogInfo($"[{account.AccountName}] ⏩ {name}: using speedups (Quick Use)");
             await ClickRandomInRectAsync(account.InstanceNumber, logger, QuickUseConfirmButton);
             await Task.Delay(2500, cancellationToken);
+            // Short of the specific speedup, the game offers General Speedups: decline, they're kept for
+            // construction and research
+            var offer = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            if (offer != null && IsCyan(offer, GeneralSpeedupOfferUse))
+            {
+                logger.LogInfo($"[{account.AccountName}] {name}: not spending General Speedups");
+                await ClickAsync(account.InstanceNumber, logger, new Point(637, 447)); // its X
+                await Task.Delay(1000, cancellationToken);
+                await PressBackAsync(account.InstanceNumber, logger); // the Quick Use dialog under it
+                await Task.Delay(1000, cancellationToken);
+            }
             return true;
         }
 
@@ -436,6 +447,7 @@ namespace Bot.Core.Tasks.Modules
         private static readonly Rectangle PageFinishButton = new(40, 1175, 300, 60);
         private static readonly Rectangle QuickUseButton = new(235, 940, 250, 60);
         private static readonly Rectangle QuickUseConfirmButton = new(235, 962, 250, 56);
+        private static readonly Rectangle GeneralSpeedupOfferUse = new(240, 760, 240, 56); // "Use General Speedups to cover the rest?" confirmation
         private static readonly Rectangle FinishButton = new(90, 835, 250, 60);
 
         private static OpenCvSharp.Scalar MeanColor(byte[] screenshot, Rectangle rect)
