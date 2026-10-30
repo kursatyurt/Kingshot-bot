@@ -364,15 +364,19 @@ namespace Bot.Core.Tasks.Modules
         /// Helper method to find and click an image with timeout and interval checking
         /// </summary>
         /// <summary>
-        /// From the alliance menu: Chests → Claim All (only when it is lit green; greyed out means nothing to claim)
-        /// → dismiss the rewards → back to the alliance menu. Never touches the Alliance Gift tab, whose only
-        /// button leads to buying gift packs. Best effort: a miss never fails the technology part.
+        /// From the alliance menu: Chests
+        /// → claim the free Alliance Gifts → Loot Chest tab → Claim All (only when lit green; grey means nothing to claim) → dismiss the rewards → back to the alliance menu.
+        /// The gift tab's "Go" button (buys packs) is never clicked. Best effort: a miss never fails the technology part.
         /// </summary>
         private async Task ClaimAllianceChestsAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
         {
             if (!await FindAndClickWithTimeoutAsync(account, logger, cancellationToken, Path.Combine(_templateFolder, "chests-button.png"),
                     "alliance chests", 3000, SEARCH_INTERVAL_MS))
                 return;
+            await Task.Delay(1500, cancellationToken);
+            await ClaimAllianceGiftsAsync(account, logger, cancellationToken);
+            // The page reopens on the last tab: on Alliance Gift there is no Claim All and the loot chests piled up to 99+
+            await ClickAsync(account.InstanceNumber, logger, LootChestTab);
             await Task.Delay(1500, cancellationToken);
 
             var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
@@ -395,6 +399,36 @@ namespace Bot.Core.Tasks.Modules
 
             await ClickAsync(account.InstanceNumber, logger, new Point(40, 40)); // Chests page back arrow → alliance menu
             await Task.Delay(1500, cancellationToken);
+        }
+
+        private static readonly Point LootChestTab = new(190, 400);
+        private static readonly Point AllianceGiftTab = new(528, 400);
+
+        /// <summary>
+        /// Alliance Gift tab: each gift has its own free Claim button (claimed in place, no popup). Only lit-green
+        /// buttons in the row column are clicked, never the "Go" (buy packs) button above the list.
+        /// </summary>
+        private async Task ClaimAllianceGiftsAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
+        {
+            await ClickAsync(account.InstanceNumber, logger, AllianceGiftTab);
+            await Task.Delay(1500, cancellationToken);
+            int claimed = 0;
+            for (int page = 0; page < 6; page++) // ponytail: fixed page cap, enough for the few gifts a day brings
+            {
+                var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                if (screenshot == null) return;
+                foreach (var y in new[] { 610, 760, 910, 1060 })
+                {
+                    var button = new Rectangle(545, y, 130, 50);
+                    if (!IsLitGreen(screenshot, button)) continue;
+                    await ClickRandomInRectAsync(account.InstanceNumber, logger, button);
+                    claimed++;
+                    await Task.Delay(1000, cancellationToken);
+                }
+                await SwipeAsync(account.InstanceNumber, logger, new Point(360, 1000), new Point(360, 620), 400);
+                await Task.Delay(1200, cancellationToken);
+            }
+            logger.LogInfo($"[{account.AccountName}] 🎁 Claimed {claimed} alliance gift(s)");
         }
 
         /// <summary>True when the button is the green "Claim All" rather than its grey, disabled version.</summary>
