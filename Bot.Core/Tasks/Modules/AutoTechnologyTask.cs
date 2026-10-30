@@ -220,7 +220,7 @@ namespace Bot.Core.Tasks.Modules
             using var hsv = new OpenCvSharp.Mat();
             OpenCvSharp.Cv2.CvtColor(img, hsv, OpenCvSharp.ColorConversionCodes.BGR2HSV);
             using var mask = new OpenCvSharp.Mat();
-            OpenCvSharp.Cv2.InRange(hsv, new OpenCvSharp.Scalar(10, 60, 80), new OpenCvSharp.Scalar(22, 170, 135), mask);
+            OpenCvSharp.Cv2.InRange(hsv, new OpenCvSharp.Scalar(10, 30, 80), new OpenCvSharp.Scalar(26, 170, 140), mask);
             using var kernel = OpenCvSharp.Cv2.GetStructuringElement(OpenCvSharp.MorphShapes.Rect, new OpenCvSharp.Size(9, 5));
             OpenCvSharp.Cv2.MorphologyEx(mask, mask, OpenCvSharp.MorphTypes.Close, kernel);
             // A badge touching a brown icon above it (Tool Enhancement's book) merged into one tall blob and was missed:
