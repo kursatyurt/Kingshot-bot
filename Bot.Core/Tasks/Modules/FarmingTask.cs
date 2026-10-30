@@ -394,7 +394,8 @@ namespace Bot.Core.Tasks.Modules
             
             // The march panel slides in a moment after the map opens (or after a deploy), sometimes after 3 s or more:
             // an empty read too early meant "no march out" and a wasted search with the only march still gathering
-            for (int reread = 0; reread < 3 && string.IsNullOrWhiteSpace(text); reread++) {
+            static bool Readable(string t) => Regex.IsMatch(t, @"\d+\s*/\s*\d+") || Regex.IsMatch(t.Trim(), @"^\d\d\d$");
+            for (int reread = 0; reread < 3 && !Readable(text); reread++) { // partial reads like "1" too
                 await Task.Delay(1500, cancellationToken);
                 screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
                 text = screenshot == null ? "" : marchOcr.ExtractBrightTextFromScreenArea(screenshot, marchCountRect);
