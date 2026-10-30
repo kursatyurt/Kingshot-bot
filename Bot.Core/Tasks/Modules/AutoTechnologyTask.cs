@@ -200,9 +200,15 @@ namespace Bot.Core.Tasks.Modules
                     await Task.Delay(1500, cancellationToken);
                     shot = await TakeScreenshotAsync(account.InstanceNumber, logger);
                 }
-                await PressBackAsync(account.InstanceNumber, logger);
-                await Task.Delay(1500, cancellationToken);
-                await ClickAsync(account.InstanceNumber, logger, button);
+                // Get More usually closes itself once the resource is covered, back on the research dialog
+                if (shot == null || FindResearchButton(shot) == null)
+                {
+                    await PressBackAsync(account.InstanceNumber, logger);
+                    await Task.Delay(1500, cancellationToken);
+                    shot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                }
+                if (shot == null || FindResearchButton(shot) is not Point again) break;
+                await ClickAsync(account.InstanceNumber, logger, again);
                 await Task.Delay(2000, cancellationToken);
             }
             AutoTechnologySettings.AdvanceResearchType(account.InstanceNumber);
