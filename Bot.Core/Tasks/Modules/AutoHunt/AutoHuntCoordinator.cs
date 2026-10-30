@@ -99,11 +99,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                 var sessionState = SessionStates.GetOrAdd(accountId, 
                     new AutoHuntSessionState { InstanceNumber = account.InstanceNumber });
 
-                // Initial max march check
-                if (await CheckMaxMarchDirectly(account, logger))
-                {
-                    return TaskExecutionDetails.Failed("Max march detected at start, waiting 2 minutes");
-                }
+                // No free march is fine: rescues and conquest missions go out without one; only beasts wait
 
                 // Main hunt loop
                 int availableMarches = initialMarches;
@@ -126,12 +122,8 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
 
                         if (!isAlreadyInHuntMode)
                         {
-                            // Check marches at the start of every iteration
-                            availableMarches = await WaitForAvailableMarchesDirectly(account, logger, cancellationToken);
-                            if (availableMarches == -1)
-                            {
-                                return new TaskExecutionDetails(true, message: "Stamina depleted while waiting for marches");
-                            }
+                            // Rescue and conquest missions need no march, so never wait here; beasts are skipped without one
+                            availableMarches = await GetAvailableMarchesDirectly(account, logger, cancellationToken);
                         }
                         else
                         {
@@ -168,10 +160,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                         if (target == null)
                         {
                             if (noMarchesAvailable)
-                            {
-                                logger.LogInfo($"[{account.AccountName}] Found targets but no marches available, waiting for marches...");
-                                continue;
-                            }
+                                logger.LogInfo($"[{account.AccountName}] Only beasts left and no free march; they wait for the next run");
 
                             logger.LogInfo($"[{account.AccountName}] No suitable targets available, returning to map view");
                             await ReturnToMapViewDirectly(account, logger, cancellationToken);
@@ -859,6 +848,11 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
             var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
             if (screenshot == null) return false;
 
+            // The "Intel Mission" title is stable; the castle in the middle changes look as the city levels up
+            if (_templateMatcher.MatchTemplate(screenshot, Path.Combine(ImageTemplateFolder, "intel-title.png"),
+                    account.InstanceNumber, threshold: 0.85, searchArea: new Rectangle(60, 0, 300, 90)).found)
+                return true;
+
             // Check for castle-hunt icon
             var (castleHuntFound, _, castleHuntConf) = _templateMatcher.MatchTemplate(
                 screenshot,
@@ -998,7 +992,6 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
 
             var targetTypes = new[]
             {
-                ("king.png", true),
                 ("bear.png", true),
                 ("scout.png", false),
                 ("attack.png", false)
@@ -1067,7 +1060,6 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
             var targets = new List<HuntTarget>();
             var targetTypes = new[]
             {
-                ("king.png", true),
                 ("bear.png", true),
                 ("scout.png", false),
                 ("attack.png", false)
@@ -1359,44 +1351,6 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                 logger.LogInfo($"[{account.AccountName}] Using error fallback: assuming 1 march available");
                 return 1;
             }
-        }
-
-        private async Task<int> WaitForAvailableMarchesDirectly(AccountSettings account, LogService logger, CancellationToken cancellationToken)
-        {
-            DateTime startTime = DateTime.UtcNow;
-            const int maxWaitSeconds = 120;
-            int availableMarches = 0;
-
-            while ((DateTime.UtcNow - startTime).TotalSeconds < maxWaitSeconds && !cancellationToken.IsCancellationRequested)
-            {
-                await WaitIfPausedAsync(cancellationToken);
-                if (cancellationToken.IsCancellationRequested) return -1;
-
-                availableMarches = await GetAvailableMarchesDirectly(account, logger, cancellationToken);
-                
-                if (availableMarches > 0)
-                {
-                    logger.LogInfo($"[{account.AccountName}] Found {availableMarches} available marches");
-                    return availableMarches;
-                }
-
-                // Check for stamina depletion while waiting
-                var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
-                if (screenshot != null)
-                {
-                    var staminaResult = await CheckForStaminaLowDirectly(screenshot, AutoHuntConstants.StaminaArea, account, logger);
-                    if (staminaResult == StaminaCheckResult.StaminaDepleted)
-                    {
-                        return -1; // Signal stamina depletion
-                    }
-                }
-
-                logger.LogInfo($"[{account.AccountName}] No marches available, waiting... ({(DateTime.UtcNow - startTime).TotalSeconds:F0}s elapsed)");
-                await Task.Delay(5000, cancellationToken);
-            }
-
-            logger.LogWarning($"[{account.AccountName}] Timeout waiting for marches after {maxWaitSeconds} seconds");
-            return 0;
         }
 
         private async Task<bool> CheckMaxMarchDirectly(AccountSettings account, LogService logger)
