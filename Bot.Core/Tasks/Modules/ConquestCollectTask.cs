@@ -27,10 +27,6 @@ namespace Bot.Core.Tasks.Modules
         );
 
         // UI Element coordinates for navigation sequence
-        private static readonly Rectangle FirstClickArea = new Rectangle(40, 1199, 65, 48);    // x=40, y=1199 & x=105, y=1247
-        private static readonly Rectangle SecondClickArea = new Rectangle(575, 908, 76, 23);   // x=575, y=908 & x=651, y=931
-        private static readonly Rectangle CollectArea = new Rectangle(300, 902, 135, 47);      // x=300, y=902 & x=435, y=949
-        private static readonly Rectangle BackButtonArea = new Rectangle(35, 28, 26, 22);      // x=35, y=28 & x=61, y=50
 
         // Default collection interval settings (used as fallback)
         private static readonly TimeSpan DefaultCollectionInterval = TimeSpan.FromHours(4);
@@ -69,80 +65,29 @@ namespace Bot.Core.Tasks.Modules
                     return new TaskExecutionDetails(true, nextCollection, "Skipped - Too soon to collect");
                 }
 
-                // Step 1: Use LocatorService to detect current view
-                logger.LogInfo($"[{account.AccountName}] 🧭 Detecting current view...");
+                // Rebel Conquest (the Conquest tab): claim the idle income, then push stages until a defeat
                 var locator = new LocatorService(logger, account);
-                var currentView = await locator.DetectCurrentViewAsync(account.InstanceNumber, cancellationToken);
-
-                if (currentView == ViewType.Unknown)
+                if (!await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken))
+                    return TaskExecutionDetails.Failed("Could not reach the city view");
+                await ClickAsync(account.InstanceNumber, logger, ConquestTab);
+                await Task.Delay(3000, cancellationToken);
+                if (!await OnConquestScreenAsync(account, logger))
                 {
-                    return TaskExecutionDetails.Failed("Could not detect current view");
+                    await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
+                    return TaskExecutionDetails.Failed("Conquest screen did not open");
                 }
 
-                logger.LogInfo($"[{account.AccountName}] 📍 Current view detected: {currentView}");
-
-                // Step 2: Click first area (bottom menu)
-                logger.LogInfo($"[{account.AccountName}] 🖱️ Clicking first navigation area...");
-                if (!await ClickRandomInRectAsyncWithRetry(account.InstanceNumber, logger, FirstClickArea, cancellationToken, maxRetries: 2))
-                {
-                    return TaskExecutionDetails.Failed("Failed to click first navigation area");
-                }
-
-                // Wait 1.5 seconds
-                await WaitIfPausedAsync(cancellationToken);
-                if (cancellationToken.IsCancellationRequested) return TaskExecutionDetails.Failed("Task was cancelled");
+                logger.LogInfo($"[{account.AccountName}] 🎁 Claiming Rebel Conquest idle income");
+                await ClickAsync(account.InstanceNumber, logger, IdleChestClaim);
+                await Task.Delay(2000, cancellationToken);
+                await ClickAsync(account.InstanceNumber, logger, IdleIncomeClaimButton); // "Idle Income" dialog's Claim
+                await Task.Delay(2000, cancellationToken);
+                await ClickAsync(account.InstanceNumber, logger, new Point(360, 200)); // "Tap anywhere to exit" the rewards
                 await Task.Delay(1500, cancellationToken);
 
-                // Step 3: Click second area
-                await WaitIfPausedAsync(cancellationToken);
-                if (cancellationToken.IsCancellationRequested) return TaskExecutionDetails.Failed("Task was cancelled");
-                logger.LogInfo($"[{account.AccountName}] 🖱️ Clicking second navigation area...");
-                if (!await ClickRandomInRectAsyncWithRetry(account.InstanceNumber, logger, SecondClickArea, cancellationToken, maxRetries: 2))
-                {
-                    return TaskExecutionDetails.Failed("Failed to click second navigation area");
-                }
-
-                // Wait 1 second
-                await WaitIfPausedAsync(cancellationToken);
-                if (cancellationToken.IsCancellationRequested) return TaskExecutionDetails.Failed("Task was cancelled");
-                await Task.Delay(1000, cancellationToken);
-
-                // Step 4: Click collect area
-                await WaitIfPausedAsync(cancellationToken);
-                if (cancellationToken.IsCancellationRequested) return TaskExecutionDetails.Failed("Task was cancelled");
-                logger.LogInfo($"[{account.AccountName}] 🖱️ Clicking collect area...");
-                if (!await ClickRandomInRectAsyncWithRetry(account.InstanceNumber, logger, CollectArea, cancellationToken, maxRetries: 2))
-                {
-                    return TaskExecutionDetails.Failed("Failed to click collect area");
-                }
-
-                // Wait 0.5 seconds
-                await WaitIfPausedAsync(cancellationToken);
-                if (cancellationToken.IsCancellationRequested) return TaskExecutionDetails.Failed("Task was cancelled");
-                await Task.Delay(500, cancellationToken);
-
-                // Step 5: Click collect area again
-                await WaitIfPausedAsync(cancellationToken);
-                if (cancellationToken.IsCancellationRequested) return TaskExecutionDetails.Failed("Task was cancelled");
-                logger.LogInfo($"[{account.AccountName}] 🖱️ Clicking collect area again...");
-                if (!await ClickRandomInRectAsyncWithRetry(account.InstanceNumber, logger, CollectArea, cancellationToken, maxRetries: 2))
-                {
-                    return TaskExecutionDetails.Failed("Failed to click collect area second time");
-                }
-
-                // Wait random time between 1-1.5 seconds
-                await WaitIfPausedAsync(cancellationToken);
-                if (cancellationToken.IsCancellationRequested) return TaskExecutionDetails.Failed("Task was cancelled");
-                await Task.Delay(_random.Next(1000, 1500), cancellationToken);
-
-                // Step 6: Click back button
-                await WaitIfPausedAsync(cancellationToken);
-                if (cancellationToken.IsCancellationRequested) return TaskExecutionDetails.Failed("Task was cancelled");
-                logger.LogInfo($"[{account.AccountName}] 🖱️ Clicking back button...");
-                if (!await ClickRandomInRectAsyncWithRetry(account.InstanceNumber, logger, BackButtonArea, cancellationToken, maxRetries: 2))
-                {
-                    return TaskExecutionDetails.Failed("Failed to click back button");
-                }
+                int cleared = await ConquerStagesAsync(account, logger, cancellationToken);
+                logger.LogInfo($"[{account.AccountName}] ⚔️ Rebel Conquest: {cleared} stage(s) cleared this run");
+                await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
 
                 // Update collection time
                 UpdateCollectionTime(accountId);
@@ -155,6 +100,79 @@ namespace Bot.Core.Tasks.Modules
                 logger.LogError($"[{account.AccountName}] Error during conquest collection: {ex.Message}");
                 return TaskExecutionDetails.Failed($"Error during conquest collection: {ex.Message}");
             }
+        }
+
+        private static readonly Point ConquestTab = new(70, 1225);           // bottom bar, far left
+        private static readonly Point IdleChestClaim = new(617, 922);        // the glowing chest's Claim on the road
+        private static readonly Point IdleIncomeClaimButton = new(360, 924);
+        private static readonly Point ConquerButton = new(360, 1177);
+        private static readonly Point QuickDeployButton = new(190, 1200);
+        private static readonly Point FightButton = new(528, 1200);
+        private static readonly Rectangle ResultTownButton = new(60, 885, 260, 55);     // Victory/defeat screen: Town | Continue
+        private static readonly Rectangle ResultContinueButton = new(398, 885, 260, 55);
+        private const int MaxStagesPerRun = 10;
+
+        private async Task<bool> OnConquestScreenAsync(AccountSettings account, LogService logger)
+        {
+            var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            return screenshot != null && _templateMatcher.MatchTemplate(screenshot, Path.Combine(ImageTemplateFolder, "conquer-button.png"),
+                account.InstanceNumber, threshold: 0.9, searchArea: new Rectangle(150, 1100, 420, 160)).found;
+        }
+
+        /// <summary>
+        /// Conquer → Quick Deploy (best available heroes) → Fight; the battle plays itself. Victory → Continue opens the
+        /// next stage's squad; anything else (defeat) → Town, and the run stops. Battles cost nothing, so a defeat only
+        /// means waiting for stronger heroes and troops until the next run.
+        /// </summary>
+        private async Task<int> ConquerStagesAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
+        {
+            if (!await OnConquestScreenAsync(account, logger)) return 0;
+            await ClickAsync(account.InstanceNumber, logger, ConquerButton);
+            await Task.Delay(3000, cancellationToken);
+            int cleared = 0;
+            while (cleared < MaxStagesPerRun && !cancellationToken.IsCancellationRequested)
+            {
+                await ClickAsync(account.InstanceNumber, logger, QuickDeployButton);
+                await Task.Delay(1500, cancellationToken);
+                await ClickAsync(account.InstanceNumber, logger, FightButton);
+
+                // Battles last ~20-60 s; the result screen has Town and Continue side by side
+                byte[]? result = null;
+                for (int wait = 0; wait < 30 && result == null; wait++)
+                {
+                    await Task.Delay(3000, cancellationToken);
+                    var shot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                    if (shot != null && IsCyanButton(shot, ResultTownButton)) result = shot;
+                }
+                if (result == null)
+                {
+                    logger.LogInfo($"[{account.AccountName}] No Conquest battle result after 90 s; stopping");
+                    return cleared;
+                }
+                bool victory = _templateMatcher.MatchTemplate(result, Path.Combine(ImageTemplateFolder, "victory.png"),
+                    account.InstanceNumber, threshold: 0.85, searchArea: new Rectangle(150, 280, 420, 140)).found;
+                if (!victory || !IsCyanButton(result, ResultContinueButton))
+                {
+                    logger.LogInfo($"[{account.AccountName}] Conquest stage lost; trying again next run");
+                    await ClickRandomInRectAsync(account.InstanceNumber, logger, ResultTownButton);
+                    await Task.Delay(3000, cancellationToken);
+                    return cleared;
+                }
+                cleared++;
+                logger.LogInfo($"[{account.AccountName}] 🏆 Conquest stage cleared ({cleared} this run)");
+                await ClickRandomInRectAsync(account.InstanceNumber, logger, ResultContinueButton); // next stage's squad
+                await Task.Delay(3000, cancellationToken);
+            }
+            return cleared;
+        }
+
+        private static bool IsCyanButton(byte[] screenshot, Rectangle rect)
+        {
+            using var img = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
+            if (img.Empty()) return false;
+            using var roi = new OpenCvSharp.Mat(img, new OpenCvSharp.Rect(rect.X, rect.Y, rect.Width, rect.Height));
+            var mean = OpenCvSharp.Cv2.Mean(roi); // BGR
+            return mean.Val0 > 170 && mean.Val1 > 160 && mean.Val2 < 120;
         }
 
         private bool ShouldCollect(string accountId, AccountSettings account)
