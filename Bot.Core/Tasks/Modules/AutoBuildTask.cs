@@ -404,13 +404,30 @@ namespace Bot.Core.Tasks.Modules
         private async Task<bool> TapRingSpeedupsAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
         {
             var ring = await TakeScreenshotAsync(account.InstanceNumber, logger);
-            var (found, label, _) = ring == null ? (false, Rectangle.Empty, 0.0)
-                : _templateMatcher.MatchTemplate(ring, Path.Combine(ImageTemplateFolder, "ring-speedups.png"), account.InstanceNumber,
-                    threshold: 0.9, searchArea: new Rectangle(0, 600, 720, 350));
-            if (!found) return false;
+            if (ring == null || FindSpeedupsLabel(ring) is not Rectangle label) return false;
             await ClickAsync(account.InstanceNumber, logger, new Point(label.X + label.Width / 2, label.Y - 40)); // icon above its label
             await Task.Delay(2000, cancellationToken);
             return true;
+        }
+
+        /// <summary>
+        /// The ring's white "Speedups" label. Only its bright text is compared: the scene behind it changes with the
+        /// building and the time of day (a camp by day scored 0.77 in colour, 0.86 as text; other labels stay below 0.6).
+        /// </summary>
+        private Rectangle? FindSpeedupsLabel(byte[] screenshot)
+        {
+            using var img = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Grayscale);
+            using var tpl = OpenCvSharp.Cv2.ImRead(Path.Combine(ImageTemplateFolder, "ring-speedups.png"), OpenCvSharp.ImreadModes.Grayscale);
+            if (img.Empty() || tpl.Empty()) return null;
+            using var area = new OpenCvSharp.Mat(img, new OpenCvSharp.Rect(0, 600, 720, 350));
+            using var areaText = new OpenCvSharp.Mat();
+            using var tplText = new OpenCvSharp.Mat();
+            OpenCvSharp.Cv2.Threshold(area, areaText, 200, 255, OpenCvSharp.ThresholdTypes.Binary);
+            OpenCvSharp.Cv2.Threshold(tpl, tplText, 200, 255, OpenCvSharp.ThresholdTypes.Binary);
+            using var result = new OpenCvSharp.Mat();
+            OpenCvSharp.Cv2.MatchTemplate(areaText, tplText, result, OpenCvSharp.TemplateMatchModes.CCoeffNormed);
+            OpenCvSharp.Cv2.MinMaxLoc(result, out _, out double best, out _, out OpenCvSharp.Point at);
+            return best < 0.75 ? null : new Rectangle(at.X, at.Y + 600, tpl.Width, tpl.Height);
         }
 
         private static readonly Rectangle PageSpeedupButton = new(385, 1175, 300, 60);
