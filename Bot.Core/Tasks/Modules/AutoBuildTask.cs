@@ -64,7 +64,8 @@ namespace Bot.Core.Tasks.Modules
         protected override async Task<TaskExecutionDetails> ExecuteTaskLogicAsync(
             AccountSettings account, LogService logger, CancellationToken cancellationToken, bool isReRun = false, IUserNotificationService? userNotifications = null)
         {
-            await CareForResidentsAsync(account, logger, cancellationToken);
+            // Houses are upgraded manually by the user.
+            // await CareForResidentsAsync(account, logger, cancellationToken);
             if (account.AutoBuildSettings.EnableAutoSpeedup && await SpeedUpConstructionAsync(account, logger, cancellationToken))
                 _nextBuildCheck.TryRemove(account.InstanceNumber, out _); // the builder is free again: build now
             if (_nextBuildCheck.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next)
