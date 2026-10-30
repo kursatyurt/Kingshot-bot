@@ -41,6 +41,12 @@ namespace Bot.Core.Tasks.Modules
             if (_nextCheck.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next)
                 return new TaskExecutionDetails(true, message: "Skipped: checked recently");
             _nextCheck[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(20);
+            if (Modules.FarmingTask.TownCenterIsShortOfResources(account.InstanceNumber))
+            {
+                // Research costs the resources a Town Center upgrade is waiting for; the Town Center unlocks more
+                logger.LogInfo($"[{account.AccountName}] Not researching while the Town Center waits for resources");
+                return new TaskExecutionDetails(true, message: "Saving resources for the Town Center");
+            }
 
             var settings = GetTaskSettings<AutoTechnologySettings>(account);
             var locator = new LocatorService(logger, account, TaskType);

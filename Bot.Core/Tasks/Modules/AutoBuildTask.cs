@@ -135,12 +135,15 @@ namespace Bot.Core.Tasks.Modules
             await RequestAllianceHelpAsync(account, logger, cancellationToken);
         }
 
-        /// <summary>10 minutes, or sooner when the builder is known to be free sooner (short low-level upgrades).</summary>
+        /// <summary>
+        /// 10 minutes, or exactly until the builder is known to be free (short low-level upgrades, or a long upgrade
+        /// up to an hour: nothing can be built before, and each check costs up to a minute of the cycle).
+        /// </summary>
         private static TimeSpan SuccessCooldown(int instance)
         {
             if (!_builderFreeAt.TryRemove(instance, out var freeAt)) return TimeSpan.FromMinutes(10);
             var wait = freeAt - DateTime.UtcNow + TimeSpan.FromSeconds(20);
-            return wait < TimeSpan.FromMinutes(1) ? TimeSpan.FromMinutes(1) : wait > TimeSpan.FromMinutes(10) ? TimeSpan.FromMinutes(10) : wait;
+            return wait < TimeSpan.FromMinutes(1) ? TimeSpan.FromMinutes(1) : wait > TimeSpan.FromMinutes(60) ? TimeSpan.FromMinutes(60) : wait;
         }
 
         /// <summary>
@@ -653,7 +656,8 @@ namespace Bot.Core.Tasks.Modules
                         var shortType = new[] { ResourceType.Bread, ResourceType.Wood, ResourceType.Stone, ResourceType.Iron }
                             .Where(t => text.Contains(t.ToString(), StringComparison.OrdinalIgnoreCase)).Select(t => (ResourceType?)t).FirstOrDefault();
                         logger.LogInfo($"[{account.AccountName}] Short of {shortType?.ToString() ?? "an unknown resource"} for the upgrade");
-                        FarmingTask.SetPriorityResource(account.InstanceNumber, shortType);
+                        // An unreadable dialog keeps the shortage already known: clearing it let training spend the Stone again
+                        if (shortType != null) FarmingTask.SetPriorityResource(account.InstanceNumber, shortType);
                     }
                     await ClickAsync(account.InstanceNumber, logger, GetMoreCloseButton);
                     await RandomDelay(cancellationToken);

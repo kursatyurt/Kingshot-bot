@@ -81,6 +81,12 @@ namespace Bot.Core.Tasks.Modules
                     logger.LogInfo($"[{account.AccountName}] {camp}: left idle so its camp can be upgraded for the Town Center");
                     continue;
                 }
+                if (FarmingTask.TownCenterIsShortOfResources(account.InstanceNumber))
+                {
+                    // Troops cost the same resources: training ate the Stone a Town Center upgrade was waiting for
+                    logger.LogInfo($"[{account.AccountName}] {camp}: not training while the Town Center waits for resources");
+                    continue;
+                }
                 if (await TrainCampAsync(account, logger, camp, cancellationToken))
                 {
                     started++;
