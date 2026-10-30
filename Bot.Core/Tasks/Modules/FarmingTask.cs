@@ -195,7 +195,7 @@ namespace Bot.Core.Tasks.Modules
                 await CheckAndActivateGatheringBoostAsync(account, logger, cancellationToken);
 
                 // Initialize marches count
-                int currentMarches = await GetAvailableMarchesAsync(account, logger, cancellationToken);
+                int currentMarches = await ReadAvailableMarchesAsync(account, logger, cancellationToken);
                 if (currentMarches <= 0)
                 {
                     logger.LogInfo($"[{account.AccountName}] No marches available after map view check.");
@@ -252,7 +252,7 @@ namespace Bot.Core.Tasks.Modules
                             break;
                         }
                         
-                        currentMarches = await GetAvailableMarchesAsync(account, logger, cancellationToken, justSentMarch: marchesSentSuccessfully > 0);
+                        currentMarches = await ReadAvailableMarchesAsync(account, logger, cancellationToken, justSentMarch: marchesSentSuccessfully > 0);
                         if (currentMarches <= 0)
                         {
                             logger.LogInfo($"[{account.AccountName}] No more marches available.");
@@ -373,64 +373,6 @@ namespace Bot.Core.Tasks.Modules
         /// <summary>
         /// Determines how many marches are available using a simplified and robust Regex approach.
         /// </summary>
-        private async Task<int> GetAvailableMarchesAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken, bool justSentMarch = false)
-        {
-            // 1. The "1/1" counter right of "Marching" in the world map's march panel (white text, dark see-through background)
-            var marchCountRect = new Rectangle(195, 195, 60, 40);
-
-            // 2. Only numbers and a slash, read as one line
-            var marchOcrConfig = new OCRConfiguration {
-                CharacterWhitelist = "0123456789/",
-                PageSegMode = Tesseract.PageSegMode.SingleLine
-            };
-            using var marchOcr = new OCRService(logger, marchOcrConfig);
-
-            var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
-            if (screenshot == null) return 1; // Assume at least 1 march available if screenshot fails
-
-            // 3. The standard OCR pipeline erases the thin "1" and "/" of this font, so read the bright pixels directly
-            string text = marchOcr.ExtractBrightTextFromScreenArea(screenshot, marchCountRect);
-            logger.LogInfo($"[{account.AccountName}] March capacity OCR text: '{text}'");
-            
-            // The march panel slides in a moment after the map opens (or after a deploy), sometimes after 3 s or more:
-            // an empty read too early meant "no march out" and a wasted search with the only march still gathering
-            static bool Readable(string t) => Regex.IsMatch(t, @"\d+\s*/\s*\d+") || Regex.IsMatch(t.Trim(), @"^\d\d\d$");
-            for (int reread = 0; reread < 3 && !Readable(text); reread++) { // partial reads like "1" too
-                await Task.Delay(1500, cancellationToken);
-                screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
-                text = screenshot == null ? "" : marchOcr.ExtractBrightTextFromScreenArea(screenshot, marchCountRect);
-                logger.LogInfo($"[{account.AccountName}] March capacity OCR text (re-read): '{text}'");
-            }
-            if (string.IsNullOrWhiteSpace(text) && justSentMarch) {
-                logger.LogInfo($"[{account.AccountName}] March counter still unreadable after sending; not risking a send into a full queue.");
-                return 0;
-            }
-
-            if (string.IsNullOrWhiteSpace(text)) {
-                // No march out yet: the panel (and its counter) only shows while a march is active
-                logger.LogInfo($"[{account.AccountName}] March OCR returned no text. Assuming at least 1 march is available.");
-                return 1;
-            }
-
-            // 4. Use a reliable Regex to parse the "current/max" pattern.
-            // The thin slash is often read as a "1": "1/1" comes back as "111", "2/2" as "212" or "221"
-            Match match = Regex.Match(text, @"(\d+)\s*/\s*(\d+)");
-            if (!match.Success) match = Regex.Match(text.Trim(), @"^(\d)\d(\d)$");
-            if (match.Success && int.TryParse(match.Groups[1].Value, out int current) && int.TryParse(match.Groups[2].Value, out int max)) {
-                int available = max - current;
-                logger.LogInfo($"[{account.AccountName}] Parsed Marches: {current}/{max}. Available: {available}");
-                return available > 0 ? available : 0;
-            }
-
-            if (justSentMarch)
-            {
-                logger.LogInfo($"[{account.AccountName}] Could not parse march capacity from '{text}' after sending; not risking a send into a full queue.");
-                return 0;
-            }
-            logger.LogInfo($"[{account.AccountName}] Could not parse march capacity from '{text}'. Assuming at least 1 march is available.");
-            return 1; // Assume at least 1 march is available when parsing fails
-        }
-
         /// <summary>
         /// Processes a single march to a specific resource target.
         /// </summary>

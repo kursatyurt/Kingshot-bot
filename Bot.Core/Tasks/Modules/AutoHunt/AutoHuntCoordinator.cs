@@ -82,7 +82,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                 await Task.Delay(2000, cancellationToken);
 
                 // Check available marches before doing anything else
-                int initialMarches = await GetAvailableMarchesDirectly(account, logger, cancellationToken);
+                int initialMarches = await ReadAvailableMarchesAsync(account, logger, cancellationToken);
                 logger.LogInfo($"[{account.AccountName}] Initial march check: {initialMarches} marches available");
                 if (initialMarches <= 0)
                 {
@@ -123,12 +123,12 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                         if (!isAlreadyInHuntMode)
                         {
                             // Rescue and conquest missions need no march, so never wait here; beasts are skipped without one
-                            availableMarches = await GetAvailableMarchesDirectly(account, logger, cancellationToken);
+                            availableMarches = await ReadAvailableMarchesAsync(account, logger, cancellationToken);
                         }
                         else
                         {
                             logger.LogInfo($"[{account.AccountName}] Already in hunt mode, skipping map view and march wait checks.");
-                            availableMarches = await GetAvailableMarchesDirectly(account, logger, cancellationToken);
+                            availableMarches = await ReadAvailableMarchesAsync(account, logger, cancellationToken);
                             logger.LogInfo($"[{account.AccountName}] Current available marches: {availableMarches}");
                             
                             // Reset the flag for the next iteration
@@ -302,7 +302,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                             staminaScreenshot,
                             Path.Combine(ImageTemplateFolder, "stamina.png"),
                             account.InstanceNumber,
-                            threshold: 0.55,
+                            threshold: 0.8,
                             searchArea: AutoHuntConstants.StaminaArea,
                             isUIElement: true
                         );
@@ -412,7 +412,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                             staminaScreenshot,
                             Path.Combine(ImageTemplateFolder, "stamina.png"),
                             account.InstanceNumber,
-                            threshold: 0.55,
+                            threshold: 0.8,
                             searchArea: AutoHuntConstants.StaminaArea,
                             isUIElement: true
                         );
@@ -550,7 +550,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                             staminaScreenshot,
                             Path.Combine(ImageTemplateFolder, "stamina.png"),
                             account.InstanceNumber,
-                            threshold: 0.55,
+                            threshold: 0.8,
                             searchArea: AutoHuntConstants.StaminaArea,
                             isUIElement: true
                         );
@@ -633,7 +633,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                             staminaScreenshot,
                             Path.Combine(ImageTemplateFolder, "stamina.png"),
                             account.InstanceNumber,
-                            threshold: 0.55,
+                            threshold: 0.8,
                             searchArea: AutoHuntConstants.StaminaArea,
                             isUIElement: true
                         );
@@ -1311,48 +1311,6 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
 
         #region March Management
 
-        private async Task<int> GetAvailableMarchesDirectly(AccountSettings account, LogService logger, CancellationToken cancellationToken)
-        {
-            var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
-            if (screenshot == null) return 0;
-
-            // Use OCR to read march count from UI
-            try
-            {
-                var ocrService = new OCRService(logger);
-                var text = ocrService.ExtractTextFromScreenArea(screenshot, AutoHuntConstants.MarchCountArea);
-                
-                logger.LogInfo($"[{account.AccountName}] OCR extracted text: '{text}' from area {AutoHuntConstants.MarchCountArea}");
-                
-                // Clean the text - remove any non-numeric characters except forward slash
-                var cleanText = new string(text.Where(c => char.IsDigit(c) || c == '/').ToArray());
-                
-                if (!string.IsNullOrEmpty(cleanText))
-                {
-                    // If it contains a slash, take the first number (available marches)
-                    var parts = cleanText.Split('/');
-                    if (parts.Length > 0 && int.TryParse(parts[0], out var marches))
-                    {
-                        logger.LogInfo($"[{account.AccountName}] Successfully parsed {marches} marches from OCR text: '{cleanText}'");
-                        return marches;
-                    }
-                }
-                
-                logger.LogWarning($"[{account.AccountName}] Could not parse march count from OCR: '{text}' (cleaned: '{cleanText}')");
-                
-                // Fallback: assume at least 1 march is available if we can't read it
-                logger.LogInfo($"[{account.AccountName}] Using fallback: assuming 1 march available");
-                return 1;
-            }
-            catch (Exception ex)
-            {
-                logger.LogError($"[{account.AccountName}] Error reading march count: {ex.Message}");
-                // Fallback: assume at least 1 march is available
-                logger.LogInfo($"[{account.AccountName}] Using error fallback: assuming 1 march available");
-                return 1;
-            }
-        }
-
         private async Task<bool> CheckMaxMarchDirectly(AccountSettings account, LogService logger)
         {
             var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
@@ -1551,14 +1509,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
         private async Task ReturnToMapViewDirectly(AccountSettings account, LogService logger, CancellationToken cancellationToken)
         {
             logger.LogInfo($"[{account.AccountName}] Returning to map view");
-            
-            // Try to click the close details button
-            if (await FindAndClickImageAsync("close-details.png", account.InstanceNumber, logger, threshold: 0.6))
-            {
-                logger.LogInfo($"[{account.AccountName}] Clicked close details button");
-                await Task.Delay(1000, cancellationToken);
-            }
-            
+
             // Use locator service to ensure map view
             var locator = new LocatorService(logger, account);
             await locator.EnsureViewAsync(ViewType.MapView, account.InstanceNumber, cancellationToken);

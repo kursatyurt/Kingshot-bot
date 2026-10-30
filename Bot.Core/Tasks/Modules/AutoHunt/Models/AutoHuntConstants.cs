@@ -14,7 +14,6 @@ namespace Bot.Core.Tasks.Modules.AutoHunt.Models
         public static readonly Rectangle VictoryDefeatClickArea = new(129, 1091, 459, 120);
         public static readonly Rectangle StaminaReturnClickArea = new(500, 105, 1, 1);
         public static readonly Rectangle MarchingTextArea = new(286, 860, 150, 50);  // Area to check for "Marching" text
-        public static readonly Rectangle MarchCountArea = new(550, 68, 40, 25);      // Area to read march count from UI
         public static readonly Point CloseDetailsButton = new(337, 1049);  // Point to click to close details
         public static readonly Point ReturnToHuntButton = new(347, 1052);  // Point to click to return to hunt mode after marching
         public static readonly Rectangle DeployButtonArea = new(388, 1159, 315, 107);  // From 388,1159 to 703,1266

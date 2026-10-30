@@ -131,6 +131,8 @@ namespace Bot.Core.Utils
         /// <param name="instanceNumber">LDPlayer instance number</param>
         /// <param name="cancellationToken">Cancellation token</param>
         /// <returns>Current view type or throws BotLostException if cannot detect</returns>
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, DateTime> _lastLostShot = new();
+
         public async Task<ViewType> DetectCurrentViewAsync(int instanceNumber, CancellationToken cancellationToken = default)
         {
             try
@@ -179,20 +181,20 @@ namespace Bot.Core.Utils
                     }
                 }
 
-                // Debug screenshot saving disabled for performance
-                // try
-                // {
-                //     var screenshotsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs", "screenshots");
-                //     Directory.CreateDirectory(screenshotsDir);
-                //     var timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
-                //     var debugImagePath = Path.Combine(screenshotsDir, $"locator_failed_{instanceNumber}_{timestamp}.png");
-                //     await File.WriteAllBytesAsync(debugImagePath, screenshot, cancellationToken);
-                //     _logger.LogWarning($"[Locator] 🕵️ Bot is lost. Saved a debug screenshot to: {debugImagePath}");
-                // }
-                // catch (Exception ex)
-                // {
-                //     _logger.LogError($"[Locator] 💥 Failed to save debug screenshot: {ex.Message}");
-                // }
+                // One screenshot per instance every 10 minutes shows which screens the locator does not know
+                if (DateTime.UtcNow - _lastLostShot.GetValueOrDefault(instanceNumber) > TimeSpan.FromMinutes(10))
+                {
+                    _lastLostShot[instanceNumber] = DateTime.UtcNow;
+                    try
+                    {
+                        var dir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs", "screenshots");
+                        Directory.CreateDirectory(dir);
+                        var file = Path.Combine(dir, $"lost_{instanceNumber}_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.png");
+                        await File.WriteAllBytesAsync(file, screenshot, cancellationToken);
+                        _logger.LogInfo($"[Locator] Saved the unknown screen to {file}");
+                    }
+                    catch (Exception ex) { _logger.LogInfo($"[Locator] Could not save the unknown screen: {ex.Message}"); }
+                }
 
                 return await HandleNoViewDetected("[Locator] ❌ Could not detect any known view - bot may be lost");
             }
