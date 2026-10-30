@@ -210,6 +210,14 @@ namespace Bot.Core.Tasks.Modules
                 NotifyProgress(userNotifications, "Opening Town Center", 30);
                 var (openedFirst, busyFor) = await OpenTownCenterAsync(account, logger, locator, cancellationToken);
                 if (busyFor != null) return TownCenterBusy(account, logger, busyFor.Value);
+                if (!openedFirst && await ReadBuilderBusyForAsync(account, logger, locator, cancellationToken) is { } builderBusy)
+                {
+                    // Nothing can be upgraded until the builder is free: a game restart (~25 s) would buy nothing.
+                    // While busy the Town Center's ring can show Details where its page used to open.
+                    logger.LogInfo($"[{account.AccountName}] Town Center not opened, but the builder is busy for {builderBusy:hh\\:mm\\:ss}; trying again then");
+                    _builderFreeAt[account.InstanceNumber] = DateTime.UtcNow + builderBusy;
+                    return new TaskExecutionDetails(true, message: $"Builder busy for {builderBusy:hh\\:mm\\:ss}");
+                }
                 if (!openedFirst)
                 {
                     logger.LogInfo($"[{account.AccountName}] Town Center not in the middle of the city view; restarting the game to re-centre it");
@@ -304,6 +312,20 @@ namespace Bot.Core.Tasks.Modules
         /// <summary>
         /// Taps the middle of the city view and checks that the Town Center page opened; closes whatever opened otherwise.
         /// </summary>
+        /// <summary>Building Queue 1's countdown on the city side panel, or null when the builder is idle or it can't be read.</summary>
+        private async Task<TimeSpan?> ReadBuilderBusyForAsync(AccountSettings account, LogService logger, LocatorService locator, CancellationToken cancellationToken)
+        {
+            if (!await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken)) return null;
+            if (!await OpenSidePanelAsync(account.InstanceNumber, logger, cancellationToken)) return null;
+            var panel = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            await ClickAsync(account.InstanceNumber, logger, new Point(464, 544)); // close the panel
+            await RandomDelay(cancellationToken);
+            using var ocr = new OCRService(logger, new OCRConfiguration { ScaleFactor = 3.0f, PageSegMode = Tesseract.PageSegMode.SingleLine });
+            var status = panel == null ? "" : ocr.ExtractBrightTextFromScreenArea(panel, new Rectangle(150, 376, 160, 30));
+            var match = System.Text.RegularExpressions.Regex.Match(status, @"\d\d:\d\d:\d\d");
+            return match.Success && TimeSpan.TryParseExact(match.Value, @"hh\:mm\:ss", null, out var left) ? left : null;
+        }
+
         private async Task<(bool opened, TimeSpan? busyFor)> OpenTownCenterAsync(AccountSettings account, LogService logger, LocatorService locator, CancellationToken cancellationToken)
         {
             // The first touch often only moves the camera onto the Town Center; a later press opens it
