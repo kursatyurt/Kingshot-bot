@@ -199,9 +199,13 @@ namespace Bot.Core.Tasks.Modules
             OpenCvSharp.Cv2.InRange(hsv, new OpenCvSharp.Scalar(10, 60, 80), new OpenCvSharp.Scalar(22, 170, 135), mask);
             using var kernel = OpenCvSharp.Cv2.GetStructuringElement(OpenCvSharp.MorphShapes.Rect, new OpenCvSharp.Size(9, 5));
             OpenCvSharp.Cv2.MorphologyEx(mask, mask, OpenCvSharp.MorphTypes.Close, kernel);
+            // A badge touching a brown icon above it (Tool Enhancement's book) merged into one tall blob and was missed:
+            // keep only wide, badge-high runs. "MAX" badges are light and drop out, which is right: nothing to research
+            using var badgeShape = OpenCvSharp.Cv2.GetStructuringElement(OpenCvSharp.MorphShapes.Rect, new OpenCvSharp.Size(40, 15));
+            OpenCvSharp.Cv2.MorphologyEx(mask, mask, OpenCvSharp.MorphTypes.Open, badgeShape);
             OpenCvSharp.Cv2.FindContours(mask, out var contours, out _, OpenCvSharp.RetrievalModes.External, OpenCvSharp.ContourApproximationModes.ApproxSimple);
             return contours.Select(OpenCvSharp.Cv2.BoundingRect)
-                .Where(r => r.Width is >= 50 and <= 85 && r.Height is >= 18 and <= 34 && r.Y > 230 && r.Y + r.Height < 1250)
+                .Where(r => r.Width is >= 50 and <= 90 && r.Height is >= 15 and <= 34 && r.Y > 230 && r.Y + r.Height < 1250)
                 .Select(r => new Point(r.X + r.Width / 2, r.Y + r.Height / 2 - 60))
                 .OrderBy(p => p.Y).ThenBy(p => p.X).ToList();
         }
