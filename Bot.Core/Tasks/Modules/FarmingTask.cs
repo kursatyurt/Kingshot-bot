@@ -84,6 +84,9 @@ namespace Bot.Core.Tasks.Modules
         // Constants for polling and timeouts
         private const int POLL_INTERVAL_MS = 200;  // Check every 200ms
         private const int MAX_WAIT_TIME_MS = 5000; // 5 seconds total wait time
+        // After Search the camera pans to the tile before its card opens: a mine 11 km away takes ~3.5 s, so
+        // Iron and Wood (usually the farthest) timed out at every level
+        private const int GATHER_WAIT_TIME_MS = 12000;
         private const double TEMPLATE_MATCH_THRESHOLD = 0.6; // Consistent threshold for template matching
 
         public FarmingTask()
@@ -461,7 +464,7 @@ namespace Bot.Core.Tasks.Modules
                 bool gatherClicked = false;
                 DateTime gatherStartTime = DateTime.UtcNow;
 
-                while ((DateTime.UtcNow - gatherStartTime).TotalMilliseconds < MAX_WAIT_TIME_MS && !cancellationToken.IsCancellationRequested)
+                while ((DateTime.UtcNow - gatherStartTime).TotalMilliseconds < GATHER_WAIT_TIME_MS && !cancellationToken.IsCancellationRequested)
                 {
                     logger.LogInfo($"[{account.AccountName}] 👀 Looking for 'gather-button.png' for Lvl {currentLevel}...");
                     
