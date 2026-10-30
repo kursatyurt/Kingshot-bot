@@ -84,10 +84,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                 // Check available marches before doing anything else
                 int initialMarches = await ReadAvailableMarchesAsync(account, logger, cancellationToken);
                 logger.LogInfo($"[{account.AccountName}] Initial march check: {initialMarches} marches available");
-                if (initialMarches <= 0)
-                {
-                    return TaskExecutionDetails.Failed("No marches available at start, skipping AutoHunt module");
-                }
+                // No free march is fine: finished missions are claimed and rescues go out without one; beasts are skipped
 
                 // Get settings and clear used areas for this account when starting
                 var huntSettings = GetAutoHuntSettings(account);
