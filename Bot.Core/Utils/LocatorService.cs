@@ -522,7 +522,7 @@ namespace Bot.Core.Utils
                 {
                     Path.Combine(startupFolder, "ad-close.png"),
                     Path.Combine(startupFolder, "ad-close2.png"),
-                    Path.Combine(startupFolder, "ad-close3.png"),
+                    Path.Combine(startupFolder, "ad-close3.png"), Path.Combine(startupFolder, "ad-close4.png"), // orange X on event pack offers (Candy Party Pack)
                     Path.Combine(startupFolder, "story-skip.png") // "Skip" on story scenes the game plays when a feature unlocks
                 };
 
@@ -544,6 +544,17 @@ namespace Bot.Core.Utils
 
                 // Check for recovery back buttons (full screen search)
                 var recoveryFolder = Path.Combine(baseDir, "templates", "images", "recovery");
+
+                // Reward popups (Intel, chests, ...) say "Tap anywhere to exit" and have no close or back button
+                var (rewardsShown, tapRect, _) = _templateMatcher.MatchTemplate(screenshot, Path.Combine(recoveryFolder, "tap-anywhere.png"),
+                    _account.InstanceNumber, 0.8, null, false, new Rectangle(100, 1050, 520, 230));
+                if (rewardsShown)
+                {
+                    _logger.LogInfo("[Locator] 🎁 Closing a rewards popup (Tap anywhere to exit)");
+                    var tapPoint = tapRect.GetCenter();
+                    await adbController.TapAsync(tapPoint.X, tapPoint.Y, CancellationToken.None);
+                    return true;
+                }
                 var backButtonPaths = new[]
                 {
                     Path.Combine(recoveryFolder, "back-arrow.png"),
