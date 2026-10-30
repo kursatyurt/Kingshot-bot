@@ -64,6 +64,7 @@ namespace Bot.Core.Tasks.Modules
         protected override async Task<TaskExecutionDetails> ExecuteTaskLogicAsync(
             AccountSettings account, LogService logger, CancellationToken cancellationToken, bool isReRun = false, IUserNotificationService? userNotifications = null)
         {
+            await CareForResidentsAsync(account, logger, cancellationToken);
             if (account.AutoBuildSettings.EnableAutoSpeedup && await SpeedUpConstructionAsync(account, logger, cancellationToken))
                 _nextBuildCheck.TryRemove(account.InstanceNumber, out _); // the builder is free again: build now
             if (_nextBuildCheck.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next)
@@ -695,6 +696,71 @@ namespace Bot.Core.Tasks.Modules
                 await RandomDelay(cancellationToken);
                 await RequestAllianceHelpAsync(account, logger, cancellationToken);
             }
+        }
+
+        private static readonly ConcurrentDictionary<int, DateTime> _nextResidentCare = new();
+        private static readonly Point QuestBar = new(240, 1052);              // chapter quest above the chat ("Upgrade House 6 to Lv. 3")
+        private static readonly Rectangle FurnitureActionButton = new(530, 628, 160, 80); // cyan Upgrade / Build
+
+        /// <summary>
+        /// Houses give residents beds and the Clinic keeps them healthy; the game's suggested build rarely picks them.
+        /// Every 10 minutes: follow the chapter quest ("Upgrade House 6 to Lv. 3"), which jumps to the building it
+        /// wants, and furnish that building.
+        /// </summary>
+        private async Task CareForResidentsAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
+        {
+            if (_nextResidentCare.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next) return;
+            _nextResidentCare[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(10);
+            var locator = new LocatorService(logger, account);
+
+            if (!await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken)) return;
+
+            await ClickAsync(account.InstanceNumber, logger, QuestBar);
+            await Task.Delay(3000, cancellationToken);
+            if (await OnFurniturePageAsync(account, logger)) await FurnishBuildingAsync(account, logger, cancellationToken);
+            await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
+        }
+
+        /// <summary>
+        /// On a building's furniture page (houses, Clinic, Mill, ...): each piece of furniture in the bottom row is
+        /// selected and its cyan Upgrade/Build tapped while it stays cyan. These cost little and take seconds; the
+        /// building levels up as its furniture does. A short resource opens "Get More": back out and stop.
+        /// </summary>
+        private async Task FurnishBuildingAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
+        {
+            int upgrades = 0;
+            for (int slot = 0; slot < 5; slot++)
+            {
+                var slotCentre = new Point(85 + 138 * slot, 955);
+                var page = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                if (page == null || !IsFurnitureSlot(page, slotCentre)) break;
+                await ClickAsync(account.InstanceNumber, logger, slotCentre);
+                await Task.Delay(1200, cancellationToken);
+                for (int tap = 0; tap < 6; tap++)
+                {
+                    var shot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                    if (shot == null || !IsCyan(shot, FurnitureActionButton)) break;
+                    await ClickRandomInRectAsync(account.InstanceNumber, logger, FurnitureActionButton);
+                    await Task.Delay(2000, cancellationToken);
+                    if (!await OnFurniturePageAsync(account, logger))
+                    {
+                        logger.LogInfo($"[{account.AccountName}] Furniture needs more resources; stopping");
+                        await PressBackAsync(account.InstanceNumber, logger);
+                        await Task.Delay(1000, cancellationToken);
+                        if (upgrades > 0) logger.LogInfo($"[{account.AccountName}] 🪑 Furnished {upgrades} time(s)");
+                        return;
+                    }
+                    upgrades++;
+                }
+            }
+            if (upgrades > 0) logger.LogInfo($"[{account.AccountName}] 🪑 Furnished {upgrades} time(s)");
+        }
+
+        /// <summary>A furniture tile (tan) rather than the page's cream background.</summary>
+        private static bool IsFurnitureSlot(byte[] screenshot, Point centre)
+        {
+            var m = MeanColor(screenshot, new Rectangle(centre.X - 40, centre.Y - 40, 80, 80));
+            return m.Val0 < 190;
         }
 
         private async Task<bool> OnFurniturePageAsync(AccountSettings account, LogService logger)
