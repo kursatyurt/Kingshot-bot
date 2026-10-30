@@ -27,8 +27,6 @@ namespace Bot.Core.Tasks.Modules
         private static readonly Point ResearchArrow = new Point(405, 820);
         private static readonly Point RingResearchButton = new Point(480, 722);   // same slot as a camp's Train
         private static readonly Point RingUpgradeButton = new Point(360, 750);
-        private static readonly int[] TreeColumns = { 140, 360, 579 };            // research items sit on a grid
-        private static readonly int[] TreeRows = { 245, 515, 785, 1055 };          // icon centres (level badges ~58 px below)
 
         /// <summary>
         /// Keeps the Academy researching. The city side panel shows Tech Research as Idle or busy; its arrow centres
@@ -41,12 +39,6 @@ namespace Bot.Core.Tasks.Modules
             if (_nextCheck.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next)
                 return new TaskExecutionDetails(true, message: "Skipped: checked recently");
             _nextCheck[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(20);
-            if (Modules.FarmingTask.TownCenterIsShortOfResources(account.InstanceNumber))
-            {
-                // Research costs the resources a Town Center upgrade is waiting for; the Town Center unlocks more
-                logger.LogInfo($"[{account.AccountName}] Not researching while the Town Center waits for resources");
-                return new TaskExecutionDetails(true, message: "Saving resources for the Town Center");
-            }
 
             var settings = GetTaskSettings<AutoTechnologySettings>(account);
             var locator = new LocatorService(logger, account, TaskType);
@@ -87,34 +79,79 @@ namespace Bot.Core.Tasks.Modules
             await ClickAsync(account.InstanceNumber, logger, tab);
             await Task.Delay(1500, cancellationToken);
 
-            foreach (var y in TreeRows)
-            foreach (var x in TreeColumns)
+            // The tree runs far below one screen (Command Tactics II, the next march queue, is deep in Growth):
+            // find the items on each page by their level badges, then scroll on until the page stops changing
+            // ponytail: rescans the overlap between pages; fine while a scan only runs every 20 minutes
+            byte[]? previousPage = null;
+            for (int page = 0; page < 15; page++)
             {
-                await ClickAsync(account.InstanceNumber, logger, new Point(x, y));
-                await Task.Delay(1500, cancellationToken);
-                var dialog = await TakeScreenshotAsync(account.InstanceNumber, logger);
-                var research = dialog == null ? null : FindResearchButton(dialog);
-                if (research is Point button)
+                var pageShot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                if (pageShot == null) break;
+                if (previousPage != null && SamePage(previousPage, pageShot)) break; // bottom of the tree
+                previousPage = pageShot;
+                foreach (var item in FindTreeItems(pageShot))
                 {
-                    logger.LogInfo($"[{account.AccountName}] 🔬 Starting {researchType} research (item at {x},{y})");
-                    await ClickAsync(account.InstanceNumber, logger, button);
-                    await Task.Delay(2000, cancellationToken);
-                    AutoTechnologySettings.AdvanceResearchType(account.InstanceNumber);
-                    _nextCheck[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(5); // short researches finish fast
-                    await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
-                    return new TaskExecutionDetails(true, message: $"Started {researchType} research");
+                    await ClickAsync(account.InstanceNumber, logger, item);
+                    await Task.Delay(1500, cancellationToken);
+                    var dialog = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                    var research = dialog == null ? null : FindResearchButton(dialog);
+                    if (research is Point button)
+                    {
+                        logger.LogInfo($"[{account.AccountName}] 🔬 Starting {researchType} research (item at {item.X},{item.Y}, page {page})");
+                        await ClickAsync(account.InstanceNumber, logger, button);
+                        await Task.Delay(2000, cancellationToken);
+                        AutoTechnologySettings.AdvanceResearchType(account.InstanceNumber);
+                        _nextCheck[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(5); // short researches finish fast
+                        await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
+                        return new TaskExecutionDetails(true, message: $"Started {researchType} research");
+                    }
+                    if (dialog != null && HasDialogOpen(dialog))
+                    {
+                        await PressBackAsync(account.InstanceNumber, logger); // close a locked or maxed item
+                        await Task.Delay(1000, cancellationToken);
+                    }
                 }
-                if (dialog != null && HasDialogOpen(dialog))
-                {
-                    await PressBackAsync(account.InstanceNumber, logger); // close a locked or maxed item
-                    await Task.Delay(1000, cancellationToken);
-                }
+                await SwipeAsync(account.InstanceNumber, logger, new Point(360, 1000), new Point(360, 420), 1500); // slow: no fling
+                await Task.Delay(1200, cancellationToken);
             }
 
             logger.LogInfo($"[{account.AccountName}] No {researchType} research available right now");
             AutoTechnologySettings.AdvanceResearchType(account.InstanceNumber); // try the other category next time
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
             return new TaskExecutionDetails(true, message: $"No {researchType} research available");
+        }
+
+        /// <summary>
+        /// Research items on the visible part of the tree: each has a brown level badge ("0/3", 62x25) under its
+        /// icon, whose centre is ~60 px above the badge. Items cut off at the top or bottom are left for another page.
+        /// </summary>
+        private static List<Point> FindTreeItems(byte[] screenshot)
+        {
+            using var img = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
+            if (img.Empty()) return new List<Point>();
+            using var hsv = new OpenCvSharp.Mat();
+            OpenCvSharp.Cv2.CvtColor(img, hsv, OpenCvSharp.ColorConversionCodes.BGR2HSV);
+            using var mask = new OpenCvSharp.Mat();
+            OpenCvSharp.Cv2.InRange(hsv, new OpenCvSharp.Scalar(10, 60, 80), new OpenCvSharp.Scalar(22, 170, 135), mask);
+            using var kernel = OpenCvSharp.Cv2.GetStructuringElement(OpenCvSharp.MorphShapes.Rect, new OpenCvSharp.Size(9, 5));
+            OpenCvSharp.Cv2.MorphologyEx(mask, mask, OpenCvSharp.MorphTypes.Close, kernel);
+            OpenCvSharp.Cv2.FindContours(mask, out var contours, out _, OpenCvSharp.RetrievalModes.External, OpenCvSharp.ContourApproximationModes.ApproxSimple);
+            return contours.Select(OpenCvSharp.Cv2.BoundingRect)
+                .Where(r => r.Width is >= 50 and <= 85 && r.Height is >= 18 and <= 34 && r.Y > 230 && r.Y + r.Height < 1250)
+                .Select(r => new Point(r.X + r.Width / 2, r.Y + r.Height / 2 - 60))
+                .OrderBy(p => p.Y).ThenBy(p => p.X).ToList();
+        }
+
+        /// <summary>True when a swipe did not move the tree: its bottom was already on screen.</summary>
+        private static bool SamePage(byte[] before, byte[] after)
+        {
+            using var a = OpenCvSharp.Cv2.ImDecode(before, OpenCvSharp.ImreadModes.Grayscale);
+            using var b = OpenCvSharp.Cv2.ImDecode(after, OpenCvSharp.ImreadModes.Grayscale);
+            if (a.Empty() || b.Empty()) return false;
+            var tree = new OpenCvSharp.Rect(20, 170, 680, 1080);
+            using var diff = new OpenCvSharp.Mat();
+            OpenCvSharp.Cv2.Absdiff(new OpenCvSharp.Mat(a, tree), new OpenCvSharp.Mat(b, tree), diff);
+            return OpenCvSharp.Cv2.Mean(diff).Val0 < 3;
         }
 
         /// <summary>
