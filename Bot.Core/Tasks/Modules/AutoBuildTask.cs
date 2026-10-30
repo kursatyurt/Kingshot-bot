@@ -361,17 +361,24 @@ namespace Bot.Core.Tasks.Modules
 
         private async Task<bool> UseQuickSpeedupsOnRingAsync(AccountSettings account, LogService logger, string name, CancellationToken cancellationToken)
         {
-            var ring = await TakeScreenshotAsync(account.InstanceNumber, logger);
-            var (found, label, _) = ring == null ? (false, Rectangle.Empty, 0.0)
-                : _templateMatcher.MatchTemplate(ring, Path.Combine(ImageTemplateFolder, "ring-speedups.png"), account.InstanceNumber,
-                    threshold: 0.9, searchArea: new Rectangle(0, 600, 720, 350));
-            if (!found)
+            if (!await TapRingSpeedupsAsync(account, logger, cancellationToken))
             {
-                logger.LogInfo($"[{account.AccountName}] {name}: no Speedups on the ring; not speeding up");
-                return false;
+                // The arrow sometimes only centres the building: tapping it opens its ring, or (Town Center) a page
+                // with Finish (gems) and a cyan Construction Speedup button side by side at the bottom
+                await ClickAsync(account.InstanceNumber, logger, CentredBuildingPoint);
+                await Task.Delay(2000, cancellationToken);
+                var page = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                if (page != null && IsCyan(page, PageSpeedupButton) && IsOrange(page, PageFinishButton))
+                {
+                    await ClickRandomInRectAsync(account.InstanceNumber, logger, PageSpeedupButton);
+                    await Task.Delay(2000, cancellationToken);
+                }
+                else if (!await TapRingSpeedupsAsync(account, logger, cancellationToken))
+                {
+                    logger.LogInfo($"[{account.AccountName}] {name}: no Speedups on the ring; not speeding up");
+                    return false;
+                }
             }
-            await ClickAsync(account.InstanceNumber, logger, new Point(label.X + label.Width / 2, label.Y - 40)); // icon above its label
-            await Task.Delay(2000, cancellationToken);
 
             var dialog = await TakeScreenshotAsync(account.InstanceNumber, logger);
             if (dialog == null || !IsCyan(dialog, QuickUseButton))
@@ -394,6 +401,20 @@ namespace Bot.Core.Tasks.Modules
             return true;
         }
 
+        private async Task<bool> TapRingSpeedupsAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
+        {
+            var ring = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            var (found, label, _) = ring == null ? (false, Rectangle.Empty, 0.0)
+                : _templateMatcher.MatchTemplate(ring, Path.Combine(ImageTemplateFolder, "ring-speedups.png"), account.InstanceNumber,
+                    threshold: 0.9, searchArea: new Rectangle(0, 600, 720, 350));
+            if (!found) return false;
+            await ClickAsync(account.InstanceNumber, logger, new Point(label.X + label.Width / 2, label.Y - 40)); // icon above its label
+            await Task.Delay(2000, cancellationToken);
+            return true;
+        }
+
+        private static readonly Rectangle PageSpeedupButton = new(385, 1175, 300, 60);
+        private static readonly Rectangle PageFinishButton = new(40, 1175, 300, 60);
         private static readonly Rectangle QuickUseButton = new(235, 940, 250, 60);
         private static readonly Rectangle QuickUseConfirmButton = new(235, 962, 250, 56);
         private static readonly Rectangle FinishButton = new(90, 835, 250, 60);
