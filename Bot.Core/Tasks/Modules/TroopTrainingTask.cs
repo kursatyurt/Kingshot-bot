@@ -90,7 +90,7 @@ namespace Bot.Core.Tasks.Modules
                 if (await TrainCampAsync(account, logger, camp, cancellationToken))
                 {
                     started++;
-                    busy.Add(TimeSpan.FromMinutes(15)); // re-read its real timer next time
+                    busy.Add(TimeSpan.FromMinutes(5)); // re-read its real timer soon: speedups may already have finished it
                 }
                 await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
             }

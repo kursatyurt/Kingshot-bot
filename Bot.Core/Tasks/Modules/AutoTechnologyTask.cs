@@ -170,6 +170,15 @@ namespace Bot.Core.Tasks.Modules
         /// speed). One distinctive word each, since OCR adds stray letters inside titles ("CommandjTiactics]ll").
         /// </summary>
         private static readonly string[] PriorityResearch = { "Command", "Enhanc" };
+        private static readonly Rectangle GetMoreUseButton = new Rectangle(510, 390, 140, 40); // first row of "Get More": green Use for an owned pack
+        private static bool IsGreen(byte[] screenshot, Rectangle rect)
+        {
+            using var img = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
+            if (img.Empty()) return false;
+            using var roi = new OpenCvSharp.Mat(img, new OpenCvSharp.Rect(rect.X, rect.Y, rect.Width, rect.Height));
+            var m = OpenCvSharp.Cv2.Mean(roi); // BGR; Use is ~(113,188,75), the gem Buy & Use ~(102,178,216)
+            return m.Val1 > 160 && m.Val2 < 130 && m.Val0 < 150;
+        }
         private static readonly Rectangle ResearchTitleArea = new Rectangle(60, 120, 600, 140); // the dialog header with "Stone Output I"; tall, as the dialog sits at different heights
 
         private async Task<TaskExecutionDetails> StartResearchAsync(AccountSettings account, LogService logger, LocatorService locator,
@@ -178,6 +187,24 @@ namespace Bot.Core.Tasks.Modules
             logger.LogInfo($"[{account.AccountName}] 🔬 Starting {researchType} research: {what}");
             await ClickAsync(account.InstanceNumber, logger, button);
             await Task.Delay(2000, cancellationToken);
+            // Short of a resource, the game opens "Get More": use owned packs (green Use, never the orange gem
+            // "Buy & Use"), close it with back and tap Research again. Each missing resource opens its own dialog.
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                var shot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                if (shot == null || !IsGreen(shot, GetMoreUseButton)) break;
+                for (int use = 0; use < 10 && shot != null && IsGreen(shot, GetMoreUseButton); use++)
+                {
+                    logger.LogInfo($"[{account.AccountName}] Research short of a resource: using an owned pack");
+                    await ClickAsync(account.InstanceNumber, logger, new Point(GetMoreUseButton.X + GetMoreUseButton.Width / 2, GetMoreUseButton.Y + GetMoreUseButton.Height / 2));
+                    await Task.Delay(1500, cancellationToken);
+                    shot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                }
+                await PressBackAsync(account.InstanceNumber, logger);
+                await Task.Delay(1500, cancellationToken);
+                await ClickAsync(account.InstanceNumber, logger, button);
+                await Task.Delay(2000, cancellationToken);
+            }
             AutoTechnologySettings.AdvanceResearchType(account.InstanceNumber);
             _nextCheck[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(5); // short researches finish fast
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
