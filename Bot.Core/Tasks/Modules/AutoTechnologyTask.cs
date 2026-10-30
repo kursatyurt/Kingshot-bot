@@ -95,7 +95,10 @@ namespace Bot.Core.Tasks.Modules
                 if (pageShot == null) break;
                 if (previousPage != null && SamePage(previousPage, pageShot)) break; // bottom of the tree
                 previousPage = pageShot;
-                foreach (var item in FindTreeItems(pageShot))
+                // Locked (grey) items are never tapped. The scan still pages to the bottom: how finished items look
+                // is unverified, so a page without teal items is not taken as the end of what is open
+                var unlocked = FindTreeItems(pageShot).Where(p => IsUnlocked(pageShot, p)).ToList();
+                foreach (var item in unlocked)
                 {
                     var badge = badgeOcr.ExtractBrightTextFromScreenArea(pageShot, new Rectangle(item.X - 35, item.Y + 46, 70, 28));
                     await ClickAsync(account.InstanceNumber, logger, item);
@@ -203,6 +206,21 @@ namespace Bot.Core.Tasks.Modules
                 .OrderBy(p => p.Y).ThenBy(p => p.X).ToList();
         }
 
+        /// <summary>
+        /// An unlocked item sits on a teal hexagon (a third of its box is teal); a locked one is grey (0%).
+        /// </summary>
+        private static bool IsUnlocked(byte[] screenshot, Point item)
+        {
+            using var img = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
+            if (img.Empty()) return true;
+            var box = new OpenCvSharp.Rect(item.X - 50, item.Y - 50, 100, 90) & new OpenCvSharp.Rect(0, 0, img.Width, img.Height);
+            using var hsv = new OpenCvSharp.Mat();
+            OpenCvSharp.Cv2.CvtColor(new OpenCvSharp.Mat(img, box), hsv, OpenCvSharp.ColorConversionCodes.BGR2HSV);
+            using var teal = new OpenCvSharp.Mat();
+            OpenCvSharp.Cv2.InRange(hsv, new OpenCvSharp.Scalar(80, 70, 120), new OpenCvSharp.Scalar(100, 255, 255), teal);
+            return OpenCvSharp.Cv2.CountNonZero(teal) > box.Width * box.Height / 10;
+        }
+
         /// <summary>True when a swipe did not move the tree: its bottom was already on screen.</summary>
         private static bool SamePage(byte[] before, byte[] after)
         {
@@ -282,8 +300,13 @@ namespace Bot.Core.Tasks.Modules
         // Per-instance position in ResearchTypes; advances only after a research actually starts
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, int> _nextIndex = new();
 
-        public ResearchType NextResearchType(int instanceNumber) =>
-            ResearchTypes is { Count: > 0 } types ? types[_nextIndex.GetOrAdd(instanceNumber, 0) % types.Count] : ResearchType;
+        /// <summary>Never Battle: the march queue (the goal) is in Growth, and Battle only spends resources on troop stats.</summary>
+        public ResearchType NextResearchType(int instanceNumber)
+        {
+            var types = (ResearchTypes is { Count: > 0 } list ? list : new List<ResearchType> { ResearchType })
+                .Where(t => t != ResearchType.Battle).ToList();
+            return types.Count == 0 ? ResearchType.Growth : types[_nextIndex.GetOrAdd(instanceNumber, 0) % types.Count];
+        }
 
         public static void AdvanceResearchType(int instanceNumber) =>
             _nextIndex.AddOrUpdate(instanceNumber, 1, (_, i) => i + 1);
