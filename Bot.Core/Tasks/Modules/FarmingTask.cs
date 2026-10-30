@@ -403,6 +403,20 @@ namespace Bot.Core.Tasks.Modules
             logger.LogInfo($"[{account.AccountName}] 🖱️ Clicking search icon...");
             if (!await ClickRandomInRectAsync(account.InstanceNumber, logger, SearchIconRect)) return false;
             await Task.Delay(GameCoordinates.Delays.AfterClick, cancellationToken);
+            // The tap is sometimes swallowed (the map still settling after a popup) and the bot then swiped the map
+            // and failed every resource. The open panel covers the icon, so while it still shows, tap it again.
+            for (int retry = 0; retry < 2; retry++)
+            {
+                var iconShot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                if (iconShot == null) break;
+                if (_templateMatcher == null) _templateMatcher = new UnifiedTemplateMatchingService(logger);
+                var (iconShown, _, _) = _templateMatcher.MatchTemplate(iconShot, Path.Combine(ImageTemplateFolder, "search-icon.png"),
+                    account.InstanceNumber, threshold: 0.7, searchArea: new Rectangle(0, 830, 100, 90));
+                if (!iconShown) break;
+                logger.LogInfo($"[{account.AccountName}] 🖱️ Search panel did not open; tapping the search icon again...");
+                await ClickRandomInRectAsync(account.InstanceNumber, logger, SearchIconRect);
+                await Task.Delay(GameCoordinates.Delays.AfterClick, cancellationToken);
+            }
 
             // Find and click the specific resource type
             string resourceImageName = $"{target.ResourceType.ToString().ToLower()}.png";

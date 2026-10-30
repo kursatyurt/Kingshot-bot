@@ -17,6 +17,7 @@ namespace Bot.Core.Tasks.Modules
     public class AutoHuntTask : BaseTaskWithCommonPatterns
     {
         private readonly AutoHuntCoordinator _coordinator;
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, DateTime> _nextRun = new();
 
         public override TaskType TaskType => TaskType.AutoHunt;
         public override string Name => "Auto Hunt";
@@ -47,6 +48,11 @@ namespace Bot.Core.Tasks.Modules
             bool isReRun = false,
             IUserNotificationService? userNotifications = null)
         {
+            // Intel missions refresh every few hours and beasts wait for a march to come home: a run every cycle
+            // (~35 s) mostly found nothing new
+            if (_nextRun.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next)
+                return new TaskExecutionDetails(true, message: "Skipped: Intel checked recently");
+            _nextRun[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(15);
             return await _coordinator.ExecuteAutoHuntAsync(
                 account, 
                 logger, 

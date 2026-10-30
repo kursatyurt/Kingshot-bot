@@ -1,6 +1,7 @@
 // Headless runner for KingshotAuto (used on macOS, works anywhere Bot.Core runs).
 // Usage: KingshotAuto.Cli [config.json]   (default: configs/default_config.json, relative to the current directory)
 //        KingshotAuto.Cli --selftest      (checks that OpenCV and Tesseract load)
+//        KingshotAuto.Cli --ocr shot.png x y w h   (prints what OCR reads in that area)
 using System.Drawing;
 using Bot.Core.Config;
 using Bot.Core.LDPlayer;
@@ -20,6 +21,14 @@ if (OperatingSystem.IsMacOS())
 
 if (args.Contains("--selftest"))
     return SelfTest(logger);
+// Dev check of OCR on a saved screenshot: --ocr shot.png x y w h
+if (args.Length == 6 && args[0] == "--ocr")
+{
+    using var ocr = new OCRService(logger, new OCRConfiguration { ScaleFactor = 2.0f });
+    var area = new Rectangle(int.Parse(args[2]), int.Parse(args[3]), int.Parse(args[4]), int.Parse(args[5]));
+    Console.WriteLine($"OCR: '{ocr.ExtractTextFromScreenArea(File.ReadAllBytes(args[1]), area)}'");
+    return 0;
+}
 
 ConfigurationManager.Initialize(logger);
 ADBConnectionManager.StartHealthMonitoring(logger);

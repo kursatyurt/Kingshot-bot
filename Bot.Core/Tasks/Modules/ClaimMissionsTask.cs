@@ -25,8 +25,8 @@ namespace Bot.Core.Tasks.Modules
         // Tab image detection confidence threshold
         private const double TAB_CONFIDENCE_THRESHOLD = 0.65;
         
-        // Claim button confidence threshold (lower due to UI variations)
-        private const double CLAIM_BUTTON_CONFIDENCE_THRESHOLD = 0.65;
+        // Strict verify threshold: real Claim buttons match ~0.97; greyed/claimed rows match ~0.70 and must be skipped
+        private const double CLAIM_BUTTON_CONFIDENCE_THRESHOLD = 0.8;
         
         // Notification detection areas for OCR (expanded by 15 pixels for better detection)
         private static readonly Rectangle DailyNotificationArea = new Rectangle(665, 1136, 42, 40);
@@ -305,7 +305,7 @@ namespace Bot.Core.Tasks.Modules
                                 screenshot,
                                 templatePath,
                                 instanceNumber,
-                                threshold: 0.8,
+                                threshold: CLAIM_BUTTON_CONFIDENCE_THRESHOLD,
                                 scales: UnifiedTemplateMatchingService.StandardScales,
                                 verboseLogging: true  // Enable verbose logging to confirm color matching
                             );
@@ -325,7 +325,7 @@ namespace Bot.Core.Tasks.Modules
                             }
                             else
                             {
-                                logger.LogWarning($"Claim button confidence {confidence:F3} is below {CLAIM_BUTTON_CONFIDENCE_THRESHOLD} threshold, skipping");
+                                logger.LogInfo($"Claim button confidence {confidence:F3} is below {CLAIM_BUTTON_CONFIDENCE_THRESHOLD} threshold, skipping");
                             }
                         }
                     }
