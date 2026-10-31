@@ -320,12 +320,10 @@ namespace Bot.Core.Tasks.Modules
         private static readonly ConcurrentDictionary<int, DateTime> _nextSpeedupCheck = new();
 
         /// <summary>Side panel rows that can be sped up: name, its arrow, and where its countdown shows.</summary>
+        // No troop training rows: the user said not to use speedups on troops
         private static readonly (string name, Point arrow, Rectangle status)[] SpeedupRows =
         {
             ("Construction", new Point(405, 378), new Rectangle(150, 376, 160, 30)),
-            ("Infantry training", new Point(405, 563), new Rectangle(150, 563, 160, 30)),
-            ("Cavalry training", new Point(405, 636), new Rectangle(150, 636, 160, 30)),
-            ("Archer training", new Point(405, 709), new Rectangle(150, 709, 160, 30)),
             ("Research", new Point(405, 820), new Rectangle(150, 822, 160, 30)),
         };
 
