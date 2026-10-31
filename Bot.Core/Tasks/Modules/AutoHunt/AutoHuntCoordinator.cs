@@ -144,6 +144,9 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
 
                         // Detect targets - directly implemented in coordinator
                         var targets = await DetectAllTargetsDirectly(account, logger, cancellationToken, accountId);
+                        // ponytail: one lost conquest disables all conquest targets until the bot restarts; track per-target losses if stronger ones get skipped
+                        if (!sessionState.CanAttackAttack)
+                            targets.RemoveAll(t => t.Type == "attack");
                         if (targets.Any())
                         {
                             var targetsOrderedByConfidence = targets.OrderByDescending(t => t.Confidence).ToList();
@@ -689,11 +692,11 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                 
                 logger.LogInfo($"[{account.AccountName}] Now checking for battle result using OCR (up to 20 seconds)...");
 
-                // Battle result text area: 211,360 to 515,454
-                var battleResultArea = new Rectangle(211, 360, 304, 94);
+                // Battle result title ("Victory!"/"Failed!") sits around y 330-400
+                var battleResultArea = new Rectangle(200, 320, 320, 100);
 
                 int checkCount = 0;
-                while ((DateTime.UtcNow - startTime).TotalSeconds < 20 && !resultFound)
+                while ((DateTime.UtcNow - startTime).TotalSeconds < 40 && !resultFound)
                 {
                     checkCount++;
                     var battleScreenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
@@ -718,7 +721,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                             }
 
                             // Check for defeat text
-                            if (text.Contains("defeat"))
+                            if (text.Contains("defeat") || text.Contains("failed"))
                             {
                                 logger.LogInfo($"[{account.AccountName}] ❌ Defeat detected via OCR: '{text}' after {checkCount} checks in {(DateTime.UtcNow - startTime).TotalSeconds:F1}s");
                                 resultFound = true;
@@ -744,7 +747,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
 
                 if (!resultFound)
                 {
-                    logger.LogError($"[{account.AccountName}] Could not detect battle result via OCR after 20 seconds");
+                    logger.LogError($"[{account.AccountName}] Could not detect battle result via OCR after 40 seconds");
                     return TargetProcessResult.Failed("Could not detect battle result");
                 }
 
