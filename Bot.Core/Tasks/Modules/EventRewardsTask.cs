@@ -130,7 +130,7 @@ namespace Bot.Core.Tasks.Modules
                 {
                     // At night or under the tutorial glove the template scores ~0.5. The centred Storehouse puts its
                     // bubble (online chest or feast drumstick) at one spot: look for the white bubble frame there
-                    if (!HasBubbleFrame(city)) break;
+                    if (chest > 0 || !HasBubbleFrame(city)) break; // the frame lingers after collecting, so trust it once
                     rect = new Rectangle(343, 443, 30, 30);
                 }
                 logger.LogInfo($"[{account.AccountName}] 🎁 Collecting the Storehouse online chest");
