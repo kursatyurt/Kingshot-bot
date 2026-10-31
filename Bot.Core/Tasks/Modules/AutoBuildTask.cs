@@ -40,7 +40,7 @@ namespace Bot.Core.Tasks.Modules
         private static readonly Point TownCenterUpgradeButton = new Point(610, 624);
         private static readonly Point RequirementsUpgradeButton = new Point(528, 1215);
         private readonly Rectangle redXSearchArea = new Rectangle(449, 589, 211, 543); // ❌ column of the requirements list
-        private readonly Rectangle goButtonSearchArea = new Rectangle(527, 588, 159, 547); // Go buttons next to the requirement rows
+        private readonly Rectangle goButtonSearchArea = new Rectangle(500, 588, 200, 547); // Go buttons next to the requirement rows
         private static readonly Point BuildingRingUpgradeButton = new Point(360, 750); // ring around a building after Go centres it
         private static readonly Rectangle DialogUpgradeButtonArea = new Rectangle(360, 700, 360, 560); // bottom right of a building's upgrade dialog (lower with more rows)
         private static readonly Rectangle ConstructionStatusRect = new Rectangle(40, 722, 200, 30); // "Upgrading" bar on a building under construction
@@ -124,6 +124,9 @@ namespace Bot.Core.Tasks.Modules
                     }
                 }
                 var missing = await ReadRequirementsAsync(account, logger, cancellationToken);
+                // Top up from the backpack, or else make farming gather the short resource first
+                if (missing is { Count: > 0 } && await UseBackpackResourcesAsync(account, logger, cancellationToken))
+                    missing = await ReadRequirementsAsync(account, logger, cancellationToken) ?? missing;
                 if (missing == null || missing.Count > 0)
                 {
                     logger.LogInfo($"[{account.AccountName}] Command Center upgrade needs: {string.Join("; ", missing ?? new List<string>())}");
