@@ -112,7 +112,7 @@ namespace Bot.Core.Tasks.Modules
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, DateTime> _nextTerrorRally = new();
 
         /// <summary>
-        /// World map search → Terror (lowest level) → Search → Rally (25 stamina) → 5 min → Hold a rally → Deploy.
+        /// World map search → Terror (lowest level) → Search → Rally (25 stamina) → 3 min → Hold a rally → Deploy.
         /// Without stamina or a free march the game shows another dialog instead of "Hold a rally": back out.
         /// </summary>
         private async Task<bool> HoldTerrorRallyAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
@@ -137,7 +137,7 @@ namespace Bot.Core.Tasks.Modules
                 await new LocatorService(logger, account).EnsureViewAsync(ViewType.MapView, account.InstanceNumber, cancellationToken);
                 return false;
             }
-            await ClickAsync(account.InstanceNumber, logger, new Point(395, 587)); // 5 min: time for members to join
+            await ClickAsync(account.InstanceNumber, logger, new Point(130, 587)); // always 3 min (user's choice)
             await Task.Delay(800, cancellationToken);
             await ClickAsync(account.InstanceNumber, logger, new Point(360, 847)); // Hold a rally
             await Task.Delay(2500, cancellationToken);
