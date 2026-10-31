@@ -33,8 +33,8 @@ namespace Bot.Core.Tasks.Modules
         private static readonly Rectangle ClaimButtonSearchArea = new Rectangle(387, 1196, 88, 78);  // 387-475, 1196-1274
 
         // Collection interval settings (same as ConquestCollectTask)
-        private static readonly TimeSpan MinCollectionInterval = TimeSpan.FromHours(3);
-        private static readonly TimeSpan MaxCollectionInterval = TimeSpan.FromHours(6);
+        private static readonly TimeSpan MinCollectionInterval = TimeSpan.FromMinutes(30);
+        private static readonly TimeSpan MaxCollectionInterval = TimeSpan.FromMinutes(60);
         private static readonly Random _random = new Random();
 
         // Static dictionary to track last collection times per account (instance + account name)

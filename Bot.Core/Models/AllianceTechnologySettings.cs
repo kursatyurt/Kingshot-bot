@@ -7,7 +7,7 @@ namespace Bot.Core.Models
 {
     public class AllianceTechnologySettings : INotifyPropertyChanged
     {
-        private int _waitHours = 10;
+        private int _waitHours = 1; // keep the alliance badge clear: help, gifts, chests, tech
 
         /// <summary>
         /// Number of hours to wait before running Alliance Technology task again.
