@@ -86,7 +86,7 @@ namespace Bot.Core.Tasks.Modules
         private async Task ClaimStorehouseRewardsAsync(AccountSettings account, LogService logger, LocatorService locator, CancellationToken cancellationToken)
         {
             if (_nextStorehouseCheck.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next) return;
-            _nextStorehouseCheck[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(15);
+            _nextStorehouseCheck[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(10);
 
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
             if (!await OpenSidePanelAsync(account.InstanceNumber, logger, cancellationToken)) return;
@@ -128,10 +128,10 @@ namespace Bot.Core.Tasks.Modules
                     account.InstanceNumber, threshold: 0.8); // the bubble bobs: 0.87-0.99; nothing else above 0.74
                 if (!found)
                 {
-                    // A tutorial glove often sits on the bubble, pointing at it: its fingertip marks the chest
-                    var glove = LocatorService.FindTutorialGlove(city, Path.Combine(AppContext.BaseDirectory, "templates", "images", "locator", "tutorial-glove.png"));
-                    if (glove is not { } g || g.x < 300 || g.x > 440 || g.y < 380 || g.y > 500) break;
-                    rect = new Rectangle(g.x - 5, g.y - 5, 10, 10);
+                    // At night or under the tutorial glove the template scores ~0.5. The centred Storehouse puts its
+                    // bubble (online chest or feast drumstick) at one spot: look for the white bubble frame there
+                    if (!HasBubbleFrame(city)) break;
+                    rect = new Rectangle(343, 443, 30, 30);
                 }
                 logger.LogInfo($"[{account.AccountName}] 🎁 Collecting the Storehouse online chest");
                 await ClickRandomInRectAsync(account.InstanceNumber, logger, rect);
@@ -140,6 +140,17 @@ namespace Bot.Core.Tasks.Modules
                 await Task.Delay(1500, cancellationToken);
             }
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
+        }
+
+        private static bool HasBubbleFrame(byte[] screenshot)
+        {
+            using var img = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
+            if (img.Empty()) return false;
+            using var hsv = new OpenCvSharp.Mat();
+            OpenCvSharp.Cv2.CvtColor(new OpenCvSharp.Mat(img, new OpenCvSharp.Rect(325, 425, 70, 65)), hsv, OpenCvSharp.ColorConversionCodes.BGR2HSV);
+            using var white = new OpenCvSharp.Mat();
+            OpenCvSharp.Cv2.InRange(hsv, new OpenCvSharp.Scalar(0, 0, 191), new OpenCvSharp.Scalar(180, 59, 255), white);
+            return OpenCvSharp.Cv2.CountNonZero(white) > 70 * 65 / 5; // bubble ~40%, bare city under 4%
         }
 
         private static bool HasDimmedBackdrop(byte[] screenshot)
