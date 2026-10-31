@@ -93,6 +93,59 @@ namespace Bot.Core.Tasks.Modules
         /// The idle builder's suggestion is centred: press it, and if its ring offers Upgrade and every requirement is met
         /// (resources topped up from the backpack), upgrade it. Never the Storehouse (the user asked not to upgrade it).
         /// </summary>
+        private static readonly ConcurrentDictionary<int, DateTime> _nextCommandCenterCheck = new();
+
+        /// <summary>
+        /// With the builder idle (side panel open), upgrades the Command Center when every requirement is met. The panel's
+        /// Tech Research arrow centres the Academy; the Command Center sits right and below it, its ring partly off screen.
+        /// </summary>
+        // ponytail: fixed offsets from the centred Academy; a moved Command Center needs new tap points
+        private async Task<bool> TryUpgradeCommandCenterAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
+        {
+            if (_nextCommandCenterCheck.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next) return false;
+            _nextCommandCenterCheck[account.InstanceNumber] = DateTime.UtcNow.AddHours(1);
+            var locator = new LocatorService(logger, account);
+            try
+            {
+                await ClickAsync(account.InstanceNumber, logger, new Point(405, 820)); // Tech Research → centres the Academy
+                await Task.Delay(2500, cancellationToken);
+                await ClickAsync(account.InstanceNumber, logger, new Point(650, 700)); // Command Center
+                await Task.Delay(2000, cancellationToken);
+                await ClickAsync(account.InstanceNumber, logger, new Point(690, 975)); // its ring's Upgrade
+                await Task.Delay(2000, cancellationToken);
+                var dialog = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                using (var words = new OCRService(logger))
+                {
+                    var title = dialog == null ? "" : words.ExtractTextFromScreenArea(dialog, new Rectangle(150, 215, 420, 60));
+                    if (!title.Contains("Command", StringComparison.OrdinalIgnoreCase))
+                    {
+                        logger.LogInfo($"[{account.AccountName}] Command Center upgrade page not found ('{title}')");
+                        return false;
+                    }
+                }
+                var missing = await ReadRequirementsAsync(account, logger, cancellationToken);
+                if (missing == null || missing.Count > 0)
+                {
+                    logger.LogInfo($"[{account.AccountName}] Command Center upgrade needs: {string.Join("; ", missing ?? new List<string>())}");
+                    return false;
+                }
+                dialog = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                var (found, rect, _) = dialog == null ? (false, Rectangle.Empty, 0.0)
+                    : _templateMatcher.MatchTemplate(dialog, Path.Combine(ImageTemplateFolder, "dialog-upgrade-button.png"),
+                        account.InstanceNumber, threshold: 0.88, searchArea: DialogUpgradeButtonArea);
+                if (!found) return false;
+                logger.LogInfo($"[{account.AccountName}] 🏛️ Upgrading the Command Center");
+                await ClickRandomInRectAsync(account.InstanceNumber, logger, rect);
+                await RandomDelay(cancellationToken);
+                await RequestAllianceHelpAsync(account, logger, cancellationToken);
+                return true;
+            }
+            finally
+            {
+                await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
+            }
+        }
+
         private async Task UpgradeSuggestedBuildingAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
         {
             // An idle builder is the bigger waste: houses, the Infirmary and resource buildings level up on what is on
@@ -174,6 +227,8 @@ namespace Bot.Core.Tasks.Modules
                     return;
                 }
 
+                if (built == 0 && await TryUpgradeCommandCenterAsync(account, logger, cancellationToken)) return;
+                if (built == 0) await OpenSidePanelAsync(account.InstanceNumber, logger, cancellationToken);
                 await ClickAsync(account.InstanceNumber, logger, new Point(405, 370)); // Building Queue 1 → suggested build
                 var (found, rect) = (false, Rectangle.Empty);
                 for (int look = 0; look < 3 && !found; look++) // a tutorial glove can cover the Build button for a moment
