@@ -263,8 +263,9 @@ namespace Bot.Core.Tasks.Modules
                 }
 
                 // A free march and stamina go to a Terror rally first: alliance members auto-join it
-                if (await HoldTerrorRallyAsync(account, logger, cancellationToken) && --currentMarches <= 0)
-                    return new TaskExecutionDetails(true, message: "Held a Terror rally; no march left for gathering");
+                // Disabled by the user for now (it kept failing):
+                // if (await HoldTerrorRallyAsync(account, logger, cancellationToken) && --currentMarches <= 0)
+                //     return new TaskExecutionDetails(true, message: "Held a Terror rally; no march left for gathering");
 
                 await WaitIfPausedAsync(cancellationToken);
                 if (cancellationToken.IsCancellationRequested) return TaskExecutionDetails.Failed("Task was cancelled");
