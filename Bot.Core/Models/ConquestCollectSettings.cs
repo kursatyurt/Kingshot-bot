@@ -7,7 +7,7 @@ namespace Bot.Core.Models
 {
     public class ConquestCollectSettings : INotifyPropertyChanged
     {
-        private int _waitHours = 4;
+        private int _waitHours = 1; // the idle chest keeps filling; claim it hourly
 
         /// <summary>
         /// Number of hours to wait before running Conquest Collect task again.
