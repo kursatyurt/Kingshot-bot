@@ -154,6 +154,71 @@ namespace Bot.Core.Tasks.Modules
             return true;
         }
 
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, DateTime> _nextBeastHunt = new();
+
+        /// <summary>
+        /// World map search → Beasts → Search → Attack (10 stamina) → Deploy. A search above the account's
+        /// "Max opponent" level finds nothing, so the level is lowered and the search repeated. Without stamina or
+        /// a free march another dialog shows instead of the deploy page: back out.
+        /// </summary>
+        private async Task<bool> HuntBeastAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
+        {
+            if (_nextBeastHunt.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next) return false;
+            _nextBeastHunt[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(10);
+            var locator = new LocatorService(logger, account);
+
+            await ClickRandomInRectAsync(account.InstanceNumber, logger, SearchIconRect);
+            await Task.Delay(2000, cancellationToken);
+            await ClickAsync(account.InstanceNumber, logger, new Point(88, 900)); // Beasts tab
+            await Task.Delay(1200, cancellationToken);
+            Point? attack = null;
+            for (int tries = 0; tries < 3 && attack == null; tries++)
+            {
+                if (tries > 0) { await ClickAsync(account.InstanceNumber, logger, new Point(70, 1053)); await Task.Delay(600, cancellationToken); } // level −1
+                await ClickAsync(account.InstanceNumber, logger, new Point(360, 1215)); // Search
+                await Task.Delay(3000, cancellationToken);
+                var card = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                attack = card == null ? null : FindOrangeButton(card);
+            }
+            if (attack is not Point a)
+            {
+                logger.LogInfo($"[{account.AccountName}] No beast found to hunt");
+                await locator.EnsureViewAsync(ViewType.MapView, account.InstanceNumber, cancellationToken);
+                return false;
+            }
+            await ClickAsync(account.InstanceNumber, logger, a); // Attack
+            await Task.Delay(2500, cancellationToken);
+            var deploy = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            if (deploy == null || !IsCyanArea(deploy, new Rectangle(420, 1180, 250, 20)))
+            {
+                logger.LogInfo($"[{account.AccountName}] No beast hunt now (no stamina or free march)");
+                await PressBackAsync(account.InstanceNumber, logger);
+                await Task.Delay(1000, cancellationToken);
+                await locator.EnsureViewAsync(ViewType.MapView, account.InstanceNumber, cancellationToken);
+                return false;
+            }
+            await ClickAsync(account.InstanceNumber, logger, new Point(548, 1210)); // Deploy (troops come pre-filled)
+            await Task.Delay(2500, cancellationToken);
+            logger.LogInfo($"[{account.AccountName}] 🐺 Hunting a beast");
+            _nextBeastHunt[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(3); // the march is back in about 90 s
+            return true;
+        }
+
+        /// <summary>The orange Attack button on a beast's card (its height on screen varies).</summary>
+        private static Point? FindOrangeButton(byte[] screenshot)
+        {
+            using var img = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
+            if (img.Empty()) return null;
+            using var hsv = new OpenCvSharp.Mat();
+            OpenCvSharp.Cv2.CvtColor(img, hsv, OpenCvSharp.ColorConversionCodes.BGR2HSV);
+            using var mask = new OpenCvSharp.Mat();
+            OpenCvSharp.Cv2.InRange(hsv, new OpenCvSharp.Scalar(5, 150, 180), new OpenCvSharp.Scalar(22, 255, 255), mask);
+            OpenCvSharp.Cv2.FindContours(mask, out var contours, out _, OpenCvSharp.RetrievalModes.External, OpenCvSharp.ContourApproximationModes.ApproxSimple);
+            var r = contours.Select(OpenCvSharp.Cv2.BoundingRect)
+                .FirstOrDefault(b => b.Width > 180 && b.Width < 280 && b.Height > 45 && b.Height < 90 && b.Y > 300 && b.Y < 800);
+            return r.Width == 0 ? null : new Point(r.X + r.Width / 2, r.Y + r.Height / 2);
+        }
+
         private static bool IsCyanArea(byte[] screenshot, Rectangle rect)
         {
             using var img = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
@@ -266,6 +331,9 @@ namespace Bot.Core.Tasks.Modules
                 // Disabled by the user for now (it kept failing):
                 // if (await HoldTerrorRallyAsync(account, logger, cancellationToken) && --currentMarches <= 0)
                 //     return new TaskExecutionDetails(true, message: "Held a Terror rally; no march left for gathering");
+                // A free march and stamina hunt a beast first (10 stamina; back within about a minute and a half)
+                if (await HuntBeastAsync(account, logger, cancellationToken) && --currentMarches <= 0)
+                    return new TaskExecutionDetails(true, message: "Hunting a beast; no march left for gathering");
 
                 await WaitIfPausedAsync(cancellationToken);
                 if (cancellationToken.IsCancellationRequested) return TaskExecutionDetails.Failed("Task was cancelled");
