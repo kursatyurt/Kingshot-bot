@@ -174,6 +174,14 @@ namespace Bot.Core.Tasks.Modules
             }
             return best;
         }
+        private static bool IsCyanHelp(byte[] screenshot)
+        {
+            using var img = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
+            if (img.Empty()) return false;
+            using var roi = new OpenCvSharp.Mat(img, new OpenCvSharp.Rect(540, 1170, 130, 25)); // above the "Help" text
+            var m = OpenCvSharp.Cv2.Mean(roi);
+            return m.Val0 > 170 && m.Val1 > 160 && m.Val2 < 120;
+        }
         private static bool IsGreen(byte[] screenshot, Rectangle rect)
         {
             using var img = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
@@ -214,6 +222,14 @@ namespace Bot.Core.Tasks.Modules
                 if (shot == null || FindResearchButton(shot) is not Point again) break;
                 await ClickAsync(account.InstanceNumber, logger, again);
                 await Task.Delay(2000, cancellationToken);
+            }
+            // The running research shows a cyan Help bar at the bottom of the tree: ask the alliance right here
+            var started = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            if (started != null && IsCyanHelp(started))
+            {
+                logger.LogInfo($"[{account.AccountName}] 🤝 Asking alliance help for the research");
+                await ClickAsync(account.InstanceNumber, logger, new Point(603, 1197));
+                await Task.Delay(1000, cancellationToken);
             }
             AutoTechnologySettings.AdvanceResearchType(account.InstanceNumber);
             _nextCheck[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(5); // short researches finish fast
