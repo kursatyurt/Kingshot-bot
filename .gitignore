@@ -194,3 +194,5 @@ CLAUDE.md
 
 # Stray "/dev/null" redirect artifacts created on Windows
 dev/
+
+configs/*.bak
