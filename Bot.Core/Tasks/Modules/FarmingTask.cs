@@ -109,6 +109,60 @@ namespace Bot.Core.Tasks.Modules
         // UI element coordinates
         private static readonly Rectangle FirstMarchStatusRect = new Rectangle(55, 248, 110, 24); // "Returning" / "Gathering" above that timer
         private static readonly Rectangle FirstMarchTimerRect = new Rectangle(90, 268, 90, 26);  // "00:01:31" under the first march in the map's march panel
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, DateTime> _nextTerrorRally = new();
+
+        /// <summary>
+        /// World map search → Terror (lowest level) → Search → Rally (25 stamina) → 5 min → Hold a rally → Deploy.
+        /// Without stamina or a free march the game shows another dialog instead of "Hold a rally": back out.
+        /// </summary>
+        private async Task<bool> HoldTerrorRallyAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
+        {
+            if (_nextTerrorRally.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next) return false;
+            _nextTerrorRally[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(20);
+
+            await ClickRandomInRectAsync(account.InstanceNumber, logger, SearchIconRect);
+            await Task.Delay(2000, cancellationToken);
+            await ClickAsync(account.InstanceNumber, logger, new Point(245, 900)); // Terror tab
+            await Task.Delay(1200, cancellationToken);
+            await ClickAsync(account.InstanceNumber, logger, new Point(360, 1215)); // Search
+            await Task.Delay(3000, cancellationToken);
+            await ClickAsync(account.InstanceNumber, logger, new Point(360, 490)); // Rally on the Terror's card
+            await Task.Delay(2500, cancellationToken);
+            var hold = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            if (hold == null || !IsCyanArea(hold, new Rectangle(240, 822, 240, 50)))
+            {
+                logger.LogInfo($"[{account.AccountName}] No Terror rally now (no stamina or free march)");
+                await PressBackAsync(account.InstanceNumber, logger);
+                await Task.Delay(1000, cancellationToken);
+                await new LocatorService(logger, account).EnsureViewAsync(ViewType.MapView, account.InstanceNumber, cancellationToken);
+                return false;
+            }
+            await ClickAsync(account.InstanceNumber, logger, new Point(395, 587)); // 5 min: time for members to join
+            await Task.Delay(800, cancellationToken);
+            await ClickAsync(account.InstanceNumber, logger, new Point(360, 847)); // Hold a rally
+            await Task.Delay(2500, cancellationToken);
+            var deploy = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            if (deploy == null || !IsCyanArea(deploy, new Rectangle(420, 1180, 250, 20)))
+            {
+                await new LocatorService(logger, account).EnsureViewAsync(ViewType.MapView, account.InstanceNumber, cancellationToken);
+                return false;
+            }
+            await ClickAsync(account.InstanceNumber, logger, new Point(548, 1210)); // Deploy (troops come pre-filled)
+            await Task.Delay(2500, cancellationToken);
+            logger.LogInfo($"[{account.AccountName}] ⚔️ Holding a Terror rally");
+            _nextTerrorRally[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(10);
+            return true;
+        }
+
+        private static bool IsCyanArea(byte[] screenshot, Rectangle rect)
+        {
+            using var img = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
+            if (img.Empty()) return false;
+            using var roi = new OpenCvSharp.Mat(img, new OpenCvSharp.Rect(rect.X, rect.Y, rect.Width, rect.Height));
+            var m = OpenCvSharp.Cv2.Mean(roi); // BGR
+            return m.Val0 > 170 && m.Val1 > 160 && m.Val2 < 120;
+        }
+
         private static readonly Rectangle SearchIconRect = new Rectangle(20, 855, 47, 43);  // Search icon in top menu
         private static readonly Rectangle ResourceScrollArea = new Rectangle(0, 820, 718, 180);  // Resource selection area (icons start at y≈842)
         // The bar ignores fast swipes from the screen edge and swipes above y≈920; a slow 600→120 drag at y=925 scrolls it
@@ -207,6 +261,10 @@ namespace Bot.Core.Tasks.Modules
                 {
                     return TaskExecutionDetails.Failed("Farming task cancelled during view location.");
                 }
+
+                // A free march and stamina go to a Terror rally first: alliance members auto-join it
+                if (await HoldTerrorRallyAsync(account, logger, cancellationToken) && --currentMarches <= 0)
+                    return new TaskExecutionDetails(true, message: "Held a Terror rally; no march left for gathering");
 
                 await WaitIfPausedAsync(cancellationToken);
                 if (cancellationToken.IsCancellationRequested) return TaskExecutionDetails.Failed("Task was cancelled");
