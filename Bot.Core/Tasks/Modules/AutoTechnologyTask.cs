@@ -128,12 +128,12 @@ namespace Bot.Core.Tasks.Modules
                         var level = System.Text.RegularExpressions.Regex.Match(badge, @"(\d+)\s*/\s*(\d+)");
                         bool isNew = level.Success && level.Groups[1].Value == "0";
                         bool isPriority = PriorityResearch.Any(p => title.Contains(p, StringComparison.OrdinalIgnoreCase));
-                        if (pass == 1 && title == fallback!.Value.title)
+                        if (pass == 1 && title.Length >= 4 && title == fallback!.Value.title)
                             return await StartResearchAsync(account, logger, locator, researchType, button, $"levelling '{title}' ({badge.Trim()}), page {page}", cancellationToken);
                         if (pass == 0 && (isPriority || isNew))
                             return await StartResearchAsync(account, logger, locator, researchType, button,
                                 $"{(isPriority ? "priority" : "new")} '{title}' ({badge.Trim()}), page {page}", cancellationToken);
-                        double progress = level.Success && int.TryParse(level.Groups[2].Value, out var max) && max > 0
+                        double progress = level.Success && int.TryParse(level.Groups[2].Value, out var max) && (max = max > 10 ? max.ToString()[0] - '0' : max) > 0
                             ? int.Parse(level.Groups[1].Value) / (double)max : 1;
                         if (pass == 0 && (fallback == null || progress < fallback.Value.progress)) fallback = (page, item, progress, title);
                     }
@@ -190,7 +190,7 @@ namespace Bot.Core.Tasks.Modules
             var m = OpenCvSharp.Cv2.Mean(roi); // BGR; Use is ~(113,188,75), the gem Buy & Use ~(102,178,216)
             return m.Val1 > 160 && m.Val2 < 130 && m.Val0 < 150;
         }
-        private static readonly Rectangle ResearchTitleArea = new Rectangle(60, 120, 600, 140); // the dialog header with "Stone Output I"; tall, as the dialog sits at different heights
+        private static readonly Rectangle ResearchTitleArea = new Rectangle(150, 232, 420, 62); // the dialog header ("Tool Enhancement II"); a taller area reads junk
 
         private async Task<TaskExecutionDetails> StartResearchAsync(AccountSettings account, LogService logger, LocatorService locator,
             ResearchType researchType, Point button, string what, CancellationToken cancellationToken)
