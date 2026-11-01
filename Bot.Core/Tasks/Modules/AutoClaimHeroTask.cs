@@ -126,7 +126,7 @@ namespace Bot.Core.Tasks.Modules
                 {
                     return TaskExecutionDetails.Failed("Failed to click hero button");
                 }
-                await Task.Delay(1000, cancellationToken);
+                await Task.Delay(1500, cancellationToken);
 
                 // Click recruit heroes button
                 var recruitButtonArea = new Rectangle(407, 1181, 252, 56);
@@ -138,6 +138,9 @@ namespace Bot.Core.Tasks.Modules
                     {
                         await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
                         logger.LogInfo($"[{account.AccountName}] Locator service completed view recovery, retrying recruit heroes button detection");
+                        // Recovery leaves the city view: open Heroes again before looking for its Recruit button
+                        await ClickRandomInRectAsyncWithRetry(account.InstanceNumber, logger, heroButtonArea, cancellationToken);
+                        await Task.Delay(1500, cancellationToken);
                         
                         // Retry after locator service
                         if (!await WaitForImageWithDebug("recruit-heros-button.png", account.InstanceNumber, logger, cancellationToken, TEMPLATE_TIMEOUT_MS))
