@@ -28,7 +28,8 @@ namespace Bot.Core.Models
         AllianceTechnology,
         AutoTechnology,
         AutoRally,
-        EventRewards
+        EventRewards,
+        RebelAssault
     }
 
     public class AccountSettings : INotifyPropertyChanged

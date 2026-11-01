@@ -65,6 +65,7 @@ namespace Bot.Core.Tasks
             _availableTasks[TaskType.AutoShield] = new AutoShieldTask(ConfigurationManager.Instance, _serviceProvider);
             _availableTasks[TaskType.CollectVip] = new CollectVipTask();
             _availableTasks[TaskType.EventRewards] = new EventRewardsTask();
+            _availableTasks[TaskType.RebelAssault] = new RebelAssaultTask();
             _availableTasks[TaskType.ClaimMissions] = new ClaimMissionsTask();
             _availableTasks[TaskType.ResidentWelcome] = new ResidentWelcomeTask();
             _availableTasks[TaskType.AllianceTechnology] = new AllianceTechnologyTask();
@@ -615,6 +616,7 @@ namespace Bot.Core.Tasks
                 // Free claims last
                 { TaskType.ConquestCollect, 8 },
                 { TaskType.EventRewards, 9 },
+                { TaskType.RebelAssault, 1 },     // early: an imminent assault costs residents if ignored or lost
                 { TaskType.ClaimMissions, 10 },
                 { TaskType.ClaimMail, 11 },
                 { TaskType.AutoClaimHero, 12 },
