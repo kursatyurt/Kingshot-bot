@@ -565,6 +565,16 @@ namespace Bot.Core.Utils
                     await adbController.TapAsync(claimPoint.X, claimPoint.Y, CancellationToken.None);
                     return true;
                 }
+                // Stamina "Get More" dialog (opened when a deploy runs out of stamina): close it with its X
+                var (getMoreShown, getMoreRect, _) = _templateMatcher.MatchTemplate(screenshot, Path.Combine(recoveryFolder, "get-more-close.png"),
+                    _account.InstanceNumber, 0.85, null, false, new Rectangle(560, 60, 160, 200));
+                if (getMoreShown)
+                {
+                    _logger.LogInfo("[Locator] ❎ Closing the stamina Get More dialog");
+                    var closePoint = getMoreRect.GetCenter();
+                    await adbController.TapAsync(closePoint.X, closePoint.Y, CancellationToken.None);
+                    return true;
+                }
                 var backButtonPaths = new[]
                 {
                     Path.Combine(recoveryFolder, "back-arrow.png"),
