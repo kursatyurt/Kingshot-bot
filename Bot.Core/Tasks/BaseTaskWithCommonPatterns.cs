@@ -996,7 +996,8 @@ namespace Bot.Core.Tasks
                     return await ClickRandomInRectAsync(instanceNumber, logger, matchRect);
                 }
 
-                logger.LogWarning($"Could not find '{imageName}' (best confidence: {confidence:F3})");
+                // Absent buttons are the normal case; only near misses are worth a warning
+                if (confidence >= 0.6) logger.LogWarning($"Could not find '{imageName}' (best confidence: {confidence:F3})");
                 return false;
             }
             catch (Exception ex)

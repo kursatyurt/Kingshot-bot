@@ -490,7 +490,7 @@ namespace Bot.Core.Tasks.Modules
 
         /// <summary>
         /// Reads the first march's timer in the world map's march panel ("Returning 00:01:31") and records when it is home.
-        /// ponytail: first panel row only (enough for one march slot); read every row once accounts have more slots.
+        /// ponytail: first panel row only, wait capped at 15 min; read every row if the cap costs too many checks.
         /// </summary>
         private async Task RecordNextMarchReturnAsync(AccountSettings account, LogService logger)
         {
@@ -508,8 +508,10 @@ namespace Bot.Core.Tasks.Modules
                 var extra = status.Contains("Return", StringComparison.OrdinalIgnoreCase) ? TimeSpan.Zero
                     : status.Contains("Gather", StringComparison.OrdinalIgnoreCase) ? TimeSpan.FromMinutes(2) // the trip back
                     : TimeSpan.FromMinutes(1);
-                NextMarchReturn[account.InstanceNumber] = DateTime.UtcNow + remaining + extra;
-                logger.LogInfo($"[{account.AccountName}] ⏱️ First march '{status}' {remaining}; next look in {remaining + extra}");
+                // Only the first row is read; a second march (beast, intel) can be home long before it, so look again within 15 min
+                var wait = remaining + extra < TimeSpan.FromMinutes(15) ? remaining + extra : TimeSpan.FromMinutes(15);
+                NextMarchReturn[account.InstanceNumber] = DateTime.UtcNow + wait;
+                logger.LogInfo($"[{account.AccountName}] ⏱️ First march '{status}' {remaining}; next look in {wait}");
             }
             else
             {

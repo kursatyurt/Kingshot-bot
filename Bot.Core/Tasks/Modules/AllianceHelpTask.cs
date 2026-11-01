@@ -20,6 +20,9 @@ namespace Bot.Core.Tasks.Modules
         // Property to control number of attempts (can be set before execution)
         public int MaxAttempts { get; set; } = 4; // Default 4 attempts for manual execution
 
+        // After an empty check, skip for a few minutes: the task otherwise runs after every other task
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, DateTime> _nextCheck = new();
+
         protected override async Task<TaskExecutionDetails> ExecuteTaskLogicAsync(
             AccountSettings account,
             LogService logger,
@@ -29,6 +32,8 @@ namespace Bot.Core.Tasks.Modules
         {
             try
             {
+                if (_nextCheck.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next)
+                    return new TaskExecutionDetails(true, message: "Alliance help checked recently");
                 logger.LogInfo($"[{account.AccountName}] 🔍 Looking for alliance help button...");
 
                 // Retry every 0.5 seconds with configurable max attempts
@@ -99,6 +104,7 @@ namespace Bot.Core.Tasks.Modules
                 }
 
                 logger.LogInfo($"[{account.AccountName}] ℹ️ No alliance help button found after {maxAttempts} attempts");
+                _nextCheck[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(5);
                 return TaskExecutionDetails.Succeeded(); // Still return success as no help button is a valid state
             }
             catch (Exception ex)

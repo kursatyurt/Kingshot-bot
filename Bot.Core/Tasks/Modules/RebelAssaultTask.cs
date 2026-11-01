@@ -2,6 +2,7 @@ using Bot.Core.Models;
 using Bot.Core.Logging;
 using Bot.Core.Utils;
 using Bot.Core.Services;
+using Bot.Core.ImageDetection;
 using System;
 using System.Drawing;
 using System.IO;
@@ -63,6 +64,11 @@ namespace Bot.Core.Tasks.Modules
                     continue;
                 }
                 logger.LogInfo($"[{account.AccountName}] Rebel Assault finished after {(int)(DateTime.UtcNow - start).TotalSeconds}s");
+                if (new OCRService(logger).ExtractTextFromScreenArea(shot, new Rectangle(0, 100, 720, 500))?.ToLower().Contains("fail") == true)
+                {
+                    logger.LogError($"[{account.AccountName}] ❌ Rebel Assault LOST - residents may have died; strengthen the barricade heroes");
+                    userNotifications?.ShowStatus($"Rebel Assault lost on {account.AccountName}", NotificationType.Error);
+                }
                 await ClickRandomInRectAsync(account.InstanceNumber, logger, townRect);
                 await Task.Delay(4000, cancellationToken);
                 await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
