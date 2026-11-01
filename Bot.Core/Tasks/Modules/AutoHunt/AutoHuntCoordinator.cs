@@ -172,6 +172,13 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                         if (result.StaminaDepleted)
                         {
                             logger.LogInfo($"[{account.AccountName}] Stamina depleted, ending hunt session");
+                            // Close the stamina Get More dialog (X) so the locator isn't lost
+                            var shot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                            if (shot != null && new OCRService(logger).ExtractTextFromScreenArea(shot, new Rectangle(220, 115, 280, 60))?.ToLower().Contains("more") == true)
+                            {
+                                await ClickAsync(account.InstanceNumber, logger, new Point(668, 145));
+                                await Task.Delay(800, cancellationToken);
+                            }
                             await ReturnToMapViewDirectly(account, logger, cancellationToken);
                             return new TaskExecutionDetails(true, message: "Stamina depleted, moving to next module");
                         }
