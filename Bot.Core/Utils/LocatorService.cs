@@ -565,6 +565,17 @@ namespace Bot.Core.Utils
                     await adbController.TapAsync(claimPoint.X, claimPoint.Y, CancellationToken.None);
                     return true;
                 }
+                // "Residents have arrived" (its Welcome in button fades in): welcome them rather than back out
+                using (var ocr = new OCRService(_logger))
+                {
+                    if (ocr.ExtractTextFromScreenArea(screenshot, new Rectangle(120, 450, 480, 70))?.ToLower().Contains("arrived") == true)
+                    {
+                        _logger.LogInfo("[Locator] 🏠 Welcoming arrived residents");
+                        await Task.Delay(2000);
+                        await adbController.TapAsync(357, 1121, CancellationToken.None);
+                        return true;
+                    }
+                }
                 // Stamina "Get More" dialog (opened when a deploy runs out of stamina): close it with its X
                 var (getMoreShown, getMoreRect, _) = _templateMatcher.MatchTemplate(screenshot, Path.Combine(recoveryFolder, "get-more-close.png"),
                     _account.InstanceNumber, 0.85, null, false, new Rectangle(560, 60, 160, 200));
