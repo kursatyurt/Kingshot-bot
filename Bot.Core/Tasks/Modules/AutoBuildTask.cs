@@ -476,6 +476,13 @@ namespace Bot.Core.Tasks.Modules
                 await PressBackAsync(account.InstanceNumber, logger);
                 await Task.Delay(1000, cancellationToken);
             }
+            // The building's upgrade page ("Upgrade Bonus") is still underneath: leave it too
+            left = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            if (left != null && new OCRService(logger).ExtractTextFromScreenArea(left, new Rectangle(30, 555, 320, 60))?.ToLower().Contains("upgrade bonus") == true)
+            {
+                await PressBackAsync(account.InstanceNumber, logger);
+                await Task.Delay(1000, cancellationToken);
+            }
             return true;
         }
 
