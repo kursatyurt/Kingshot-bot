@@ -494,7 +494,7 @@ namespace Bot.Core.Utils
             return best;
         }
 
-        private async Task<bool> TryCloseAdsAsync()
+        public async Task<bool> TryCloseAdsAsync()
         {
             try
             {

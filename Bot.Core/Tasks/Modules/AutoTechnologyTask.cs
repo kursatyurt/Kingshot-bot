@@ -151,6 +151,9 @@ namespace Bot.Core.Tasks.Modules
 
             logger.LogInfo($"[{account.AccountName}] No {researchType} research available right now");
             AutoTechnologySettings.AdvanceResearchType(account.InstanceNumber); // try the other category next time
+            _nextCheck[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(60); // a 70 s scan that finds nothing; check hourly
+            await PressBackAsync(account.InstanceNumber, logger); // leave Tech Research ourselves
+            await Task.Delay(1000, cancellationToken);
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
             return new TaskExecutionDetails(true, message: $"No {researchType} research available");
         }

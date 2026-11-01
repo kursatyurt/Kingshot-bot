@@ -268,6 +268,13 @@ namespace Bot.Core.Tasks.Modules
                         continue;
                     }
 
+                    // The game sometimes reopens on a sub-page (Alliance, ...): leave it with the recovery buttons
+                    if ((DateTime.UtcNow - startTime).TotalSeconds > 15 && await new LocatorService(logger, account).TryCloseAdsAsync())
+                    {
+                        await Task.Delay(1500, cancellationToken);
+                        continue;
+                    }
+
                     if ((DateTime.UtcNow - startTime).TotalMilliseconds < POST_LOAD_DURATION_MS)
                     {
                         logger.LogInfo($"[{account.AccountName}] ⏳ No UI elements detected, waiting before next attempt...");
