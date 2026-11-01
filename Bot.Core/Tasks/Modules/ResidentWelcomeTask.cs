@@ -71,12 +71,12 @@ namespace Bot.Core.Tasks.Modules
                     return new TaskExecutionDetails(true, message: "No residents to welcome");
                 }
 
-                // Look for welcome-in button for 3 seconds
+                // Look for welcome-in button for 6 seconds
                 logger.LogInfo($"[{account.AccountName}] Looking for welcome-in button...");
                 bool welcomeInFound = false;
                 startTime = DateTime.UtcNow;
                 
-                while ((DateTime.UtcNow - startTime).TotalSeconds < 3 && !welcomeInFound)
+                while ((DateTime.UtcNow - startTime).TotalSeconds < 6 && !welcomeInFound)
                 {
                     await WaitIfPausedAsync(cancellationToken);
                     if (cancellationToken.IsCancellationRequested) return TaskExecutionDetails.Failed("Task was cancelled");
@@ -87,6 +87,9 @@ namespace Bot.Core.Tasks.Modules
                         logger.LogInfo($"[{account.AccountName}] Found and clicked welcome-in button");
                         break;
                     }
+
+                    // The newcomer walks, so a tap can miss the moving bubble; tap it again
+                    await FindAndClickImageAsync("resident.png", account.InstanceNumber, logger, threshold: 0.6);
 
                     await Task.Delay(500, cancellationToken); // Check every 0.5 seconds
                 }
