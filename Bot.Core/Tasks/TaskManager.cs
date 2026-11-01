@@ -602,6 +602,7 @@ namespace Bot.Core.Tasks
             var taskPriority = new Dictionary<TaskType, int>
             {
                 { TaskType.AccountDetection, -1 }, // AccountDetection must run first (after Startup)
+                { TaskType.ResidentWelcome, 0 },   // while the fresh game start still has the city gate (bell) in view
                 { TaskType.AutoShield, 0 },        // AutoShield should run first to ensure protection
                 { TaskType.AutoHunt, 1 },          // AutoHunt should run after shield
                 { TaskType.Farming, 2 },           // the march slot first: an idle march is lost gathering time
@@ -619,7 +620,6 @@ namespace Bot.Core.Tasks
                 { TaskType.AutoClaimHero, 12 },
                 { TaskType.AllianceTechnology, 13 },
                 { TaskType.CollectVip, 14 },
-                { TaskType.ResidentWelcome, 15 },
                 { TaskType.ChangeAccount, 999 }    // ChangeAccount should always run last
             };
 

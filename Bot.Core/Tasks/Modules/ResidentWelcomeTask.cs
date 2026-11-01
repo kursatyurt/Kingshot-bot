@@ -43,23 +43,8 @@ namespace Bot.Core.Tasks.Modules
                 await _locatorService.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber);
                 logger.LogInfo($"[{account.AccountName}] Ensured base view for resident welcome");
 
-                // Execute zoom out to ensure proper visibility of resident icons
-                logger.LogInfo($"[{account.AccountName}] Executing zoom out for better resident visibility");
-                var ldConsolePath = LDPlayerHelper.GetLDPlayerConsolePath();
-                var dnConsolePath = LDPlayerHelper.GetDNPlayerConsolePath();
-                var instanceManager = new InstanceManager(ldConsolePath, dnConsolePath, logger);
-                var zoomSuccess = await instanceManager.ZoomOutAsync(account.InstanceNumber, cancellationToken);
-                if (zoomSuccess)
-                {
-                    logger.LogInfo($"[{account.AccountName}] Zoom out executed successfully");
-                    // Wait a moment for the zoom animation to complete
-                    await Task.Delay(1000, cancellationToken);
-                }
-                else
-                {
-                    logger.LogWarning($"[{account.AccountName}] Zoom out execution failed, continuing without zoom");
-                }
-
+                // No zoom: the task runs right after the game start, whose camera has the city gate (bell) in view;
+                // zooming out moved the bubble while it was being tapped
                 // Look for resident icon for 3 seconds
                 logger.LogInfo($"[{account.AccountName}] Looking for resident icon...");
                 bool residentFound = false;
