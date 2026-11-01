@@ -1524,6 +1524,20 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
         {
             logger.LogInfo($"[{account.AccountName}] Returning to map view");
 
+            // Leave the Intel Mission screen with its back arrow rather than leaving it to locator recovery
+            var shot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            if (shot != null && _templateMatcher != null)
+            {
+                var (onIntel, arrow, _) = _templateMatcher.MatchTemplate(shot,
+                    Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "templates", "images", "recovery", "back-arrow.png"),
+                    account.InstanceNumber, 0.85, null, false, new Rectangle(0, 0, 160, 90));
+                if (onIntel)
+                {
+                    await ClickAsync(account.InstanceNumber, logger, new Point(arrow.X + arrow.Width / 2, arrow.Y + arrow.Height / 2));
+                    await Task.Delay(1500, cancellationToken);
+                }
+            }
+
             // Use locator service to ensure map view
             var locator = new LocatorService(logger, account);
             await locator.EnsureViewAsync(ViewType.MapView, account.InstanceNumber, cancellationToken);
