@@ -555,6 +555,16 @@ namespace Bot.Core.Utils
                     await adbController.TapAsync(tapPoint.X, tapPoint.Y, CancellationToken.None);
                     return true;
                 }
+                // Intel rescue rewards ("Troops have returned to the city") wait on a green Claim: take them
+                var (claimShown, claimRect, _) = _templateMatcher.MatchTemplate(screenshot, Path.Combine(recoveryFolder, "claim-button.png"),
+                    _account.InstanceNumber, 0.85, null, false, new Rectangle(100, 700, 520, 350));
+                if (claimShown)
+                {
+                    _logger.LogInfo("[Locator] 🎁 Claiming a rewards popup");
+                    var claimPoint = claimRect.GetCenter();
+                    await adbController.TapAsync(claimPoint.X, claimPoint.Y, CancellationToken.None);
+                    return true;
+                }
                 var backButtonPaths = new[]
                 {
                     Path.Combine(recoveryFolder, "back-arrow.png"),
