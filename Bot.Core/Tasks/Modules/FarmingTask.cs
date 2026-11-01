@@ -196,6 +196,12 @@ namespace Bot.Core.Tasks.Modules
                 logger.LogInfo($"[{account.AccountName}] No beast hunt now (no stamina or free march)");
                 await PressBackAsync(account.InstanceNumber, logger);
                 await Task.Delay(1000, cancellationToken);
+                var still = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                if (still != null && IsCyanArea(still, new Rectangle(400, 1180, 120, 12))) // the search panel's Search button
+                {
+                    await PressBackAsync(account.InstanceNumber, logger);
+                    await Task.Delay(1000, cancellationToken);
+                }
                 await locator.EnsureViewAsync(ViewType.MapView, account.InstanceNumber, cancellationToken);
                 return false;
             }
