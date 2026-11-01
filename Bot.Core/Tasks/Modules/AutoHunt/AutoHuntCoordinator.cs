@@ -179,6 +179,13 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                                 await ClickAsync(account.InstanceNumber, logger, new Point(668, 145));
                                 await Task.Delay(800, cancellationToken);
                             }
+                            // The Deploy screen stays open under that dialog; leave it with its back arrow
+                            shot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                            if (shot != null && new OCRService(logger).ExtractTextFromScreenArea(shot, new Rectangle(90, 15, 160, 50))?.ToLower().Contains("deploy") == true)
+                            {
+                                await ClickAsync(account.InstanceNumber, logger, new Point(50, 40));
+                                await Task.Delay(800, cancellationToken);
+                            }
                             await ReturnToMapViewDirectly(account, logger, cancellationToken);
                             return new TaskExecutionDetails(true, message: "Stamina depleted, moving to next module");
                         }
