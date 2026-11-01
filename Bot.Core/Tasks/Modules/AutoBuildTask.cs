@@ -451,6 +451,8 @@ namespace Bot.Core.Tasks.Modules
             if (confirm == null || IsOrange(confirm, FinishButton) || !IsCyan(confirm, QuickUseConfirmButton))
             {
                 logger.LogInfo($"[{account.AccountName}] {name}: no speedups to use (Quick Use offered none)");
+                await PressBackAsync(account.InstanceNumber, logger); // close the Speedup dialog
+                await Task.Delay(1000, cancellationToken);
                 return false;
             }
             logger.LogInfo($"[{account.AccountName}] ⏩ {name}: using speedups (Quick Use)");
@@ -465,6 +467,13 @@ namespace Bot.Core.Tasks.Modules
                 await ClickAsync(account.InstanceNumber, logger, new Point(637, 447)); // its X
                 await Task.Delay(1000, cancellationToken);
                 await PressBackAsync(account.InstanceNumber, logger); // the Quick Use dialog under it
+                await Task.Delay(1000, cancellationToken);
+            }
+            // With more time left than the speedups cover, the Speedup dialog stays open: close it
+            var left = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            if (left != null && IsCyan(left, QuickUseButton))
+            {
+                await PressBackAsync(account.InstanceNumber, logger);
                 await Task.Delay(1000, cancellationToken);
             }
             return true;

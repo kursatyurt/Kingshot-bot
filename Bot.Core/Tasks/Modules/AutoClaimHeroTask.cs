@@ -347,7 +347,7 @@ namespace Bot.Core.Tasks.Modules
                     logger.LogInfo($"Found back arrow at {backArrowResult.matchRect} with confidence {backArrowResult.confidence:F3}");
                     await ClickRandomInRectAsyncWithRetry(account.InstanceNumber, logger, backArrowResult.matchRect, cancellationToken);
                     await Task.Delay(1000, cancellationToken);
-                    break; // left the page; another back key on the city would open "Quit game?"
+                    // Recruit → Heroes list → city: keep going; the base-view check above stops before a back key could open "Quit game?"
                 }
 
                 // The recruit page was left open before (the back key alone did not close it): make sure we are home

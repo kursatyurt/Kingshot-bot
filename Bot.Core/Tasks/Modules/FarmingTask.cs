@@ -183,6 +183,8 @@ namespace Bot.Core.Tasks.Modules
             if (attack is not Point a)
             {
                 logger.LogInfo($"[{account.AccountName}] No beast found to hunt");
+                await PressBackAsync(account.InstanceNumber, logger); // close the search panel
+                await Task.Delay(1000, cancellationToken);
                 await locator.EnsureViewAsync(ViewType.MapView, account.InstanceNumber, cancellationToken);
                 return false;
             }
