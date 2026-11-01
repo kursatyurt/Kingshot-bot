@@ -201,6 +201,19 @@ namespace Bot.Core.Tasks.Modules
             }
             await ClickAsync(account.InstanceNumber, logger, new Point(548, 1210)); // Deploy (troops come pre-filled)
             await Task.Delay(2500, cancellationToken);
+            var after = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            if (after != null && new OCRService(logger).ExtractTextFromScreenArea(after, new Rectangle(220, 115, 280, 60))?.ToLower().Contains("more") == true)
+            {
+                // Not enough stamina: the game offers "Get More" over the Deploy screen. Close both and wait for stamina.
+                logger.LogInfo($"[{account.AccountName}] No stamina for a beast hunt, retrying in 30 minutes");
+                await ClickAsync(account.InstanceNumber, logger, new Point(668, 145));
+                await Task.Delay(800, cancellationToken);
+                await PressBackAsync(account.InstanceNumber, logger);
+                await Task.Delay(1000, cancellationToken);
+                _nextBeastHunt[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(30);
+                await locator.EnsureViewAsync(ViewType.MapView, account.InstanceNumber, cancellationToken);
+                return false;
+            }
             logger.LogInfo($"[{account.AccountName}] 🐺 Hunting a beast");
             _nextBeastHunt[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(3); // the march is back in about 90 s
             return true;
