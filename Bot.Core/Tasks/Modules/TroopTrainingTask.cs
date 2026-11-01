@@ -249,6 +249,16 @@ namespace Bot.Core.Tasks.Modules
             await Task.Delay(2000, cancellationToken);
             await ClickAsync(account.InstanceNumber, logger, BackArrow);
             await Task.Delay(1500, cancellationToken);
+            // Short of a resource, Train opens a dialog and the back arrow only closes that: leave the page too
+            screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            if (screenshot != null && _templateMatcher.MatchTemplate(screenshot, Path.Combine(ImageTemplateFolder, "minus-button.png"),
+                account.InstanceNumber, threshold: 0.9, searchArea: QuantityMinusArea).Item1)
+            {
+                logger.LogInfo($"[{account.AccountName}] {camp}: still on the Train page (not enough resources?); leaving it");
+                await ClickAsync(account.InstanceNumber, logger, BackArrow);
+                await Task.Delay(1500, cancellationToken);
+                return false;
+            }
             return true;
         }
     }
