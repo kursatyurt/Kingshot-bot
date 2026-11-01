@@ -207,7 +207,7 @@ namespace Bot.Core.Utils
 
         private async Task<ViewType> HandleNoViewDetected(string errorMessage)
         {
-            _logger.LogError(errorMessage);
+            _logger.LogWarning(errorMessage); // usually a sub-menu; the back-arrow recovery below handles it
             
             // If we're being called from Recovery task, don't try to trigger recovery recursively
             if (_currentTaskType == TaskType.Recovery)
