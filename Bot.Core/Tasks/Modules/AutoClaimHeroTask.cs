@@ -85,6 +85,7 @@ namespace Bot.Core.Tasks.Modules
         public override TaskType TaskType => TaskType.AutoClaimHero;
         public override string Name => "Auto Claim Hero";
         protected override string GetImageFolderName() => "autoclaimhero";
+        protected override TimeSpan MinInterval => TimeSpan.FromMinutes(60); // its rewards come on hour-long timers
 
         protected override async Task<TaskExecutionDetails> ExecuteTaskLogicAsync(
             AccountSettings account, 

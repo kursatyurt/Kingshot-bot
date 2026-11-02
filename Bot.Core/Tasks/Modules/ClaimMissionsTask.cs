@@ -757,6 +757,7 @@ namespace Bot.Core.Tasks.Modules
         {
             return "claimmissions";
         }
+        protected override TimeSpan MinInterval => TimeSpan.FromMinutes(30); // its rewards come on hour-long timers
 
         /// <summary>
         /// Saves a debug image of the cropped area for analysis

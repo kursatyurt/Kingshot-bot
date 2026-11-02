@@ -231,10 +231,17 @@ namespace Bot.Core.Tasks
             }
         }
         
+        /// <summary>Minimum time between successful runs per account; tasks whose work comes on long timers override it.</summary>
+        protected virtual TimeSpan MinInterval => TimeSpan.Zero;
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<int, DateTime> _lastSuccess = new();
+
         public async Task<TaskExecutionDetails> ExecuteAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken, bool isReRun = false, IUserNotificationService? userNotifications = null)
         {
             try
             {
+                if (_lastSuccess.TryGetValue(account.InstanceNumber, out var last) && DateTime.UtcNow - last < MinInterval)
+                    return new TaskExecutionDetails(true, message: $"Ran {(int)(DateTime.UtcNow - last).TotalMinutes} min ago");
+
                 if (!await CanExecuteAsync(account, logger, cancellationToken))
                 {
                     return TaskExecutionDetails.Failed("Task cannot execute");
@@ -256,6 +263,7 @@ namespace Bot.Core.Tasks
                 await RunAutoTasksIfNeededAsync(account, logger, cancellationToken, userNotifications);
                 
                 var result = await ExecuteTaskLogicAsync(account, logger, cancellationToken, isReRun, userNotifications);
+                if (result.Success) _lastSuccess[account.InstanceNumber] = DateTime.UtcNow;
                 
                 // Clear cached controller on task completion to prevent stale connections
                 if (result.Success)

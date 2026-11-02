@@ -20,6 +20,7 @@ namespace Bot.Core.Tasks.Modules
         public override TaskType TaskType => TaskType.EventRewards;
         public override string Name => "Event Rewards";
         protected override string GetImageFolderName() => "events";
+        protected override TimeSpan MinInterval => TimeSpan.FromMinutes(30); // its rewards come on hour-long timers
 
         private static readonly TimeSpan Interval = TimeSpan.FromHours(3);
         private static readonly ConcurrentDictionary<int, DateTime> _lastRun = new();
