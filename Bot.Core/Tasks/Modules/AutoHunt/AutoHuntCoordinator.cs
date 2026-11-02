@@ -1471,6 +1471,13 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
 
         private async Task<bool> EnterHuntModeDirectly(AccountSettings account, LogService logger, CancellationToken cancellationToken)
         {
+            // A previous round can leave the Intel Mission screen open: the hunt button is behind it, so carry on there
+            var current = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            if (current != null && _templateMatcher.MatchTemplate(current, Path.Combine(AppContext.BaseDirectory, "templates", "images", "autohunt", "intel-title.png"), account.InstanceNumber, threshold: 0.9, searchArea: new Rectangle(0, 0, 400, 90)).found)
+            {
+                logger.LogInfo($"[{account.AccountName}] Already on the Intel Mission screen");
+                return true;
+            }
             logger.LogInfo($"[{account.AccountName}] Looking for hunt button...");
             if (await WaitForImageAsync("hunt-button.png", account.InstanceNumber, logger, cancellationToken,
                 timeoutMs: 2000, threshold: 0.6, searchArea: AutoHuntConstants.HuntButtonArea))
