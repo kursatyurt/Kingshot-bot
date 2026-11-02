@@ -79,7 +79,7 @@ namespace Bot.Core.Tasks.Modules
             // After the Town Center work: the side panel's jump moves the camera off the Town Center
             await BuildNewBuildingsAsync(account, logger, cancellationToken);
             var cooldown = result.Success ? SuccessCooldown(account.InstanceNumber)
-                : result.FailureCategory == FailureCategory.GameState ? TimeSpan.FromMinutes(15) // requirements missing
+                : result.FailureCategory == FailureCategory.GameState ? TimeSpan.FromMinutes(60) // requirements missing: resources build up slowly, and each check costs 40-100 s
                 : TimeSpan.Zero; // navigation/detection problems: just retry next cycle
             if (cooldown > TimeSpan.Zero)
                 _nextBuildCheck.AddOrUpdate(account.InstanceNumber, DateTime.UtcNow + cooldown, (_, old) => old > DateTime.UtcNow + cooldown ? old : DateTime.UtcNow + cooldown);

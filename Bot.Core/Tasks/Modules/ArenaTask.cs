@@ -37,8 +37,10 @@ namespace Bot.Core.Tasks.Modules
             if (!await OpenSidePanelAsync(account.InstanceNumber, logger, cancellationToken)) return TaskExecutionDetails.Failed("Side panel did not open");
             await ClickAsync(account.InstanceNumber, logger, new Point(370, 269)); // Daily tab
             await Task.Delay(800, cancellationToken);
+            await ClaimDailyRowsAsync(account, logger, cancellationToken);
             await SwipeAsync(account.InstanceNumber, logger, new Point(220, 750), new Point(220, 300), 800);
             await Task.Delay(1500, cancellationToken);
+            await ClaimDailyRowsAsync(account, logger, cancellationToken);
 
             var panel = await TakeScreenshotAsync(account.InstanceNumber, logger);
             if (panel == null) return TaskExecutionDetails.Failed("No screenshot");
@@ -120,6 +122,44 @@ namespace Bot.Core.Tasks.Modules
             await Task.Delay(1500, cancellationToken);
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
             return new TaskExecutionDetails(true, message: $"Arena: won {won}/{fought}");
+        }
+
+        /// <summary>
+        /// Daily-tab rows that are done (Online Rewards "Completed", Daily Activity Triumph "Claimable") show a green
+        /// check button where the others have a cyan arrow: tap each green one and close its reward popup.
+        /// </summary>
+        private async Task ClaimDailyRowsAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
+        {
+            for (int i = 0; i < 4; i++)
+            {
+                var shot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                if (shot == null) return;
+                int? y = null;
+                using (var img = OpenCvSharp.Cv2.ImDecode(shot, OpenCvSharp.ImreadModes.Color))
+                    for (int cy = 310; cy < 840 && y == null; cy += 6)
+                    {
+                        using var roi = new OpenCvSharp.Mat(img, new OpenCvSharp.Rect(395, cy - 8, 18, 16));
+                        var m = OpenCvSharp.Cv2.Mean(roi); // BGR
+                        if (m.Val0 < 140 && m.Val1 > 200) y = cy;
+                    }
+                if (y is not int row) return;
+                logger.LogInfo($"[{account.AccountName}] 🎁 Claiming a finished Daily row");
+                await ClickAsync(account.InstanceNumber, logger, new Point(404, row + 4));
+                await Task.Delay(2000, cancellationToken);
+                if (!await IsSidePanelOpenAsync(account, logger)) // a reward popup covers the panel
+                {
+                    await PressBackAsync(account.InstanceNumber, logger);
+                    await Task.Delay(1200, cancellationToken);
+                    if (!await IsSidePanelOpenAsync(account, logger)) return; // leave the rest to the locator
+                }
+            }
+        }
+
+        private async Task<bool> IsSidePanelOpenAsync(AccountSettings account, LogService logger)
+        {
+            var shot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            return shot != null && _templateMatcher.MatchTemplate(shot, Path.Combine(AppContext.BaseDirectory, "templates", "images", "locator", "side-panel-handle.png"),
+                account.InstanceNumber, threshold: 0.88, searchArea: new Rectangle(400, 460, 140, 170)).found;
         }
 
         /// <summary>The Challenge List shows an opponent's power in green when it is below ours, red above.</summary>

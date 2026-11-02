@@ -235,6 +235,17 @@ namespace Bot.Core.Tasks.Modules
             }
             AutoTechnologySettings.AdvanceResearchType(account.InstanceNumber);
             _nextCheck[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(5); // short researches finish fast
+            // The tree's bottom bar shows the running research's timer: no new research can start before it ends
+            if (started != null)
+            {
+                using var timerOcr = new OCRService(logger, new OCRConfiguration { CharacterWhitelist = "0123456789:", PageSegMode = Tesseract.PageSegMode.SingleLine });
+                var t = System.Text.RegularExpressions.Regex.Match(timerOcr.ExtractTextFromScreenArea(started, new Rectangle(190, 1200, 200, 45)) ?? "", @"\d\d:\d\d:\d\d");
+                if (t.Success && TimeSpan.TryParseExact(t.Value, @"hh\:mm\:ss", null, out var left) && left > TimeSpan.FromMinutes(5))
+                {
+                    _nextCheck[account.InstanceNumber] = DateTime.UtcNow + left;
+                    logger.LogInfo($"[{account.AccountName}] 🔬 Research runs {left}; next research check then");
+                }
+            }
             // The game stays on the research tree; leave it with its back arrow rather than through lost-screen recovery
             await FindAndClickImageAsync("back-arrow.png", account.InstanceNumber, logger, threshold: 0.8, searchArea: new Rectangle(0, 0, 160, 90));
             await Task.Delay(1500, cancellationToken);
