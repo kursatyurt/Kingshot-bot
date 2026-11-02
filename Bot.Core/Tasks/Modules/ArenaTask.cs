@@ -113,6 +113,11 @@ namespace Bot.Core.Tasks.Modules
             }
 
             if (fought >= attempts) _nextCheck[account.InstanceNumber] = DateTime.UtcNow.AddHours(6);
+            // Close the Challenge List, then leave the Arena page with its back arrow (the locator would call this lost)
+            await ClickAsync(account.InstanceNumber, logger, new Point(668, 192));
+            await Task.Delay(1000, cancellationToken);
+            await FindAndClickImageAsync("back-arrow.png", account.InstanceNumber, logger, threshold: 0.85, searchArea: new Rectangle(0, 0, 160, 90));
+            await Task.Delay(1500, cancellationToken);
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
             return new TaskExecutionDetails(true, message: $"Arena: won {won}/{fought}");
         }

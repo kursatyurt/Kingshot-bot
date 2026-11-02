@@ -344,10 +344,7 @@ namespace Bot.Core.Tasks.Modules
                         logger.LogInfo($"[{account.AccountName}] ✅ Clicked back button");
                     }
                     
-                    if (i < 1) // Don't wait after the last click
-                    {
-                        await Task.Delay(500, cancellationToken);
-                    }
+                    await Task.Delay(1200, cancellationToken); // a tap during the page transition is ignored, leaving the Alliance page open
                 }
 
                 // Update execution time for this specific account
