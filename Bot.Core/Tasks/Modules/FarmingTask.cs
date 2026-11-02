@@ -834,6 +834,29 @@ namespace Bot.Core.Tasks.Modules
 
                     if (!deployClicked)
                     {
+                        // A missed Gather tap leaves the tile card open (and the queue may not be full): tap it once more
+                        var card = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                        var gatherPath = Path.Combine(ImageTemplateFolder, "gather-button.png");
+                        var (cardOpen, cardRect, _) = card == null ? (false, Rectangle.Empty, 0.0) : _templateMatcher.MatchTemplate(card, gatherPath, account.InstanceNumber,
+                            threshold: TEMPLATE_MATCH_THRESHOLD, scales: UnifiedTemplateMatchingService.StandardScales, searchArea: GatherButtonArea);
+                        if (cardOpen)
+                        {
+                            logger.LogInfo($"[{account.AccountName}] Gather card still open; tapping Gather again");
+                            await ClickRandomInRectAsync(account.InstanceNumber, logger, cardRect);
+                            await Task.Delay(2500, cancellationToken);
+                            var retry = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                            var (retryDeploy, retryRect, _) = retry == null ? (false, Rectangle.Empty, 0.0) : _templateMatcher.MatchTemplate(retry, deployButtonPath, account.InstanceNumber,
+                                threshold: TEMPLATE_MATCH_THRESHOLD, scales: UnifiedTemplateMatchingService.StandardScales, searchArea: DeployButtonArea);
+                            if (retryDeploy && await ClickRandomInRectAsync(account.InstanceNumber, logger, retryRect))
+                                deployClicked = true;
+                            else if (retry != null && _templateMatcher.MatchTemplate(retry, gatherPath, account.InstanceNumber,
+                                threshold: TEMPLATE_MATCH_THRESHOLD, searchArea: GatherButtonArea).found)
+                                await PressBackAsync(account.InstanceNumber, logger); // close the card rather than leave it for recovery
+                        }
+                    }
+
+                    if (!deployClicked)
+                    {
                         // Keep what the game showed instead, to teach the bot this screen
                         var noDeploy = await TakeScreenshotAsync(account.InstanceNumber, logger);
                         if (noDeploy != null)
