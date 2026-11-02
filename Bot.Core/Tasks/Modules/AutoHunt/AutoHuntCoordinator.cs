@@ -1469,11 +1469,15 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
         #region Hunt Mode Navigation
 
 
+        // The Intel Mission screen shows a "Refreshes In" timer under its title
+        private static bool IsIntelScreen(byte[] shot, LogService logger) =>
+            new OCRService(logger).ExtractTextFromScreenArea(shot, new Rectangle(110, 100, 500, 50)).Contains("Refreshes");
+
         private async Task<bool> EnterHuntModeDirectly(AccountSettings account, LogService logger, CancellationToken cancellationToken)
         {
             // A previous round can leave the Intel Mission screen open: the hunt button is behind it, so carry on there
             var current = await TakeScreenshotAsync(account.InstanceNumber, logger);
-            if (current != null && _templateMatcher.MatchTemplate(current, Path.Combine(AppContext.BaseDirectory, "templates", "images", "autohunt", "intel-title.png"), account.InstanceNumber, threshold: 0.9, searchArea: new Rectangle(0, 0, 400, 90)).found)
+            if (current != null && IsIntelScreen(current, logger))
             {
                 logger.LogInfo($"[{account.AccountName}] Already on the Intel Mission screen");
                 return true;
@@ -1538,7 +1542,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                 var (onIntel, arrow, _) = _templateMatcher.MatchTemplate(shot,
                     Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "templates", "images", "recovery", "back-arrow.png"),
                     account.InstanceNumber, 0.85, null, false, new Rectangle(0, 0, 160, 90));
-                if (onIntel || _templateMatcher.MatchTemplate(shot, Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "templates", "images", "autohunt", "intel-title.png"), account.InstanceNumber, threshold: 0.9, searchArea: new Rectangle(0, 0, 400, 90)).found)
+                if (onIntel || IsIntelScreen(shot, logger))
                 {
                     await ClickAsync(account.InstanceNumber, logger, new Point(48, 40));
                     await Task.Delay(1500, cancellationToken);
