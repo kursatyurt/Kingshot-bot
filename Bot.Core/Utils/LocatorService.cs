@@ -182,7 +182,9 @@ namespace Bot.Core.Utils
                 }
 
                 // One screenshot per instance every 10 minutes shows which screens the locator does not know
-                if (DateTime.UtcNow - _lastLostShot.GetValueOrDefault(instanceNumber) > TimeSpan.FromMinutes(10))
+                // "Residents have arrived" pops up by itself and clears in seconds: not a lost screen
+                if (DateTime.UtcNow - _lastLostShot.GetValueOrDefault(instanceNumber) > TimeSpan.FromMinutes(10)
+                    && new OCRService(_logger).ExtractTextFromScreenArea(screenshot, new Rectangle(120, 450, 480, 70))?.Contains("arrived", StringComparison.OrdinalIgnoreCase) != true)
                 {
                     _lastLostShot[instanceNumber] = DateTime.UtcNow;
                     try

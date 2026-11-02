@@ -229,6 +229,13 @@ namespace Bot.Core.Tasks.Modules
                     using var ocr = new OCRService(logger, ocrConfig);
                     
                     string ocrText = ocr.ExtractTextFromScreenArea(screenshot, ContributeCountRect);
+                    if (string.IsNullOrWhiteSpace(ocrText))
+                    {
+                        // The first read sometimes comes back empty: re-read a fresh frame as bright text
+                        await Task.Delay(800, cancellationToken);
+                        var again = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                        if (again != null) ocrText = ocr.ExtractBrightTextFromScreenArea(again, ContributeCountRect, 190);
+                    }
                     logger.LogInfo($"[{account.AccountName}] OCR extracted text: '{ocrText}'");
                     
                     if (!string.IsNullOrWhiteSpace(ocrText))
