@@ -140,7 +140,13 @@ namespace Bot.Core.Tasks.Modules
                     {
                         using var roi = new OpenCvSharp.Mat(img, new OpenCvSharp.Rect(395, cy - 8, 18, 16));
                         var m = OpenCvSharp.Cv2.Mean(roi); // BGR
-                        if (m.Val0 < 140 && m.Val1 > 200) y = cy;
+                        if (m.Val0 < 140 && m.Val1 > 200)
+                        {
+                            // Other rows can have green parts too: only claim when the row says so
+                            var label = new OCRService(logger).ExtractTextFromScreenArea(shot, new Rectangle(80, cy - 5, 300, 40)) ?? "";
+                            if (label.Contains("Claimable", StringComparison.OrdinalIgnoreCase) || label.Contains("Completed", StringComparison.OrdinalIgnoreCase)) y = cy;
+                            else cy += 40; // skip past this button
+                        }
                     }
                 if (y is not int row) return;
                 logger.LogInfo($"[{account.AccountName}] 🎁 Claiming a finished Daily row");
@@ -150,7 +156,13 @@ namespace Bot.Core.Tasks.Modules
                 {
                     await PressBackAsync(account.InstanceNumber, logger);
                     await Task.Delay(1200, cancellationToken);
-                    if (!await IsSidePanelOpenAsync(account, logger)) return; // leave the rest to the locator
+                    if (!await IsSidePanelOpenAsync(account, logger))
+                    {
+                        // The back closed the panel itself: reopen it on the Daily tab
+                        if (!await OpenSidePanelAsync(account.InstanceNumber, logger, cancellationToken)) return;
+                        await ClickAsync(account.InstanceNumber, logger, new Point(370, 269));
+                        await Task.Delay(800, cancellationToken);
+                    }
                 }
             }
         }
