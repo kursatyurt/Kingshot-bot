@@ -1477,6 +1477,14 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
         {
             // A previous round can leave the Intel Mission screen open: the hunt button is behind it, so carry on there
             var current = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            // A mission's Rewards popup can still cover the screen: tap it away first
+            if (current != null && new OCRService(logger).ExtractTextFromScreenArea(current, new Rectangle(160, 1155, 400, 55)).Contains("Tap anywhere"))
+            {
+                logger.LogInfo($"[{account.AccountName}] Closing a Rewards popup");
+                await ClickAsync(account.InstanceNumber, logger, new Point(360, 1000));
+                await Task.Delay(1500, cancellationToken);
+                current = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            }
             if (current != null && IsIntelScreen(current, logger))
             {
                 logger.LogInfo($"[{account.AccountName}] Already on the Intel Mission screen");

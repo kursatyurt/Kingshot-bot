@@ -139,7 +139,7 @@ namespace Bot.Core.Tasks.Modules
                 var greenThumbPath = Path.Combine(_templateFolder, "green-thumb.png");
                 var greenThumbFound = await FindAndClickWithTimeoutAsync(
                     account, logger, cancellationToken, greenThumbPath, 
-                    "green thumb", SEARCH_TIMEOUT_MS, SEARCH_INTERVAL_MS);
+                    "green thumb", SEARCH_TIMEOUT_MS, SEARCH_INTERVAL_MS, threshold: 0.9); // real hits 0.97; a half-loaded page gave a 0.72 false hit
 
                 if (!greenThumbFound)
                 {
@@ -508,7 +508,8 @@ namespace Bot.Core.Tasks.Modules
             string templatePath, 
             string templateName, 
             int timeoutMs, 
-            int intervalMs)
+            int intervalMs,
+            double threshold = TEMPLATE_MATCH_THRESHOLD)
         {
             var startTime = DateTime.UtcNow;
             int attemptCount = 0;
@@ -535,7 +536,7 @@ namespace Bot.Core.Tasks.Modules
                     screenshot,
                     templatePath,
                     account.InstanceNumber,
-                    threshold: TEMPLATE_MATCH_THRESHOLD,
+                    threshold: threshold,
                     scales: UnifiedTemplateMatchingService.StandardScales,
                     verboseLogging: true
                 );

@@ -110,7 +110,7 @@ namespace Bot.Core.Tasks.Modules
                     await Task.Delay(1500, cancellationToken);
                     }
                     logger.LogWarning($"[{account.AccountName}] Welcome-in button not found after clicking resident icon");
-                    return TaskExecutionDetails.Failed("Welcome-in button not found");
+                    return new TaskExecutionDetails(true, message: "No welcome popup opened"); // the icon was not a newcomer; recovery would only add noise
                 }
 
                 logger.LogInfo($"[{account.AccountName}] Resident Welcome task completed successfully");
