@@ -235,6 +235,9 @@ namespace Bot.Core.Tasks.Modules
             }
             AutoTechnologySettings.AdvanceResearchType(account.InstanceNumber);
             _nextCheck[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(5); // short researches finish fast
+            // The game stays on the research tree; leave it with its back arrow rather than through lost-screen recovery
+            await FindAndClickImageAsync("back-arrow.png", account.InstanceNumber, logger, threshold: 0.8, searchArea: new Rectangle(0, 0, 160, 90));
+            await Task.Delay(1500, cancellationToken);
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
             await RequestAllianceHelpAsync(account, logger, cancellationToken); // the Academy's handshake bubble
             return new TaskExecutionDetails(true, message: $"Started {researchType} research");
