@@ -149,6 +149,7 @@ namespace Bot.Core.Tasks.Modules
             }
             await ClickAsync(account.InstanceNumber, logger, new Point(548, 1210)); // Deploy (troops come pre-filled)
             await Task.Delay(2500, cancellationToken);
+            await ConfirmFormationWarningAsync(account, logger, cancellationToken);
             logger.LogInfo($"[{account.AccountName}] ⚔️ Holding a Terror rally");
             _nextTerrorRally[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(10);
             return true;
@@ -185,6 +186,12 @@ namespace Bot.Core.Tasks.Modules
                 logger.LogInfo($"[{account.AccountName}] No beast found to hunt");
                 await PressBackAsync(account.InstanceNumber, logger); // close the search panel
                 await Task.Delay(1000, cancellationToken);
+                var panel = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                if (panel != null && IsCyanArea(panel, new Rectangle(400, 1180, 120, 12))) // the first back only closed the beast card
+                {
+                    await PressBackAsync(account.InstanceNumber, logger);
+                    await Task.Delay(1000, cancellationToken);
+                }
                 await locator.EnsureViewAsync(ViewType.MapView, account.InstanceNumber, cancellationToken);
                 return false;
             }
@@ -207,6 +214,7 @@ namespace Bot.Core.Tasks.Modules
             }
             await ClickAsync(account.InstanceNumber, logger, new Point(548, 1210)); // Deploy (troops come pre-filled)
             await Task.Delay(2500, cancellationToken);
+            await ConfirmFormationWarningAsync(account, logger, cancellationToken);
             var after = await TakeScreenshotAsync(account.InstanceNumber, logger);
             if (after != null && new OCRService(logger).ExtractTextFromScreenArea(after, new Rectangle(220, 115, 280, 60))?.ToLower().Contains("more") == true)
             {
@@ -238,6 +246,21 @@ namespace Bot.Core.Tasks.Modules
             var r = contours.Select(OpenCvSharp.Cv2.BoundingRect)
                 .FirstOrDefault(b => b.Width > 180 && b.Width < 280 && b.Height > 45 && b.Height < 90 && b.Y > 300 && b.Y < 800);
             return r.Width == 0 ? null : new Point(r.X + r.Width / 2, r.Y + r.Height / 2);
+        }
+
+        /// <summary>
+        /// A formation short of a troop type gets "Confirmation: ... not enough Infantry! Proceed anyway?" after Deploy:
+        /// tick "Don't show this again today" and Deploy, or the march never leaves.
+        /// </summary>
+        private async Task ConfirmFormationWarningAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
+        {
+            var shot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            if (shot == null || new OCRService(logger).ExtractTextFromScreenArea(shot, new Rectangle(220, 425, 280, 45))?.Contains("Confirm", StringComparison.OrdinalIgnoreCase) != true) return;
+            logger.LogInfo($"[{account.AccountName}] Formation warning: deploying anyway");
+            await ClickAsync(account.InstanceNumber, logger, new Point(212, 714)); // Don't show this again today
+            await Task.Delay(400, cancellationToken);
+            await ClickAsync(account.InstanceNumber, logger, new Point(510, 789)); // Deploy
+            await Task.Delay(1500, cancellationToken);
         }
 
         private static bool IsCyanArea(byte[] screenshot, Rectangle rect)
@@ -679,6 +702,8 @@ namespace Bot.Core.Tasks.Modules
                             if (await ClickRandomInRectAsync(account.InstanceNumber, logger, deployRect))
                             {
                                 logger.LogInfo($"[{account.AccountName}] ✅ Clicked deploy button");
+                                await Task.Delay(1500, cancellationToken);
+                                await ConfirmFormationWarningAsync(account, logger, cancellationToken);
                                 deployClicked = true;
                                 break;
                             }
