@@ -98,6 +98,7 @@ namespace Bot.Core.Tasks.Modules
 
             var feast = await TakeScreenshotAsync(account.InstanceNumber, logger);
             var claim = new Rectangle(300, 935, 160, 30);
+            bool feastClaimed = false;
             // Without a feast ready the row button goes straight to the Storehouse: that spot is then green grass
             if (feast != null && HasDimmedBackdrop(feast) && IsLitGreen(feast, claim))
             {
@@ -106,6 +107,7 @@ namespace Bot.Core.Tasks.Modules
                 Directory.CreateDirectory(debugDir);
                 await File.WriteAllBytesAsync(Path.Combine(debugDir, $"feast-claim-{account.InstanceNumber}-{DateTime.Now:HHmm}.png"), feast, cancellationToken);
                 await ClickAsync(account.InstanceNumber, logger, new Point(380, 952));
+                feastClaimed = true;
                 await Task.Delay(2500, cancellationToken);
             }
             else if (feast != null && HasDimmedBackdrop(feast))
@@ -131,7 +133,7 @@ namespace Bot.Core.Tasks.Modules
                 {
                     // At night or under the tutorial glove the template scores ~0.5. The centred Storehouse puts its
                     // bubble (online chest or feast drumstick) at one spot: look for the white bubble frame there
-                    if (chest > 0 || !HasBubbleFrame(city)) break; // the frame lingers after collecting, so trust it once
+                    if (chest > 0 || feastClaimed || !HasBubbleFrame(city)) break; // after a feast claim the camera is off the Storehouse: the spot hits other buildings // the frame lingers after collecting, so trust it once
                     rect = new Rectangle(343, 443, 30, 30);
                 }
                 logger.LogInfo($"[{account.AccountName}] 🎁 Collecting the Storehouse online chest");
