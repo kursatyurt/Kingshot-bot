@@ -96,6 +96,15 @@ namespace Bot.Core.Tasks.Modules
 
                 if (!welcomeInFound)
                 {
+                    // The button fades in after the newcomers' animation and is not matched while dim: wait it out and tap
+                    var popup = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                    if (popup != null && new OCRService(logger).ExtractTextFromScreenArea(popup, new Rectangle(120, 450, 480, 70))?.Contains("arrived", StringComparison.OrdinalIgnoreCase) == true)
+                    {
+                        await Task.Delay(2000, cancellationToken);
+                        await ClickAsync(account.InstanceNumber, logger, new Point(357, 1121)); // Welcome in
+                        logger.LogInfo($"[{account.AccountName}] Welcomed the residents (faded button)");
+                        return TaskExecutionDetails.Succeeded();
+                    }
                     logger.LogWarning($"[{account.AccountName}] Welcome-in button not found after clicking resident icon");
                     return TaskExecutionDetails.Failed("Welcome-in button not found");
                 }

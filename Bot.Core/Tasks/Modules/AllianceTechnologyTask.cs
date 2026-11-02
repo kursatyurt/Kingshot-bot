@@ -148,12 +148,12 @@ namespace Bot.Core.Tasks.Modules
                     
                     // Click back button twice
                     var backButtonPath = Path.Combine(AppContext.BaseDirectory, "templates", "images", "buttons", "deploy-back.png");
-                    for (int i = 0; i < 2; i++)
+                    for (int i = 0; i < 3; i++) // Tech page, Alliance page, and a spare for a dropped tap
                     {
                         await WaitIfPausedAsync(cancellationToken);
                         if (cancellationToken.IsCancellationRequested) return TaskExecutionDetails.Failed("Task was cancelled");
                         
-                        logger.LogInfo($"[{account.AccountName}] 🔍 Looking for back button (attempt {i + 1}/2)...");
+                        logger.LogInfo($"[{account.AccountName}] 🔍 Looking for back button (attempt {i + 1}/3)...");
                         var backFound = await FindAndClickWithTimeoutAsync(
                             account, logger, cancellationToken, backButtonPath, 
                             "back button", SEARCH_TIMEOUT_MS, SEARCH_INTERVAL_MS);
@@ -325,12 +325,12 @@ namespace Bot.Core.Tasks.Modules
 
                 // Step 6: Click back button twice to ensure we're back at main screen
                 var finalBackButtonPath = Path.Combine(AppContext.BaseDirectory, "templates", "images", "buttons", "deploy-back.png");
-                for (int i = 0; i < 2; i++)
+                for (int i = 0; i < 3; i++) // Tech page, Alliance page, and a spare for a dropped tap
                 {
                     await WaitIfPausedAsync(cancellationToken);
                     if (cancellationToken.IsCancellationRequested) return TaskExecutionDetails.Failed("Task was cancelled");
                     
-                    logger.LogInfo($"[{account.AccountName}] 🔍 Looking for back button to exit (attempt {i + 1}/2)...");
+                    logger.LogInfo($"[{account.AccountName}] 🔍 Looking for back button to exit (attempt {i + 1}/3)...");
                     var backFound = await FindAndClickWithTimeoutAsync(
                         account, logger, cancellationToken, finalBackButtonPath, 
                         "back button", 500, SEARCH_INTERVAL_MS); // Shorter timeout for back buttons
