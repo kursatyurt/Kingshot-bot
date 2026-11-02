@@ -262,7 +262,7 @@ namespace Bot.Core.Tasks.Modules
                     }
                     else
                     {
-                        logger.LogError($"[{account.AccountName}] ❌ OCR returned empty text, using default {DEFAULT_CONTRIBUTE_CLICKS} contributions");
+                        logger.LogWarning($"[{account.AccountName}] OCR returned empty text, using default {DEFAULT_CONTRIBUTE_CLICKS}; the loop stops when the button goes");
                     }
                 }
                 catch (Exception ex)
