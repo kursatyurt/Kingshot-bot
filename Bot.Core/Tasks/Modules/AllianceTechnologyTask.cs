@@ -317,7 +317,7 @@ namespace Bot.Core.Tasks.Modules
                     await Task.Delay(CLICK_DELAY_MS, cancellationToken);
                 }
 
-                await Task.Delay(1000, cancellationToken);
+                await Task.Delay(6000 /* the coin counter keeps counting up after the last tap */, cancellationToken);
                 await SaveContributionShotAsync(account, logger, "after", cancellationToken);
                 logger.LogInfo($"[{account.AccountName}] ✅ Completed {contributionCount} contributions");
                 userNotifications?.ShowSuccess($"Contributed {contributionCount} times to green thumb");
