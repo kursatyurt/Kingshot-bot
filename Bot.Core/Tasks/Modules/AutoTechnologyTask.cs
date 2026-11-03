@@ -21,6 +21,7 @@ namespace Bot.Core.Tasks.Modules
         public override string Name => "Auto Technology";
 
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, DateTime> _nextCheck = new();
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, int> _emptyScans = new(); // categories found empty in a row
 
         private static readonly Point SidePanelCloseHandle = new Point(464, 544);
         private static readonly Rectangle ResearchStatusArea = new Rectangle(150, 822, 160, 30);
@@ -151,7 +152,10 @@ namespace Bot.Core.Tasks.Modules
 
             logger.LogInfo($"[{account.AccountName}] No {researchType} research available right now");
             AutoTechnologySettings.AdvanceResearchType(account.InstanceNumber); // try the other category next time
-            _nextCheck[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(60); // a 70 s scan that finds nothing; check hourly
+            // Try the other category on the next cycle; only when every category came up empty wait an hour
+            var empties = _emptyScans.AddOrUpdate(account.InstanceNumber, 1, (_, n) => n + 1);
+            _nextCheck[account.InstanceNumber] = empties < settings.CategoryCount ? DateTime.UtcNow : DateTime.UtcNow.AddMinutes(60);
+            if (empties >= settings.CategoryCount) _emptyScans[account.InstanceNumber] = 0;
             await PressBackAsync(account.InstanceNumber, logger); // leave Tech Research ourselves
             await Task.Delay(1000, cancellationToken);
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
@@ -235,6 +239,7 @@ namespace Bot.Core.Tasks.Modules
             }
             AutoTechnologySettings.AdvanceResearchType(account.InstanceNumber);
             _nextCheck[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(5); // short researches finish fast
+            _emptyScans[account.InstanceNumber] = 0;
             // The tree's bottom bar shows the running research's timer: no new research can start before it ends
             if (started != null)
             {
@@ -374,6 +379,8 @@ namespace Bot.Core.Tasks.Modules
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, int> _nextIndex = new();
 
         /// <summary>Never Battle: the march queue (the goal) is in Growth, and Battle only spends resources on troop stats.</summary>
+        public int CategoryCount => (ResearchTypes is { Count: > 0 } list ? list : new List<ResearchType> { ResearchType }).Count(t => t != ResearchType.Battle);
+
         public ResearchType NextResearchType(int instanceNumber)
         {
             var types = (ResearchTypes is { Count: > 0 } list ? list : new List<ResearchType> { ResearchType })
