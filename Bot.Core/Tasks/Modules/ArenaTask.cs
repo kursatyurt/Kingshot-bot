@@ -91,6 +91,16 @@ namespace Bot.Core.Tasks.Modules
 
                 await ClickAsync(account.InstanceNumber, logger, new Point(624, RowY[target])); // that row's swords
                 await Task.Delay(3000, cancellationToken);
+                // Without the deploy screen these taps land outside the Challenge List and close it
+                var deploy = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                if (deploy == null || new OCRService(logger).ExtractTextFromScreenArea(deploy, new Rectangle(40, 1160, 640, 80))?.Contains("Fight", StringComparison.OrdinalIgnoreCase) != true)
+                {
+                    var dir = Path.Combine(AppContext.BaseDirectory, "logs", "screenshots");
+                    await File.WriteAllBytesAsync(Path.Combine(dir, $"arena_list_{account.InstanceNumber}_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.png"), list, cancellationToken);
+                    if (deploy != null) await File.WriteAllBytesAsync(Path.Combine(dir, $"arena_nodeploy_{account.InstanceNumber}_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.png"), deploy, cancellationToken);
+                    logger.LogWarning($"[{account.AccountName}] Arena: row {target + 1}'s swords did not open the deploy screen; stopping");
+                    break;
+                }
                 await ClickAsync(account.InstanceNumber, logger, new Point(190, 1200)); // Quick Deploy
                 await Task.Delay(1500, cancellationToken);
                 await ClickAsync(account.InstanceNumber, logger, new Point(528, 1200)); // Fight
