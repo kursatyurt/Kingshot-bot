@@ -708,6 +708,8 @@ namespace Bot.Core.Tasks.Modules
             if (missing.Count > 0)
             {
                 logger.LogInfo($"[{account.AccountName}] The required building needs: {string.Join("; ", missing)}. Not upgrading.");
+                await PressBackAsync(account.InstanceNumber, logger); // close its upgrade page ourselves
+                await RandomDelay(cancellationToken);
                 await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
                 return TaskExecutionDetails.FailedWith(FailureCategory.GameState, "Step 4: Upgrading required building",
                     $"The required building needs: {string.Join("; ", missing)}");

@@ -104,6 +104,14 @@ namespace Bot.Core.Tasks.Modules
                 }
 
                 await Task.Delay(GameCoordinates.Delays.AfterClick, cancellationToken);
+                // An open report or a missed tap leaves the Mail window up: back out of it ourselves
+                for (int i = 0; i < 2; i++)
+                {
+                    var still = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                    if (still == null || !new OCRService(logger).ExtractTextFromScreenArea(still, new Rectangle(0, 0, 300, 80)).Contains("Mail")) break;
+                    await PressBackAsync(account.InstanceNumber, logger);
+                    await Task.Delay(1000, cancellationToken);
+                }
                 
                 // Update collection time for this specific account
                 UpdateCollectionTime(accountKey);
