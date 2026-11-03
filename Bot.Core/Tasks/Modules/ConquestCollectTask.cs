@@ -85,8 +85,9 @@ namespace Bot.Core.Tasks.Modules
                 await ClickAsync(account.InstanceNumber, logger, new Point(360, 200)); // "Tap anywhere to exit" the rewards
                 await Task.Delay(1500, cancellationToken);
 
-                int cleared = await ConquerStagesAsync(account, logger, cancellationToken);
-                logger.LogInfo($"[{account.AccountName}] ⚔️ Rebel Conquest: {cleared} stage(s) cleared this run");
+                // Only the chest: the user doesn't want Conquest stages fought
+                await PressBackAsync(account.InstanceNumber, logger);
+                await Task.Delay(1500, cancellationToken);
                 await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
 
                 // Update collection time
