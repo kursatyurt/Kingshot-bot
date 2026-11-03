@@ -152,6 +152,7 @@ namespace Bot.Core.Tasks.Modules
 
             logger.LogInfo($"[{account.AccountName}] No {researchType} research available right now");
             AutoTechnologySettings.AdvanceResearchType(account.InstanceNumber); // try the other category next time
+            AutoTechnologySettings.MarkEmpty(account.InstanceNumber, researchType);
             // Try the other category on the next cycle; only when every category came up empty wait an hour
             var empties = _emptyScans.AddOrUpdate(account.InstanceNumber, 1, (_, n) => n + 1);
             _nextCheck[account.InstanceNumber] = empties < settings.CategoryCount ? DateTime.UtcNow : DateTime.UtcNow.AddMinutes(60);
@@ -385,8 +386,22 @@ namespace Bot.Core.Tasks.Modules
         {
             var types = (ResearchTypes is { Count: > 0 } list ? list : new List<ResearchType> { ResearchType })
                 .Where(t => t != ResearchType.Battle).ToList();
-            return types.Count == 0 ? ResearchType.Growth : types[_nextIndex.GetOrAdd(instanceNumber, 0) % types.Count];
+            if (types.Count == 0) return ResearchType.Growth;
+            // Skip a category that came up empty recently, unless every category did
+            for (var i = 0; i < types.Count; i++)
+            {
+                var t = types[_nextIndex.GetOrAdd(instanceNumber, 0) % types.Count];
+                if (!_emptyUntil.TryGetValue((instanceNumber, t), out var until) || DateTime.UtcNow >= until) return t;
+                AdvanceResearchType(instanceNumber);
+            }
+            return types[_nextIndex.GetOrAdd(instanceNumber, 0) % types.Count];
         }
+
+        // A category with nothing to start stays skipped for 2 h instead of being rescanned every cycle
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<(int, ResearchType), DateTime> _emptyUntil = new();
+
+        public static void MarkEmpty(int instanceNumber, ResearchType type) =>
+            _emptyUntil[(instanceNumber, type)] = DateTime.UtcNow.AddHours(2);
 
         public static void AdvanceResearchType(int instanceNumber) =>
             _nextIndex.AddOrUpdate(instanceNumber, 1, (_, i) => i + 1);
