@@ -284,7 +284,8 @@ namespace Bot.Core.Tasks.Modules
                 }
                 else
                 {
-                    logger.LogInfo($"[{account.AccountName}] ℹ️ Not all VIP rewards were collected - no cooldown applied");
+                    logger.LogInfo($"[{account.AccountName}] ℹ️ Not all VIP rewards were collected - checking again in 2 h");
+                    _lastCollectionTimes[account.InstanceNumber] = DateTime.UtcNow - VipRewardsInterval + TimeSpan.FromHours(2); // nothing ready: the chest runs on a long timer
                     logger.LogInfo($"[{account.AccountName}] VIP Rewards: {(_vipRewardsClicked ? "Collected" : "Not found")}, VIP Rewards 2: {(_vipRewards2Clicked ? "Collected" : "Not found")}");
                 }
 
