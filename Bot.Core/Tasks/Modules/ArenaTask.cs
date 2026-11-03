@@ -98,6 +98,7 @@ namespace Bot.Core.Tasks.Modules
 
                 // The fight plays itself; its result page ends with "Tap anywhere to exit"
                 var start = DateTime.UtcNow;
+                bool resultRead = false;
                 while (DateTime.UtcNow - start < TimeSpan.FromMinutes(3))
                 {
                     await Task.Delay(5000, cancellationToken);
@@ -110,6 +111,15 @@ namespace Bot.Core.Tasks.Modules
                     logger.LogInfo($"[{account.AccountName}] Arena fight {fought}: {(victory ? "won" : "lost")}");
                     await ClickAsync(account.InstanceNumber, logger, new Point(360, 1100));
                     await Task.Delay(2500, cancellationToken);
+                    resultRead = true;
+                    break;
+                }
+                if (!resultRead)
+                {
+                    // Keep what was on screen: the result page was not recognised, so win or loss is unknown
+                    var path = Path.Combine(AppContext.BaseDirectory, "logs", "screenshots", $"arena_{account.InstanceNumber}_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.png");
+                    if (await TakeScreenshotAsync(account.InstanceNumber, logger) is { } stuck) await File.WriteAllBytesAsync(path, stuck, cancellationToken);
+                    logger.LogWarning($"[{account.AccountName}] Arena fight {fought}: no result page after 3 min; saved {path}");
                     break;
                 }
             }
