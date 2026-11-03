@@ -1489,7 +1489,15 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                 await ClickAsync(account.InstanceNumber, logger, new Point(360, 1000));
                 await Task.Delay(1500, cancellationToken);
                 current = await TakeScreenshotAsync(account.InstanceNumber, logger);
-        }
+            }
+            // A stray tap on a locked march slot opens the March Queue popup (Research/Activate/Buy); only its X is safe
+            if (current != null && new OCRService(logger).ExtractTextFromScreenArea(current, new Rectangle(200, 315, 320, 55)).Contains("March"))
+            {
+                logger.LogInfo($"[{account.AccountName}] Closing the March Queue popup");
+                await ClickAsync(account.InstanceNumber, logger, new Point(642, 340));
+                await Task.Delay(1500, cancellationToken);
+                current = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            }
             return current;
         }
 
