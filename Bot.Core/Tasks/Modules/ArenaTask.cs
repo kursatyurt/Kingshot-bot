@@ -74,6 +74,13 @@ namespace Bot.Core.Tasks.Modules
             {
                 var list = await TakeScreenshotAsync(account.InstanceNumber, logger);
                 if (list == null) break;
+                // The list's own counter is the real one: at 0 every swords button is grey and does nothing
+                if (Regex.IsMatch(new OCRService(logger).ExtractTextFromScreenArea(list, new Rectangle(200, 950, 240, 40)) ?? "", @"challenges\W*0\b", RegexOptions.IgnoreCase))
+                {
+                    _nextCheck[account.InstanceNumber] = DateTime.UtcNow.AddHours(6);
+                    logger.LogInfo($"[{account.AccountName}] Arena: no daily challenges left");
+                    break;
+                }
                 var target = Array.FindIndex(RowY, y => IsGreenText(list, new Rectangle(185, y - 15, 90, 60))); // power box sits lower when a # line shows
                 if (target < 0)
                 {
