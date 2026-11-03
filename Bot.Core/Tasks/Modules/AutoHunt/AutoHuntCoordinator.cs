@@ -1473,18 +1473,31 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
         private static bool IsIntelScreen(byte[] shot, LogService logger) =>
             new OCRService(logger).ExtractTextFromScreenArea(shot, new Rectangle(110, 100, 500, 50)).Contains("Refreshes");
 
-        private async Task<bool> EnterHuntModeDirectly(AccountSettings account, LogService logger, CancellationToken cancellationToken)
-        {
-            // A previous round can leave the Intel Mission screen open: the hunt button is behind it, so carry on there
-            var current = await TakeScreenshotAsync(account.InstanceNumber, logger);
-            // A mission's Rewards popup can still cover the screen: tap it away first
+        // Mission popups left over the Intel screen: claim a finished rescue, then tap its Rewards popup away
+        private async Task<byte[]?> CloseMissionPopupsAsync(AccountSettings account, LogService logger, byte[]? current, CancellationToken cancellationToken)
+            {
+            if (current != null && new OCRService(logger).ExtractTextFromScreenArea(current, new Rectangle(260, 885, 200, 70)).Trim() == "Claim")
+            {
+                logger.LogInfo($"[{account.AccountName}] Claiming a finished rescue mission");
+                await ClickAsync(account.InstanceNumber, logger, new Point(360, 920));
+                await Task.Delay(2000, cancellationToken);
+                current = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            }
             if (current != null && new OCRService(logger).ExtractTextFromScreenArea(current, new Rectangle(160, 1155, 400, 55)).Contains("Tap anywhere"))
             {
                 logger.LogInfo($"[{account.AccountName}] Closing a Rewards popup");
                 await ClickAsync(account.InstanceNumber, logger, new Point(360, 1000));
                 await Task.Delay(1500, cancellationToken);
                 current = await TakeScreenshotAsync(account.InstanceNumber, logger);
-            }
+        }
+            return current;
+        }
+
+        private async Task<bool> EnterHuntModeDirectly(AccountSettings account, LogService logger, CancellationToken cancellationToken)
+        {
+            // A previous round can leave the Intel Mission screen open: the hunt button is behind it, so carry on there
+            var current = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            current = await CloseMissionPopupsAsync(account, logger, current, cancellationToken);
             if (current != null && IsIntelScreen(current, logger))
             {
                 logger.LogInfo($"[{account.AccountName}] Already on the Intel Mission screen");
@@ -1544,7 +1557,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
             logger.LogInfo($"[{account.AccountName}] Returning to map view");
 
             // Leave the Intel Mission screen with its back arrow rather than leaving it to locator recovery
-            var shot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            var shot = await CloseMissionPopupsAsync(account, logger, await TakeScreenshotAsync(account.InstanceNumber, logger), cancellationToken);
             if (shot != null && _templateMatcher != null)
             {
                 var (onIntel, arrow, _) = _templateMatcher.MatchTemplate(shot,
