@@ -224,7 +224,11 @@ namespace Bot.Core.Tasks.Modules
                 if (!await FindAndClickImageAsync("vip-plus.png", account.InstanceNumber, logger))
                 {
                     logger.LogWarning($"[{account.AccountName}] VIP plus button not found");
-                    return TaskExecutionDetails.Failed("VIP plus button not found");
+                    // Nothing more to do on the VIP page: leave it and look again in 2 h instead of failing
+                    _lastCollectionTimes[account.InstanceNumber] = DateTime.UtcNow - VipRewardsInterval + TimeSpan.FromHours(2);
+                    await PressBackAsync(account.InstanceNumber, logger);
+                    await Task.Delay(1000, cancellationToken);
+                    return new TaskExecutionDetails(true, message: "VIP page had no plus button");
                 }
 
                 await Task.Delay(1000, cancellationToken); // Wait for plus interface to load
