@@ -135,7 +135,7 @@ namespace Bot.Core.Tasks.Modules
                             return await StartResearchAsync(account, logger, locator, researchType, button,
                                 $"{(isPriority ? "priority" : "new")} '{title}' ({badge.Trim()}), page {page}", cancellationToken);
                         double progress = level.Success ? Math.Min(int.Parse(level.Groups[1].Value), 3) / 3.0 : 1; // every research tops out at level 3
-                        if (pass == 0 && (fallback == null || progress < fallback.Value.progress)) fallback = (page, item, progress, title);
+                        if (pass == 0 && title.Length >= 4 && (fallback == null || progress < fallback.Value.progress)) fallback = (page, item, progress, title);
                     }
                     if (dialog != null && HasDialogOpen(dialog))
                     {
