@@ -46,14 +46,6 @@ namespace Bot.Core.Tasks.Modules
             AppContext.BaseDirectory, "data", "alliance_tech_times.json"
         );
 
-        // ponytail: diagnostic for the per-account contribution gap; delete once it is explained
-        private async Task SaveContributionShotAsync(AccountSettings account, LogService logger, string stage, CancellationToken cancellationToken)
-        {
-            if (await TakeScreenshotAsync(account.InstanceNumber, logger) is { } shot)
-                await File.WriteAllBytesAsync(Path.Combine(AppContext.BaseDirectory, "logs", "screenshots",
-                    $"contrib_{account.InstanceNumber}_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}_{stage}.png"), shot, cancellationToken);
-        }
-
         public AllianceTechnologyTask()
         {
             // Get the application's base directory and combine with template path
@@ -281,7 +273,6 @@ namespace Bot.Core.Tasks.Modules
                 logger.LogInfo($"[{account.AccountName}] 🖱️ Clicking contribute button {contributionCount} times...");
                 userNotifications?.ShowStatus($"Contributing {contributionCount} times to green thumb technology...", NotificationType.Info);
 
-                await SaveContributionShotAsync(account, logger, "before", cancellationToken);
                 // Click the contribute button the determined number of times
                 for (int i = 0; i < contributionCount; i++)
                 {
@@ -317,8 +308,6 @@ namespace Bot.Core.Tasks.Modules
                     await Task.Delay(CLICK_DELAY_MS, cancellationToken);
                 }
 
-                await Task.Delay(6000 /* the coin counter keeps counting up after the last tap */, cancellationToken);
-                await SaveContributionShotAsync(account, logger, "after", cancellationToken);
                 logger.LogInfo($"[{account.AccountName}] ✅ Completed {contributionCount} contributions");
                 userNotifications?.ShowSuccess($"Contributed {contributionCount} times to green thumb");
 
