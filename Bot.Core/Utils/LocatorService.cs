@@ -374,10 +374,10 @@ namespace Bot.Core.Utils
                 
                 await Task.Delay(1000, cancellationToken);
 
-                _logger.LogInfo($"[Locator] 👀 Looking for {verifyImageName} for 5 seconds to verify navigation...");
+                _logger.LogInfo($"[Locator] 👀 Looking for {verifyImageName} for 12 seconds to verify navigation...");
                 
                 var startTime = DateTime.Now;
-                while ((DateTime.Now - startTime).TotalSeconds < 5)
+                while ((DateTime.Now - startTime).TotalSeconds < 12) // the world map can take over 5 s on a busy host
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     screenshot = await adbController.TakeScreenshotAsync(cancellationToken);
@@ -389,7 +389,7 @@ namespace Bot.Core.Utils
                             _logger.LogInfo($"[Locator] ✅ Found {verifyImageName}! Navigation successful (confidence: {confidenceVerify:F3})");
                             return true;
                         }
-                        else if ((DateTime.Now - startTime).TotalSeconds >= 4.5)
+                        else if ((DateTime.Now - startTime).TotalSeconds >= 11.5)
                         {
                             // Log confidence on last attempt before timeout
                             _logger.LogWarning($"[Locator] {verifyImageName} not found - confidence: {confidenceVerify:F3} < threshold: 0.7");
@@ -600,7 +600,8 @@ namespace Bot.Core.Utils
                     if (File.Exists(backButtonPath))
                     {
                         var (found, matchRect, confidence) = _templateMatcher.MatchTemplate(screenshot, backButtonPath, _account.InstanceNumber, 0.7);
-                        if (found)
+                        // Arrows live top-left; a match elsewhere on a popup is false. page-back-button is the cyan one on building pages
+                        if (found && (backButtonPath.EndsWith("page-back-button.png") || (matchRect.GetCenter().X < 160 && matchRect.GetCenter().Y < 90)))
                         {
                             _logger.LogInfo($"[Locator] 🔙 Found recovery back button {Path.GetFileName(backButtonPath)} (confidence: {confidence:F3}), clicking...");
                             var clickPoint = matchRect.GetCenter();

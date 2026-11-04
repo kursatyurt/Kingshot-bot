@@ -172,7 +172,8 @@ namespace Bot.Core.Tasks.Modules
                         await ADBMigrationHelper.TapAsync(adbController, adClose2Rect.GetCenter().X, adClose2Rect.GetCenter().Y, logger, cancellationToken);
                         clickedSomething = true;
                     }
-                    if (foundBackArrow)
+                    // Only the top-left corner: elsewhere this is a false match, e.g. a march row's Recall icon
+                    if (foundBackArrow && backArrowRect.GetCenter().X < 160 && backArrowRect.GetCenter().Y < 90)
                     {
                         logger.LogInfo($"[{account.AccountName}] Found back-arrow.png (confidence: {backArrowConf:F3}), clicking...");
                         await ADBMigrationHelper.TapAsync(adbController, backArrowRect.GetCenter().X, backArrowRect.GetCenter().Y, logger, cancellationToken);
