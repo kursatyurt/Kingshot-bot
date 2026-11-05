@@ -284,8 +284,8 @@ namespace Bot.Core.Tasks.Modules
                 }
                 if (!openedFirst)
                 {
-                    // A restart costs minutes and interrupts everything: at most one per account every 2 hours
-                    if (_lastGameRestart.TryGetValue(account.InstanceNumber, out var restarted) && DateTime.UtcNow - restarted < TimeSpan.FromHours(2))
+                    // A restart (~15 s plus pop-ups) interrupts other work: at most one per account every 30 minutes
+                    if (_lastGameRestart.TryGetValue(account.InstanceNumber, out var restarted) && DateTime.UtcNow - restarted < TimeSpan.FromMinutes(30))
                     {
                         logger.LogInfo($"[{account.AccountName}] Town Center not in the middle of the city view; trying again next cycle");
                         return new TaskExecutionDetails(true, message: "Town Center not reachable this cycle");
