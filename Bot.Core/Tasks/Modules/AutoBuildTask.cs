@@ -229,8 +229,7 @@ namespace Bot.Core.Tasks.Modules
                     await ClickAsync(account.InstanceNumber, logger, new Point(464, 544)); // close the panel
                     if (built == 0) logger.LogInfo($"[{account.AccountName}] Builder busy ('{queueStatus}'); no new building now");
                     // Nothing can be upgraded before the builder is free: skip the Town Center checks until then
-                    var busy = Regex.Match(queueStatus, @"\d\d:\d\d:\d\d");
-                    if (busy.Success && TimeSpan.TryParseExact(busy.Value, @"hh\:mm\:ss", null, out var left) && left > TimeSpan.FromMinutes(10))
+                    if (ParseTimer(queueStatus) is { } left && left > TimeSpan.FromMinutes(10))
                         _nextBuildCheck[account.InstanceNumber] = DateTime.UtcNow + left;
                     return;
                 }
@@ -554,8 +553,15 @@ namespace Bot.Core.Tasks.Modules
             await RandomDelay(cancellationToken);
             using var ocr = new OCRService(logger, new OCRConfiguration { ScaleFactor = 3.0f, PageSegMode = Tesseract.PageSegMode.SingleLine });
             var status = panel == null ? "" : ocr.ExtractBrightTextFromScreenArea(panel, new Rectangle(150, 376, 160, 30));
-            var match = System.Text.RegularExpressions.Regex.Match(status, @"\d\d:\d\d:\d\d");
-            return match.Success && TimeSpan.TryParseExact(match.Value, @"hh\:mm\:ss", null, out var left) ? left : null;
+            return ParseTimer(status);
+        }
+
+        /// <summary>Panel countdown such as "00:27:23" or "1d 07:38:42" (long upgrades show days first).</summary>
+        internal static TimeSpan? ParseTimer(string text)
+        {
+            var m = Regex.Match(text, @"(?:(\d+)\s*d\s*)?(\d\d:\d\d:\d\d)");
+            if (!m.Success || !TimeSpan.TryParseExact(m.Groups[2].Value, @"hh\:mm\:ss", null, out var t)) return null;
+            return m.Groups[1].Success ? t + TimeSpan.FromDays(int.Parse(m.Groups[1].Value)) : t;
         }
 
         private async Task<(bool opened, TimeSpan? busyFor)> OpenTownCenterAsync(AccountSettings account, LogService logger, LocatorService locator, CancellationToken cancellationToken)
@@ -782,8 +788,7 @@ namespace Bot.Core.Tasks.Modules
                 if (!builder.Contains("Idle", StringComparison.OrdinalIgnoreCase))
                 {
                     // A real upgrade timer: come back when the builder is free rather than after the usual 10 minutes
-                    var timer = System.Text.RegularExpressions.Regex.Match(builder, @"\d\d:\d\d:\d\d");
-                    if (timer.Success && TimeSpan.TryParseExact(timer.Value, @"hh\:mm\:ss", null, out var left))
+                    if (ParseTimer(builder) is { } left)
                         _builderFreeAt[account.InstanceNumber] = DateTime.UtcNow + left;
                     return;
                 }
