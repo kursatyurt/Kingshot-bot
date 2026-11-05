@@ -661,6 +661,9 @@ namespace Bot.Core.Tasks.Modules
                 logger.LogInfo($"[{account.AccountName}] No upgrade dialog after Go; pressing the centred building to open its ring ({retry}/3)");
                 await SwipeAsync(account.InstanceNumber, logger, CentredBuildingPoint, new Point(CentredBuildingPoint.X + 1, CentredBuildingPoint.Y + 1), 150);
                 await Task.Delay(1200, cancellationToken);
+                // ponytail: diagnostic for the Range ring that never shows Upgrade; delete once explained
+                if (retry == 1 && await TakeScreenshotAsync(account.InstanceNumber, logger) is { } ringShot)
+                    await File.WriteAllBytesAsync(Path.Combine(AppContext.BaseDirectory, "logs", "screenshots", $"ring_{account.InstanceNumber}_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.png"), ringShot, cancellationToken);
                 await TapRingButtonAsync(account.InstanceNumber, logger, Path.Combine(ImageTemplateFolder, "ring-upgrade.png"), BuildingRingUpgradeButton);
                 missing = await ReadRequirementsAsync(account, logger, cancellationToken);
             }
