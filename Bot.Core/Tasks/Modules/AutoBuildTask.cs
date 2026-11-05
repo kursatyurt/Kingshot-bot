@@ -88,6 +88,7 @@ namespace Bot.Core.Tasks.Modules
 
         private static readonly ConcurrentDictionary<int, DateTime> _nextNewBuildingCheck = new();
         private static readonly ConcurrentDictionary<int, DateTime> _builderFreeAt = new();
+        private static readonly ConcurrentDictionary<int, DateTime> _lastGameRestart = new();
 
         /// <summary>
         /// The idle builder's suggestion is centred: press it, and if its ring offers Upgrade and every requirement is met
@@ -283,6 +284,13 @@ namespace Bot.Core.Tasks.Modules
                 }
                 if (!openedFirst)
                 {
+                    // A restart costs minutes and interrupts everything: at most one per account every 2 hours
+                    if (_lastGameRestart.TryGetValue(account.InstanceNumber, out var restarted) && DateTime.UtcNow - restarted < TimeSpan.FromHours(2))
+                    {
+                        logger.LogInfo($"[{account.AccountName}] Town Center not in the middle of the city view; trying again next cycle");
+                        return new TaskExecutionDetails(true, message: "Town Center not reachable this cycle");
+                    }
+                    _lastGameRestart[account.InstanceNumber] = DateTime.UtcNow;
                     logger.LogInfo($"[{account.AccountName}] Town Center not in the middle of the city view; restarting the game to re-centre it");
                     NotifyProgress(userNotifications, "Restarting game to re-centre the city", 40);
                     await RestartGameAsync(account, logger, cancellationToken);
