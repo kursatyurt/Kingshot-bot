@@ -168,9 +168,9 @@ namespace Bot.Core.Tasks.Modules
             using (var words = new OCRService(logger, new OCRConfiguration { ScaleFactor = 2.0f }))
             {
                 var title = dialog == null ? "" : words.ExtractTextFromScreenArea(dialog, new Rectangle(120, 200, 480, 70));
-                if (title.Contains("Storehouse", StringComparison.OrdinalIgnoreCase))
+                if (title.Contains("Storehouse", StringComparison.OrdinalIgnoreCase) || title.Contains("House", StringComparison.Ordinal))
                 {
-                    logger.LogInfo($"[{account.AccountName}] Not upgrading the Storehouse");
+                    logger.LogInfo($"[{account.AccountName}] Not upgrading '{title}' (Storehouse and houses are left to the user)");
                     return;
                 }
             }
