@@ -31,6 +31,8 @@ namespace Bot.Core.Tasks.Modules
         private static readonly Point UpgradeTownCenterTab = new Point(360, 650);
         private static readonly Point BackArrow = new Point(40, 40);
 
+        protected override bool OnCooldown(AccountSettings account) => _lastRun.TryGetValue(account.InstanceNumber, out var last) && DateTime.UtcNow - last < Interval;
+
         protected override async Task<TaskExecutionDetails> ExecuteTaskLogicAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken, bool isReRun = false, IUserNotificationService? userNotifications = null)
         {
             var locator = new LocatorService(logger, account, TaskType);

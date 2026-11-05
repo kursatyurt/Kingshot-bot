@@ -41,6 +41,8 @@ namespace Bot.Core.Tasks.Modules
                 visualDebugger);
         }
 
+        protected override bool OnCooldown(AccountSettings account) => _nextRun.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next;
+
         protected override async Task<TaskExecutionDetails> ExecuteTaskLogicAsync(
             AccountSettings account,
             LogService logger,

@@ -29,6 +29,8 @@ namespace Bot.Core.Tasks.Modules
         private static readonly Point RingResearchButton = new Point(480, 722);   // same slot as a camp's Train
         private static readonly Point RingUpgradeButton = new Point(360, 750);
 
+        protected override bool OnCooldown(AccountSettings account) => _nextCheck.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next;
+
         /// <summary>
         /// Keeps the Academy researching. The city side panel shows Tech Research as Idle or busy; its arrow centres
         /// the Academy with its ring open; ring Research opens the tree. Items are tried top to bottom: a research

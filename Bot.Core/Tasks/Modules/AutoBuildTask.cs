@@ -973,12 +973,21 @@ namespace Bot.Core.Tasks.Modules
         /// Closes and relaunches the game through the emulator console (ldconsole killapp/runapp), then waits
         /// for it to load. A fresh start puts the city camera back on the Town Center.
         /// </summary>
-        private static async Task RestartGameAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
+        private async Task RestartGameAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
         {
             await RunGameConsoleCommandAsync("killapp", account.InstanceNumber, cancellationToken);
             await RunGameConsoleCommandAsync("runapp", account.InstanceNumber, cancellationToken);
-            // Don't touch the screen while it loads; EnsureViewAsync then closes the launch pop-ups
-            await Task.Delay(TimeSpan.FromSeconds(45), cancellationToken); // 25 s left it loading: back presses then moved the city off the Town Center
+            // Don't touch the screen while it loads (back presses then move the city off the Town Center):
+            // watch for the city view, seen twice in a row so the camera has settled, then EnsureViewAsync closes pop-ups
+            var baseView = Path.Combine(AppContext.BaseDirectory, "templates", "images", "locator", "base-view.png");
+            var started = DateTime.UtcNow;
+            for (int seen = 0; seen < 2 && DateTime.UtcNow - started < TimeSpan.FromSeconds(60);)
+            {
+                await Task.Delay(2000, cancellationToken);
+                var shot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                seen = shot != null && _templateMatcher.MatchTemplate(shot, baseView, account.InstanceNumber, 0.7f).Item1 ? seen + 1 : 0;
+            }
+            logger.LogInfo($"[{account.AccountName}] Game restarted in {(DateTime.UtcNow - started).TotalSeconds:F0} s");
         }
 
         /// <summary>

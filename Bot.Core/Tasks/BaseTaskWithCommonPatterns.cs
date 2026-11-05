@@ -235,12 +235,17 @@ namespace Bot.Core.Tasks
         protected virtual TimeSpan MinInterval => TimeSpan.Zero;
         private readonly System.Collections.Concurrent.ConcurrentDictionary<int, DateTime> _lastSuccess = new();
 
+        /// <summary>True when the task's own cooldown says there is nothing to do yet: skips the view check and auto tasks (2-9 s).</summary>
+        protected virtual bool OnCooldown(AccountSettings account) => false;
+
         public async Task<TaskExecutionDetails> ExecuteAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken, bool isReRun = false, IUserNotificationService? userNotifications = null)
         {
             try
             {
                 if (_lastSuccess.TryGetValue(account.InstanceNumber, out var last) && DateTime.UtcNow - last < MinInterval)
                     return new TaskExecutionDetails(true, message: $"Ran {(int)(DateTime.UtcNow - last).TotalMinutes} min ago");
+                if (OnCooldown(account))
+                    return new TaskExecutionDetails(true, message: "Skipped: checked recently");
 
                 if (!await CanExecuteAsync(account, logger, cancellationToken))
                 {

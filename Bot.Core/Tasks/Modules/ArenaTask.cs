@@ -26,6 +26,8 @@ namespace Bot.Core.Tasks.Modules
         private static readonly ConcurrentDictionary<int, DateTime> _nextCheck = new();
         private static readonly int[] RowY = { 360, 493, 626, 758, 891 }; // swords buttons of the 5 Challenge List rows
 
+        protected override bool OnCooldown(AccountSettings account) => _nextCheck.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next;
+
         protected override async Task<TaskExecutionDetails> ExecuteTaskLogicAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken, bool isReRun = false, IUserNotificationService? userNotifications = null)
         {
             if (_nextCheck.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next)

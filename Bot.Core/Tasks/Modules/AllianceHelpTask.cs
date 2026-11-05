@@ -23,6 +23,8 @@ namespace Bot.Core.Tasks.Modules
         // After an empty check, skip for a few minutes: the task otherwise runs after every other task
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, DateTime> _nextCheck = new();
 
+        protected override bool OnCooldown(AccountSettings account) => _nextCheck.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next;
+
         protected override async Task<TaskExecutionDetails> ExecuteTaskLogicAsync(
             AccountSettings account,
             LogService logger,
