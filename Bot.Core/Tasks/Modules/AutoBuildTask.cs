@@ -978,7 +978,7 @@ namespace Bot.Core.Tasks.Modules
             await RunGameConsoleCommandAsync("killapp", account.InstanceNumber, cancellationToken);
             await RunGameConsoleCommandAsync("runapp", account.InstanceNumber, cancellationToken);
             // Don't touch the screen while it loads; EnsureViewAsync then closes the launch pop-ups
-            await Task.Delay(TimeSpan.FromSeconds(25), cancellationToken);
+            await Task.Delay(TimeSpan.FromSeconds(45), cancellationToken); // 25 s left it loading: back presses then moved the city off the Town Center
         }
 
         /// <summary>
