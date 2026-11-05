@@ -228,6 +228,10 @@ namespace Bot.Core.Tasks.Modules
                 {
                     await ClickAsync(account.InstanceNumber, logger, new Point(464, 544)); // close the panel
                     if (built == 0) logger.LogInfo($"[{account.AccountName}] Builder busy ('{queueStatus}'); no new building now");
+                    // Nothing can be upgraded before the builder is free: skip the Town Center checks until then
+                    var busy = Regex.Match(queueStatus, @"\d\d:\d\d:\d\d");
+                    if (busy.Success && TimeSpan.TryParseExact(busy.Value, @"hh\:mm\:ss", null, out var left) && left > TimeSpan.FromMinutes(10))
+                        _nextBuildCheck[account.InstanceNumber] = DateTime.UtcNow + left;
                     return;
                 }
 
