@@ -738,8 +738,9 @@ namespace Bot.Core.Tasks.Modules
                 await PressBackAsync(account.InstanceNumber, logger); // close its upgrade page ourselves
                 await RandomDelay(cancellationToken);
                 await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
-                return TaskExecutionDetails.FailedWith(FailureCategory.GameState, "Step 4: Upgrading required building",
-                    $"The required building needs: {string.Join("; ", missing)}");
+                // Short of resources is normal, not an error: farming fills it, so look again in an hour
+                _nextBuildCheck[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(60);
+                return new TaskExecutionDetails(true, message: $"Required building needs: {string.Join("; ", missing)}");
             }
 
             // Its cyan Upgrade button (with a timer) sits at the bottom right; the Town Center page's greyed one scores ~0.77
