@@ -26,7 +26,7 @@
       },
       "autoBuildSettings": {
         "MaxSpeedupMinutes": 30,
-        "EnableAutoSpeedup": true
+        "EnableAutoSpeedup": false
       },
       "autoShieldSettings": {
         "UseRechargeableShield": true,
