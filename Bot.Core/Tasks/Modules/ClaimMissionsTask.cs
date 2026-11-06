@@ -91,6 +91,8 @@ namespace Bot.Core.Tasks.Modules
                 if (!interfaceLoaded)
                 {
                     logger.LogWarning($"[{account.AccountName}] Missions interface did not load properly");
+                    var shot = await TakeScreenshotAsync(account.InstanceNumber, logger); // to see what opened instead
+                    if (shot != null) await File.WriteAllBytesAsync(Path.Combine(AppContext.BaseDirectory, "logs", "screenshots", $"missions-not-loaded-{account.InstanceNumber}.png"), shot, cancellationToken);
                     return TaskExecutionDetails.Failed("Missions interface did not load");
                 }
 
@@ -138,7 +140,13 @@ namespace Bot.Core.Tasks.Modules
 
                 // Step 5: Check and Process Daily tab if notifications detected
                 logger.LogInfo($"[{account.AccountName}] Checking Daily tab for notifications...");
-                if (await DetectNotificationNumber(DailyNotificationArea, account.InstanceNumber, logger, "Daily"))
+                // With the Chapter missions done the Chapter tab is gone and the menu opens on Daily (white tab)
+                if (await IsImagePresentAsync("daily-selected.png", account.InstanceNumber, logger))
+                {
+                    logger.LogInfo($"[{account.AccountName}] Menu opened on the Daily tab; processing it");
+                    await ProcessMissionsTabAsync("Daily", account.InstanceNumber, logger, cancellationToken);
+                }
+                else if (await DetectNotificationNumber(DailyNotificationArea, account.InstanceNumber, logger, "Daily"))
                 {
                     logger.LogInfo($"[{account.AccountName}] Processing Daily tab - notifications found");
                     if (await FindAndClickTabAsync("daily.png", account.InstanceNumber, logger, "Daily"))
@@ -202,7 +210,7 @@ namespace Bot.Core.Tasks.Modules
 
         private async Task<bool> VerifyMissionsInterfaceAsync(int instanceNumber, LogService logger, CancellationToken cancellationToken)
         {
-            var imagesToCheck = new[] { "chapter.png", "daily.png", "missions-scroll.png" };
+            var imagesToCheck = new[] { "chapter.png", "daily.png", "daily-selected.png", "missions-scroll.png" };
             
             var startTime = DateTime.UtcNow;
             while ((DateTime.UtcNow - startTime).TotalMilliseconds < 6000) // the page can take 3-5 s on a busy emulator; returns as soon as it shows
