@@ -205,7 +205,7 @@ namespace Bot.Core.Tasks.Modules
             var imagesToCheck = new[] { "chapter.png", "daily.png", "missions-scroll.png" };
             
             var startTime = DateTime.UtcNow;
-            while ((DateTime.UtcNow - startTime).TotalMilliseconds < ImageWaitTimeSeconds)
+            while ((DateTime.UtcNow - startTime).TotalMilliseconds < 6000) // the page can take 3-5 s on a busy emulator; returns as soon as it shows
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 
