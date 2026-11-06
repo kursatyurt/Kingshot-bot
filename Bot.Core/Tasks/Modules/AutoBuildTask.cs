@@ -345,11 +345,9 @@ namespace Bot.Core.Tasks.Modules
                 if (missing.Count > 0)
                 {
                     await CloseTownCenterPagesAsync(account, logger, cancellationToken);
-                    return TaskExecutionDetails.FailedWith(
-                        FailureCategory.GameState,
-                        "Step 3: Checking requirements",
-                        $"Town Center upgrade needs: {string.Join("; ", missing)}",
-                        customHint: "Not enough resources in the backpack either; gathering continues and the task retries every cycle");
+                    // Short of resources is normal: farming fills it, so look again in an hour
+                    _nextBuildCheck[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(60);
+                    return new TaskExecutionDetails(true, message: $"Town Center upgrade needs: {string.Join("; ", missing)}"); gathering continues and the task retries every cycle");
                 }
 
                 // All requirements met
