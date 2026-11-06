@@ -475,6 +475,7 @@ namespace Bot.Core.Tasks.Modules
             if (offer != null && IsCyan(offer, GeneralSpeedupOfferUse))
             {
                 logger.LogInfo($"[{account.AccountName}] {name}: not spending General Speedups");
+                _nextSpeedupCheck[account.InstanceNumber] = DateTime.UtcNow.AddHours(2); // none of its own left: stop retrying every 10 min
                 await ClickAsync(account.InstanceNumber, logger, new Point(637, 447)); // its X
                 await Task.Delay(1000, cancellationToken);
                 await PressBackAsync(account.InstanceNumber, logger); // the Quick Use dialog under it
