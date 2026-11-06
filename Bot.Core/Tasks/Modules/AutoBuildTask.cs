@@ -347,7 +347,7 @@ namespace Bot.Core.Tasks.Modules
                     await CloseTownCenterPagesAsync(account, logger, cancellationToken);
                     // Short of resources is normal: farming fills it, so look again in an hour
                     _nextBuildCheck[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(60);
-                    return new TaskExecutionDetails(true, message: $"Town Center upgrade needs: {string.Join("; ", missing)}"); gathering continues and the task retries every cycle");
+                    return new TaskExecutionDetails(true, message: $"Town Center upgrade needs: {string.Join("; ", missing)}");
                 }
 
                 // All requirements met
