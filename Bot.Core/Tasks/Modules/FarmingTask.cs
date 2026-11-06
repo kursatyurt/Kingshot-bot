@@ -150,6 +150,21 @@ namespace Bot.Core.Tasks.Modules
             await ClickAsync(account.InstanceNumber, logger, new Point(548, 1210)); // Deploy (troops come pre-filled)
             await Task.Delay(2500, cancellationToken);
             await ConfirmFormationWarningAsync(account, logger, cancellationToken);
+            var after = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            if (after != null && new OCRService(logger).ExtractTextFromScreenArea(after, new Rectangle(220, 115, 280, 60))?.ToLower().Contains("more") == true)
+            {
+                // Under 25 stamina the game offers "Get More" (stamina items, gems) over the Deploy screen: never use
+                // it. Close both and try again once stamina has refilled (about 1 per 6 minutes).
+                logger.LogInfo($"[{account.AccountName}] No stamina for a Terror rally; saving stamina (no beast hunts) for 2.5 hours");
+                await ClickAsync(account.InstanceNumber, logger, new Point(668, 145));
+                await Task.Delay(800, cancellationToken);
+                await PressBackAsync(account.InstanceNumber, logger);
+                await Task.Delay(1000, cancellationToken);
+                // Beasts take 10 stamina each, so it would never reach 25: hold them until the rally's next try
+                _nextTerrorRally[account.InstanceNumber] = _nextBeastHunt[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(150);
+                await new LocatorService(logger, account).EnsureViewAsync(ViewType.MapView, account.InstanceNumber, cancellationToken);
+                return false;
+            }
             logger.LogInfo($"[{account.AccountName}] ⚔️ Holding a Terror rally");
             _nextTerrorRally[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(10);
             return true;
@@ -372,9 +387,8 @@ namespace Bot.Core.Tasks.Modules
                 }
 
                 // A free march and stamina go to a Terror rally first: alliance members auto-join it
-                // Disabled by the user for now (it kept failing):
-                // if (await HoldTerrorRallyAsync(account, logger, cancellationToken) && --currentMarches <= 0)
-                //     return new TaskExecutionDetails(true, message: "Held a Terror rally; no march left for gathering");
+                if (await HoldTerrorRallyAsync(account, logger, cancellationToken) && --currentMarches <= 0)
+                    return new TaskExecutionDetails(true, message: "Held a Terror rally; no march left for gathering");
                 // A free march and stamina hunt a beast first (10 stamina; back within about a minute and a half)
                 if (await HuntBeastAsync(account, logger, cancellationToken) && --currentMarches <= 0)
                     return new TaskExecutionDetails(true, message: "Hunting a beast; no march left for gathering");
