@@ -13,7 +13,7 @@ using System.Threading.Tasks;
 namespace Bot.Core.Tasks.Modules
 {
     /// <summary>
-    /// Side panel Daily tab: the Fountain of Life row shows a green check when Water Essence can be collected; tapping it
+    /// Side panel Daily tab: the Fountain of Life row's button (green check when full, else an arrow)
     /// opens My Island, where each green water bubble is tapped, then its back arrow returns to the city. Once per UTC day (after the 00:00 reset) Pet Adventure's
     /// row arrow → back arrow lands on the pet enclosure → Skills: only the Lynx's Comforting Embrace (+35 stamina) is
     /// used, and only when its Use button is lit; the Gray Wolf's Construction Aide is never touched.
@@ -39,23 +39,27 @@ namespace Bot.Core.Tasks.Modules
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
             var done = new List<string>();
 
-            if (await OpenDailyTabAsync(account, logger, cancellationToken) && await RowYAsync(account, logger, "fountain-row.png") is int fy)
+            int? fy = await OpenDailyTabAsync(account, logger, cancellationToken) ? await RowYAsync(account, logger, "fountain-row.png") : null;
+            if (fy == null)
             {
-                var shot = await TakeScreenshotAsync(account.InstanceNumber, logger);
-                if (shot != null && IsGreenCheck(shot, fy))
+                var path = Path.Combine(AppContext.BaseDirectory, "logs", "screenshots", $"fountain_norow_{account.InstanceNumber}_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.png");
+                if (await TakeScreenshotAsync(account.InstanceNumber, logger) is { } miss) { Directory.CreateDirectory(Path.GetDirectoryName(path)!); await File.WriteAllBytesAsync(path, miss, cancellationToken); }
+                logger.LogWarning($"[{account.AccountName}] Fountain of Life row not found in the Daily tab; saved {path}");
+            }
+            else
+            {
+                // The row's tick or arrow both open My Island, which can hold water either way: always look
+                await ClickAsync(account.InstanceNumber, logger, new Point(404, fy.Value));
+                if (await WaitForImageAsync("my-island-title.png", account.InstanceNumber, logger, cancellationToken, 8000, threshold: 0.85))
                 {
-                    await ClickAsync(account.InstanceNumber, logger, new Point(404, fy));
-                    if (await WaitForImageAsync("my-island-title.png", account.InstanceNumber, logger, cancellationToken, 8000, threshold: 0.85))
+                    var collected = await CollectWaterBubblesAsync(account, logger, cancellationToken);
+                    if (collected > 0) done.Add($"collected {collected} water bubble(s)");
+                    // My Island's back arrow → city; a building left in move mode eats the first tap
+                    for (int i = 0; i < 3; i++)
                     {
-                        var collected = await CollectWaterBubblesAsync(account, logger, cancellationToken);
-                        done.Add($"collected {collected} water bubble(s)");
-                        // My Island's back arrow → city; a building left in move mode eats the first tap
-                        for (int i = 0; i < 3; i++)
-                        {
-                            await ClickAsync(account.InstanceNumber, logger, new Point(46, 34));
-                            await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
-                            if (!await WaitForImageAsync("my-island-title.png", account.InstanceNumber, logger, cancellationToken, 500, threshold: 0.85)) break;
-                        }
+                        await ClickAsync(account.InstanceNumber, logger, new Point(46, 34));
+                        await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
+                        if (!await WaitForImageAsync("my-island-title.png", account.InstanceNumber, logger, cancellationToken, 500, threshold: 0.85)) break;
                     }
                 }
             }
@@ -154,13 +158,6 @@ namespace Bot.Core.Tasks.Modules
             if (shot == null) return null;
             var (found, rect, _) = _templateMatcher.MatchTemplate(shot, Path.Combine(ImageTemplateFolder, icon), account.InstanceNumber, threshold: 0.9, searchArea: RowIcons);
             return found ? rect.Y + rect.Height / 2 : null;
-        }
-
-        /// <summary>Daily rows end in a green check when claimable and a cyan arrow otherwise.</summary>
-        public static bool IsGreenCheck(byte[] screenshot, int rowY)
-        {
-            var m = Mean(screenshot, new Rectangle(395, rowY - 8, 18, 16));
-            return m.Val1 > 200 && m.Val1 - m.Val0 > 40;
         }
 
         public static bool IsCyan(byte[] screenshot, Rectangle rect)

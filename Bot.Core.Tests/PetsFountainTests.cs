@@ -15,13 +15,6 @@ namespace Bot.Core.Tests
         }
 
         [Test]
-        public void FountainCheckIsGreenAndRowArrowIsNot()
-        {
-            Assert.That(PetsFountainTask.IsGreenCheck(Solid(157, 223, 65), 602), Is.True);   // Fountain of Life ✓
-            Assert.That(PetsFountainTask.IsGreenCheck(Solid(196, 192, 106), 716), Is.False); // Pet Adventure ➜
-        }
-
-        [Test]
         public void OnlyALitUseButtonCountsAsCyan()
         {
             var use = new Rectangle(240, 1060, 240, 50);
