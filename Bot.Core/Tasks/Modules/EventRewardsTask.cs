@@ -80,7 +80,8 @@ namespace Bot.Core.Tasks.Modules
             return new TaskExecutionDetails(true, message: $"Claimed {claimed} event reward(s)");
         }
 
-        private static readonly ConcurrentDictionary<int, DateTime> _nextStorehouseCheck = new();
+        /// <summary>When each instance's online chest is due; the cycle wakes for it.</summary>
+        public static readonly ConcurrentDictionary<int, DateTime> _nextStorehouseCheck = new();
 
         /// <summary>
         /// The Storehouse gives a Gourmet Feast (twice a day) and an online chest every few minutes. The side panel's

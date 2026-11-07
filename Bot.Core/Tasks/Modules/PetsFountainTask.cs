@@ -28,7 +28,11 @@ namespace Bot.Core.Tasks.Modules
         private static readonly string PetsDayFile = Path.Combine(AppContext.BaseDirectory, "data", "pets_day.json");
         private static readonly Rectangle RowIcons = new(0, 290, 120, 570);
 
-        protected override bool OnCooldown(AccountSettings account) => _nextCheck.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next;
+        /// <summary>When each instance's next pet comes home (Daily row timer); the task and the cycle wake for it.</summary>
+        public static readonly System.Collections.Concurrent.ConcurrentDictionary<int, DateTime> NextPetReturn = new();
+
+        protected override bool OnCooldown(AccountSettings account) => _nextCheck.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next
+            && !(NextPetReturn.TryGetValue(account.InstanceNumber, out var pet) && DateTime.UtcNow >= pet);
 
         protected override async Task<TaskExecutionDetails> ExecuteTaskLogicAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken, bool isReRun = false, IUserNotificationService? userNotifications = null)
         {
@@ -81,6 +85,7 @@ namespace Bot.Core.Tasks.Modules
                 }
             }
 
+            await ReadPetTimerAsync(account, logger, locator, cancellationToken);
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
             return new TaskExecutionDetails(true, message: done.Count > 0 ? string.Join("; ", done) : "Nothing to do");
         }
@@ -158,6 +163,20 @@ namespace Bot.Core.Tasks.Modules
             await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
             logger.LogInfo($"[{account.AccountName}] Pet Adventure: {claimed} chest(s) opened, {sent} pet(s) sent");
             return claimed + sent > 0 ? $"Pet Adventure: {claimed} chest(s), {sent} pet(s) sent" : null;
+        }
+
+        /// <summary>The Daily tab's Pet Adventure row shows the next return countdown ("Completed" when a chest waits).</summary>
+        private async Task ReadPetTimerAsync(AccountSettings account, LogService logger, LocatorService locator, CancellationToken cancellationToken)
+        {
+            NextPetReturn.TryRemove(account.InstanceNumber, out _);
+            await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
+            if (!await OpenDailyTabAsync(account, logger, cancellationToken) || await RowYAsync(account, logger, "pet-adventure-row.png") is not int py) return;
+            var shot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            if (shot != null && EventRewardsTask.ParseTimer(new OCRService(logger).ExtractBrightTextFromScreenArea(shot, new Rectangle(80, py, 290, 32))) is { } wait)
+            {
+                NextPetReturn[account.InstanceNumber] = DateTime.UtcNow + wait + TimeSpan.FromSeconds(20);
+                logger.LogInfo($"[{account.AccountName}] Next pet home in {wait}");
+            }
         }
 
         private async Task ClosePopupsAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
