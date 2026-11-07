@@ -49,8 +49,13 @@ namespace Bot.Core.Tasks.Modules
                     {
                         var collected = await CollectWaterBubblesAsync(account, logger, cancellationToken);
                         done.Add($"collected {collected} water bubble(s)");
-                        await ClickAsync(account.InstanceNumber, logger, new Point(46, 34)); // My Island's back arrow → city
-                        await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
+                        // My Island's back arrow → city; a building left in move mode eats the first tap
+                        for (int i = 0; i < 3; i++)
+                        {
+                            await ClickAsync(account.InstanceNumber, logger, new Point(46, 34));
+                            await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
+                            if (!await WaitForImageAsync("my-island-title.png", account.InstanceNumber, logger, cancellationToken, 500, threshold: 0.85)) break;
+                        }
                     }
                 }
             }
