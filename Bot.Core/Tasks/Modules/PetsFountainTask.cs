@@ -14,7 +14,7 @@ namespace Bot.Core.Tasks.Modules
 {
     /// <summary>
     /// Side panel Daily tab: the Fountain of Life row shows a green check when Water Essence can be collected; tapping it
-    /// collects and opens My Island, left with its back arrow. Once per UTC day (after the 00:00 reset) Pet Adventure's
+    /// opens My Island, where each green water bubble is tapped, then its back arrow returns to the city. Once per UTC day (after the 00:00 reset) Pet Adventure's
     /// row arrow → back arrow lands on the pet enclosure → Skills: only the Lynx's Comforting Embrace (+35 stamina) is
     /// used, and only when its Use button is lit; the Gray Wolf's Construction Aide is never touched.
     /// </summary>
@@ -44,12 +44,14 @@ namespace Bot.Core.Tasks.Modules
                 var shot = await TakeScreenshotAsync(account.InstanceNumber, logger);
                 if (shot != null && IsGreenCheck(shot, fy))
                 {
-                    logger.LogInfo($"[{account.AccountName}] 💧 Collecting Fountain of Life water essence");
                     await ClickAsync(account.InstanceNumber, logger, new Point(404, fy));
-                    await Bot.Core.Utils.Pace.Delay(3000, cancellationToken);
-                    await FindAndClickImageAsync("back-arrow.png", account.InstanceNumber, logger, threshold: 0.85, searchArea: new Rectangle(0, 0, 160, 90)); // leave My Island
-                    await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
-                    done.Add("fountain collected");
+                    if (await WaitForImageAsync("my-island-title.png", account.InstanceNumber, logger, cancellationToken, 8000, threshold: 0.85))
+                    {
+                        var collected = await CollectWaterBubblesAsync(account, logger, cancellationToken);
+                        done.Add($"collected {collected} water bubble(s)");
+                        await ClickAsync(account.InstanceNumber, logger, new Point(46, 34)); // My Island's back arrow → city
+                        await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
+                    }
                 }
             }
 
@@ -112,6 +114,25 @@ namespace Bot.Core.Tasks.Modules
             await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
             logger.LogInfo($"[{account.AccountName}] Pets: {result}");
             return used;
+        }
+
+        /// <summary>
+        /// The tick only opens My Island: the water is in green drop bubbles over the fountain (+1,440 when full) and the
+        /// well (+140), wherever the island camera puts them. Each tap collects one bubble.
+        /// </summary>
+        private async Task<int> CollectWaterBubblesAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
+        {
+            int collected = 0;
+            for (; collected < 5; collected++)
+            {
+                var (found, bubble, _) = await WaitForImageWithPositionAsync("water-bubble.png", account.InstanceNumber, logger, cancellationToken, collected == 0 ? 3000 : 1500,
+                    threshold: 0.8, searchArea: new Rectangle(0, 90, 720, 1000));
+                if (!found) break;
+                logger.LogInfo($"[{account.AccountName}] 💧 Collecting water essence");
+                await ClickAsync(account.InstanceNumber, logger, new Point(bubble.X + bubble.Width / 2, bubble.Y + bubble.Height / 2));
+                await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
+            }
+            return collected;
         }
 
         private async Task<bool> OpenDailyTabAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
