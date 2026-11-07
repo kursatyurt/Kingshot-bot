@@ -39,7 +39,8 @@ namespace Bot.GUI.Converters
             { TaskType.ClaimMissions, "Claim Missions (BETA)" },
             { TaskType.ResidentWelcome, "Resident Welcome" },
             { TaskType.AllianceTechnology, "Alliance Technology" },
-            { TaskType.AutoRally, "Auto Rally (BETA)" }
+            { TaskType.AutoRally, "Auto Rally (BETA)" },
+            { TaskType.PetsFountain, "Pets & Fountain" }
         };
 
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)

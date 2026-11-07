@@ -30,7 +30,8 @@ namespace Bot.Core.Models
         AutoRally,
         EventRewards,
         RebelAssault,
-        Arena
+        Arena,
+        PetsFountain
     }
 
     public class AccountSettings : INotifyPropertyChanged
