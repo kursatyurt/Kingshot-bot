@@ -144,7 +144,7 @@ namespace Bot.Core.Tasks.Modules
                     logger.LogInfo($"[{account.AccountName}] 🔄 Post-loading sequence attempt {attemptCount} (elapsed time: {(DateTime.UtcNow - startTime).TotalSeconds:F1}s)...");
 
                     // Wait a bit for any cloud transitions to clear
-                    await Task.Delay(2000, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
 
                     // Use locator folder for map/base view images
                     var locatorFolder = Path.Combine(AppContext.BaseDirectory, "templates", "images", "locator");
@@ -159,7 +159,7 @@ namespace Bot.Core.Tasks.Modules
                     if (screenshot == null)
                     {
                         logger.LogWarning($"[{account.AccountName}] Failed to take screenshot, skipping UI checks");
-                        await Task.Delay(1000, cancellationToken);
+                        await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                         continue;
                     }
 
@@ -250,7 +250,7 @@ namespace Bot.Core.Tasks.Modules
                             await ClickRandomInRectAsync(account.InstanceNumber, logger, closeButtonArea);
                         }
                         
-                        await Task.Delay(2000, cancellationToken);
+                        await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
                         continue; // Go to next attempt to verify view
                     }
 
@@ -271,7 +271,7 @@ namespace Bot.Core.Tasks.Modules
                     // The game sometimes reopens on a sub-page (Alliance, ...): leave it with the recovery buttons
                     if ((DateTime.UtcNow - startTime).TotalSeconds > 15 && await new LocatorService(logger, account).TryCloseAdsAsync())
                     {
-                        await Task.Delay(1500, cancellationToken);
+                        await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
                         continue;
                     }
 
@@ -353,7 +353,7 @@ namespace Bot.Core.Tasks.Modules
                 
                 logger.LogInfo($"[{account.AccountName}] Launching Kingshot App");
                 logger.LogInfo($"[{account.AccountName}] ⏳ Waiting 5 seconds to ensure LDPlayer is fully ready...");
-                await Task.Delay(5000, cancellationToken); // Wait 5 seconds to ensure LDPlayer is ready
+                await Bot.Core.Utils.Pace.Delay(5000, cancellationToken); // Wait 5 seconds to ensure LDPlayer is ready
                 
                 logger.LogInfo($"[{account.AccountName}] 🚀 Launching Kingshot app using dnconsole.exe...");
                 
@@ -397,7 +397,7 @@ namespace Bot.Core.Tasks.Modules
                 {
                     logger.LogInfo($"[{account.AccountName}] ✅ Successfully launched Kingshot app");
                     logger.LogInfo($"[{account.AccountName}] Waiting 5 seconds before checking for loading menu...");
-                    await Task.Delay(5000, cancellationToken); // Wait 5 seconds before looking for loading menu
+                    await Bot.Core.Utils.Pace.Delay(5000, cancellationToken); // Wait 5 seconds before looking for loading menu
                     return true;
                 }
                 else

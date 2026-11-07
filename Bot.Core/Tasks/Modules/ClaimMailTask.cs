@@ -110,7 +110,7 @@ namespace Bot.Core.Tasks.Modules
                     var still = await TakeScreenshotAsync(account.InstanceNumber, logger);
                     if (still == null || !new OCRService(logger).ExtractTextFromScreenArea(still, new Rectangle(0, 0, 300, 80)).Contains("Mail")) break;
                     await PressBackAsync(account.InstanceNumber, logger);
-                    await Task.Delay(1000, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                 }
                 
                 // Update collection time for this specific account
@@ -312,7 +312,7 @@ namespace Bot.Core.Tasks.Modules
                 }
             }
 
-            await Task.Delay(1000, cancellationToken); // Wait for mail menu to open
+            await Bot.Core.Utils.Pace.Delay(1000, cancellationToken); // Wait for mail menu to open
             return true;
         }
 
@@ -329,14 +329,14 @@ namespace Bot.Core.Tasks.Modules
                     return false;
                 }
 
-                await Task.Delay(500, cancellationToken); // Wait for tab switch
+                await Bot.Core.Utils.Pace.Delay(500, cancellationToken); // Wait for tab switch
 
                 // Try to claim using last known location first if available
                 if (_lastKnownClaimLocation.HasValue)
                 {
                     logger.LogInfo($"[{account.AccountName}] 🎯 Trying last known claim button location...");
                     await ClickRandomInRectAsync(account.InstanceNumber, logger, ClaimButtonSearchArea);
-                    await Task.Delay(200, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(200, cancellationToken);
                     
                     // Click in the same area again
                     await ClickRandomInRectAsync(account.InstanceNumber, logger, ClaimButtonSearchArea);
@@ -362,7 +362,7 @@ namespace Bot.Core.Tasks.Modules
                             _lastKnownClaimLocation = ClaimButtonSearchArea;
                             
                             // Wait 500ms after clicking claim
-                            await Task.Delay(500, cancellationToken);
+                            await Bot.Core.Utils.Pace.Delay(500, cancellationToken);
                             
                             // Look for vip-rewards2.png and click if found
                             if (await WaitForImageAsync("../collectvip/vip-rewards2.png", account.InstanceNumber, logger, cancellationToken,
@@ -391,7 +391,7 @@ namespace Bot.Core.Tasks.Modules
                     logger.LogInfo($"[{account.AccountName}] ℹ️ No claim button found in {tabName} tab after {MAX_WAIT_TIME_MS}ms. This may be normal if no mail to claim.");
                 }
 
-                await Task.Delay(500, cancellationToken); // Wait for claim animation
+                await Bot.Core.Utils.Pace.Delay(500, cancellationToken); // Wait for claim animation
                 return true;
             }
             catch (Exception ex)

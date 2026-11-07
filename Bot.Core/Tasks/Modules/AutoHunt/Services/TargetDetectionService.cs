@@ -190,7 +190,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt.Services
                 huntModeFound = await _huntModeNavigation.IsInHuntModeAsync(account, logger);
                 if (!huntModeFound)
                 {
-                    await Task.Delay(500, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(500, cancellationToken);
                 }
             }
 
@@ -225,12 +225,12 @@ namespace Bot.Core.Tasks.Modules.AutoHunt.Services
                     foundTick = true;
                     foundAnyTick = true;
                     await ProcessTickFound(account, logger, matchRect, confidence, accountId, settings, cancellationToken);
-                    await Task.Delay(500, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(500, cancellationToken);
                     tickScanStart = DateTime.UtcNow;
                 }
                 else
                 {
-                    await Task.Delay(200, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(200, cancellationToken);
                 }
 
                 timeSinceLastTick = DateTime.UtcNow - tickScanStart;
@@ -253,7 +253,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt.Services
             if (await ClickRandomInRectAsync(account.InstanceNumber, logger, matchRect))
             {
                 logger.LogInfo($"[{account.AccountName}] Successfully clicked tick");
-                await Task.Delay(500, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(500, cancellationToken);
                 
                 // Remove overlapping used areas
                 RemoveOverlappingUsedAreas(account, logger, matchRect, accountId, settings);
@@ -354,7 +354,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt.Services
                     break;
                 }
 
-                await Task.Delay(200, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(200, cancellationToken);
             }
         }
 

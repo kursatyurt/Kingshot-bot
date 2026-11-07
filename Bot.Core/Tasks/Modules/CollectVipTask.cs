@@ -86,7 +86,7 @@ namespace Bot.Core.Tasks.Modules
                     return TaskExecutionDetails.Failed("VIP button not found");
                 }
 
-                await Task.Delay(1000, cancellationToken); // Wait for VIP interface to load
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken); // Wait for VIP interface to load
 
                 // Step 2.5: Check if VIP interface loaded properly by looking for VIP chest or VIP claim
                 logger.LogInfo($"[{account.AccountName}] Checking if VIP interface loaded...");
@@ -151,7 +151,7 @@ namespace Bot.Core.Tasks.Modules
                     return TaskExecutionDetails.Failed("VIP chest not found");
                 }
 
-                await Task.Delay(1000, cancellationToken); // Wait for chest interface to load
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken); // Wait for chest interface to load
 
                 // Step 3.5: Check for vip-rewards.png after clicking vip-chest (with 2-second timeout)
                 logger.LogInfo($"[{account.AccountName}] Looking for VIP rewards template: templates\\images\\collectvip\\vip-rewards.png (up to 2 seconds)...");
@@ -169,12 +169,12 @@ namespace Bot.Core.Tasks.Modules
                         logger.LogInfo($"[{account.AccountName}] ✅ VIP rewards found and clicked at attempt {attemptCount}");
                         _vipRewardsClicked = true; // Track that we clicked vip-rewards
                         vipRewardsFound = true;
-                        await Task.Delay(1000, cancellationToken); // Wait for rewards to be collected
+                        await Bot.Core.Utils.Pace.Delay(1000, cancellationToken); // Wait for rewards to be collected
                     }
                     else if (!vipRewardsFound)
                     {
                         logger.LogInfo($"[{account.AccountName}] VIP rewards not found in attempt {attemptCount}, waiting 200ms before retry");
-                        await Task.Delay(200, cancellationToken); // Wait 200ms before retry
+                        await Bot.Core.Utils.Pace.Delay(200, cancellationToken); // Wait 200ms before retry
                     }
                 }
                 
@@ -191,7 +191,7 @@ namespace Bot.Core.Tasks.Modules
                 }
                 else
                 {
-                    await Task.Delay(1000, cancellationToken); // Wait for claim to process
+                    await Bot.Core.Utils.Pace.Delay(1000, cancellationToken); // Wait for claim to process
 
                     // Step 4.5: Check for vip-rewards2.png after clicking vip-claim (with 2-second timeout)
                     logger.LogInfo($"[{account.AccountName}] Looking for VIP rewards 2 (up to 2 seconds)...");
@@ -205,11 +205,11 @@ namespace Bot.Core.Tasks.Modules
                             logger.LogInfo($"[{account.AccountName}] VIP rewards 2 clicked");
                             _vipRewards2Clicked = true; // Track that we clicked vip-rewards2
                             vipRewards2Found = true;
-                            await Task.Delay(1000, cancellationToken); // Wait for rewards to be collected
+                            await Bot.Core.Utils.Pace.Delay(1000, cancellationToken); // Wait for rewards to be collected
                         }
                         else if (!vipRewards2Found)
                         {
-                            await Task.Delay(200, cancellationToken); // Wait 200ms before retry
+                            await Bot.Core.Utils.Pace.Delay(200, cancellationToken); // Wait 200ms before retry
                         }
                     }
                     
@@ -227,11 +227,11 @@ namespace Bot.Core.Tasks.Modules
                     // Nothing more to do on the VIP page: leave it and look again in 2 h instead of failing
                     _lastCollectionTimes[account.InstanceNumber] = DateTime.UtcNow - VipRewardsInterval + TimeSpan.FromHours(2);
                     await PressBackAsync(account.InstanceNumber, logger);
-                    await Task.Delay(1000, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                     return new TaskExecutionDetails(true, message: "VIP page had no plus button");
                 }
 
-                await Task.Delay(1000, cancellationToken); // Wait for plus interface to load
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken); // Wait for plus interface to load
 
                 // Step 6: Repeatedly click VIP use button until no longer detected
                 logger.LogInfo($"[{account.AccountName}] Starting VIP use loop...");
@@ -250,7 +250,7 @@ namespace Bot.Core.Tasks.Modules
                     }
 
                     useCount++;
-                    await Task.Delay(500, cancellationToken); // Short delay between uses
+                    await Bot.Core.Utils.Pace.Delay(500, cancellationToken); // Short delay between uses
                 }
 
                 if (useCount >= maxUseAttempts)
@@ -269,7 +269,7 @@ namespace Bot.Core.Tasks.Modules
                     logger.LogWarning($"[{account.AccountName}] Level close button not found, continuing...");
                 }
 
-                await Task.Delay(500, cancellationToken); // Wait for close to process
+                await Bot.Core.Utils.Pace.Delay(500, cancellationToken); // Wait for close to process
 
                 // Step 8: Click deploy back button
                 logger.LogInfo($"[{account.AccountName}] Looking for deploy back button...");
@@ -278,7 +278,7 @@ namespace Bot.Core.Tasks.Modules
                     logger.LogWarning($"[{account.AccountName}] Deploy back button not found, continuing...");
                 }
 
-                await Task.Delay(500, cancellationToken); // Wait for navigation
+                await Bot.Core.Utils.Pace.Delay(500, cancellationToken); // Wait for navigation
 
                 // Update collection time only if both VIP rewards were clicked
                 if (_vipRewardsClicked && _vipRewards2Clicked)

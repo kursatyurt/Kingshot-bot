@@ -96,7 +96,7 @@ namespace Bot.Core.Tasks.Modules
                             var clickPoint = matchRect.GetCenter();
                             logger.LogInfo($"[AutoHeal] Found {description} at ({clickPoint.X}, {clickPoint.Y}) with confidence {confidence:F3}");
                             await ADBMigrationHelper.TapAsync(adbController, clickPoint.X, clickPoint.Y, logger, cancellationToken);
-                            await Task.Delay(500, cancellationToken); // Short delay after click
+                            await Bot.Core.Utils.Pace.Delay(500, cancellationToken); // Short delay after click
                             break;
                         }
 
@@ -107,7 +107,7 @@ namespace Bot.Core.Tasks.Modules
                             return TaskExecutionDetails.Succeeded("No healing needed");
                         }
 
-                        await Task.Delay(200, cancellationToken);
+                        await Bot.Core.Utils.Pace.Delay(200, cancellationToken);
                     }
 
                     if (!found && description != "heal icon")
@@ -138,10 +138,10 @@ namespace Bot.Core.Tasks.Modules
                                     var clickPoint = matchRect.GetCenter();
                                     logger.LogInfo($"[AutoHeal] Found {description} at ({clickPoint.X}, {clickPoint.Y}) with confidence {retryConfidence:F3} after locator recovery");
                                     await ADBMigrationHelper.TapAsync(adbController, clickPoint.X, clickPoint.Y, logger, cancellationToken);
-                                    await Task.Delay(500, cancellationToken);
+                                    await Bot.Core.Utils.Pace.Delay(500, cancellationToken);
                                     break;
                                 }
-                                await Task.Delay(200, cancellationToken);
+                                await Bot.Core.Utils.Pace.Delay(200, cancellationToken);
                             }
                             
                             if (!found)

@@ -79,7 +79,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt.Processors
                 if (!await _clickRandomInRect(account.InstanceNumber, logger, target.MatchLocation))
                     return TargetProcessResult.Failed("Failed to click king target");
                     
-                await Task.Delay(2000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
 
                 // Click view button
                 if (!await _findAndClickImage("view-button.png", account.InstanceNumber, logger, 0.6, null))
@@ -117,12 +117,12 @@ namespace Bot.Core.Tasks.Modules.AutoHunt.Processors
 
                     return TargetProcessResult.Failed("No view button found");
                 }
-                await Task.Delay(1500, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
 
                 // Click attack button
                 if (!await _findAndClickImage("attack-button.png", account.InstanceNumber, logger, 0.6, null))
                     return TargetProcessResult.Failed("Failed to click attack button");
-                await Task.Delay(1000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
 
                 // Check prediction text before proceeding with king attack
                 var prediction = await _readPredictionText(account, logger);
@@ -146,7 +146,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt.Processors
                     if (await _findAndClickImage("deploy-back.png", account.InstanceNumber, logger, 0.6, null))
                     {
                         logger.LogInfo($"[{account.AccountName}] Clicked deploy-back button to return to hunt view");
-                        await Task.Delay(1000, cancellationToken);
+                        await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                     }
                     
                     return TargetProcessResult.Failed("Prediction indicates failure");
@@ -197,7 +197,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt.Processors
                         return TargetProcessResult.Failed("Max march reached");
                     }
 
-                    await Task.Delay(200, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(200, cancellationToken);
                 }
 
                 if (!buttonFound)
@@ -207,7 +207,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt.Processors
                 }
 
                 // Check for confirmation dialog and stamina
-                await Task.Delay(1000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                 var confirmScreenshot = await _takeScreenshot(account.InstanceNumber, logger);
                 if (confirmScreenshot != null)
                 {
@@ -234,13 +234,13 @@ namespace Bot.Core.Tasks.Modules.AutoHunt.Processors
                     {
                         logger.LogInfo($"[{account.AccountName}] Found confirmation dialog, clicking confirm points");
                         await _click(account.InstanceNumber, logger, new Point(212, 714));
-                        await Task.Delay(500, cancellationToken);
+                        await Bot.Core.Utils.Pace.Delay(500, cancellationToken);
                         await _click(account.InstanceNumber, logger, new Point(456, 770));
-                        await Task.Delay(1000, cancellationToken);
+                        await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                     }
                 }
 
-                await Task.Delay(2000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
 
                 // Check for max march
                 var marchSettings = GetAutoHuntSettings(account);

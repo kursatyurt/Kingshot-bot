@@ -42,7 +42,7 @@ namespace Bot.Core.Tasks.Modules
                 if (screenshot == null)
                 {
                     logger.LogWarning($"Failed to get screenshot when looking for '{imageName}'");
-                    await Task.Delay(1000, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                     continue;
                 }
 
@@ -69,7 +69,7 @@ namespace Bot.Core.Tasks.Modules
                     return true;
                 }
 
-                await Task.Delay(1000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
             }
 
             logger.LogWarning($"❌ Failed to find '{imageName}' after {timeoutMs}ms. Best confidence was {bestConfidence:F3}");
@@ -127,7 +127,7 @@ namespace Bot.Core.Tasks.Modules
                 {
                     return TaskExecutionDetails.Failed("Failed to click hero button");
                 }
-                await Task.Delay(1500, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
 
                 // Click recruit heroes button
                 var recruitButtonArea = new Rectangle(407, 1181, 252, 56);
@@ -141,7 +141,7 @@ namespace Bot.Core.Tasks.Modules
                         logger.LogInfo($"[{account.AccountName}] Locator service completed view recovery, retrying recruit heroes button detection");
                         // Recovery leaves the city view: open Heroes again before looking for its Recruit button
                         await ClickRandomInRectAsyncWithRetry(account.InstanceNumber, logger, heroButtonArea, cancellationToken);
-                        await Task.Delay(1500, cancellationToken);
+                        await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
                         
                         // Retry after locator service
                         if (!await WaitForImageWithDebug("recruit-heros-button.png", account.InstanceNumber, logger, cancellationToken, TEMPLATE_TIMEOUT_MS))
@@ -169,7 +169,7 @@ namespace Bot.Core.Tasks.Modules
                 {
                     return TaskExecutionDetails.Failed("Failed to click recruit heroes button");
                 }
-                await Task.Delay(1000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
 
                 // Keep claiming free heroes until no more are found
                 while (!cancellationToken.IsCancellationRequested)
@@ -253,11 +253,11 @@ namespace Bot.Core.Tasks.Modules
                                 logger.LogInfo($"Found rewards image at {rewardsResult.matchRect} with confidence {rewardsResult.confidence:F3}");
                                 rewardsFound = true;
                                 // Add delay after finding rewards before looking for back arrow
-                                await Task.Delay(1000, cancellationToken);
+                                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                                 break;
                             }
 
-                            await Task.Delay(200, cancellationToken);
+                            await Bot.Core.Utils.Pace.Delay(200, cancellationToken);
                         }
 
                         if (!rewardsFound)
@@ -276,7 +276,7 @@ namespace Bot.Core.Tasks.Modules
                             if (backArrowScreenshot == null)
                             {
                                 logger.LogWarning("Failed to get screenshot when looking for back arrow");
-                                await Task.Delay(200, cancellationToken);
+                                await Bot.Core.Utils.Pace.Delay(200, cancellationToken);
                                 continue;
                             }
 
@@ -294,14 +294,14 @@ namespace Bot.Core.Tasks.Modules
                                 logger.LogInfo($"Found back arrow at {backArrowResult.matchRect} with confidence {backArrowResult.confidence:F3}");
                                 await ClickRandomInRectAsyncWithRetry(account.InstanceNumber, logger, backArrowResult.matchRect, cancellationToken);
                                 backArrowFound = true;
-                                await Task.Delay(1000, cancellationToken);
+                                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                                 break;
                             }
                             else
                             {
                                 var timeSpent = (DateTime.UtcNow - backArrowStartTime).TotalSeconds;
                                 logger.LogInfo($"Back arrow not found yet (confidence: {backArrowResult.confidence:F3}), searching for {timeSpent:F1}/5.0 seconds");
-                                await Task.Delay(200, cancellationToken);
+                                await Bot.Core.Utils.Pace.Delay(200, cancellationToken);
                             }
                         }
 
@@ -341,13 +341,13 @@ namespace Bot.Core.Tasks.Modules
                         // A hero reward pop-up can hide the arrow; the back key closes the pop-up, then look again
                         logger.LogInfo("No back arrow found; pressing the back key");
                         await PressBackAsync(account.InstanceNumber, logger);
-                        await Task.Delay(1200, cancellationToken);
+                        await Bot.Core.Utils.Pace.Delay(1200, cancellationToken);
                         continue;
                     }
 
                     logger.LogInfo($"Found back arrow at {backArrowResult.matchRect} with confidence {backArrowResult.confidence:F3}");
                     await ClickRandomInRectAsyncWithRetry(account.InstanceNumber, logger, backArrowResult.matchRect, cancellationToken);
-                    await Task.Delay(1000, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                     // Recruit → Heroes list → city: keep going; the base-view check above stops before a back key could open "Quit game?"
                 }
 

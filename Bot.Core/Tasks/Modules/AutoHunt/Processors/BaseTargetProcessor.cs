@@ -116,7 +116,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt.Processors
         protected async Task HandleMarchingTarget(HuntTarget target, AccountSettings account, LogService logger, CancellationToken cancellationToken)
         {
             // This would need hunt mode navigation service
-            await Task.Delay(1000, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
         }
     }
 }

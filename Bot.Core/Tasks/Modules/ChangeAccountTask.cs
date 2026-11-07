@@ -39,7 +39,7 @@ namespace Bot.Core.Tasks.Modules
             }
             
             // Add a small delay to make it truly async
-            await Task.Delay(1, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(1, cancellationToken);
             
             return true;
         }
@@ -71,7 +71,7 @@ namespace Bot.Core.Tasks.Modules
                 {
                     return TaskExecutionDetails.Failed("Failed to click profile button");
                 }
-                await Task.Delay(1000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
 
                 // Step 3: Find and click settings button
                 logger.LogInfo($"[{account.AccountName}] Looking for settings button...");
@@ -99,7 +99,7 @@ namespace Bot.Core.Tasks.Modules
                         return TaskExecutionDetails.Failed("Could not find settings button");
                     }
                 }
-                await Task.Delay(1000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
 
                 // Step 4: Find and click characters button
                 logger.LogInfo($"[{account.AccountName}] Looking for characters button...");
@@ -127,7 +127,7 @@ namespace Bot.Core.Tasks.Modules
                         return TaskExecutionDetails.Failed("Could not find characters button");
                     }
                 }
-                await Task.Delay(1000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
 
                 // Step 5: Find tick location and select other account
                 var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
@@ -165,7 +165,7 @@ namespace Bot.Core.Tasks.Modules
                 {
                     return TaskExecutionDetails.Failed("Failed to click account selection box");
                 }
-                await Task.Delay(1000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
 
                 // Step 6: Click confirm button
                 logger.LogInfo($"[{account.AccountName}] Looking for confirm button...");
@@ -176,7 +176,7 @@ namespace Bot.Core.Tasks.Modules
 
                 // Wait for loading screen
                 logger.LogInfo($"[{account.AccountName}] Waiting for loading screen...");
-                await Task.Delay(3000, cancellationToken);  // Initial delay to ensure loading screen appears
+                await Bot.Core.Utils.Pace.Delay(3000, cancellationToken);  // Initial delay to ensure loading screen appears
 
                 // Mark this instance as processed to prevent running again this session
                 _instancesProcessed.TryAdd(account.InstanceNumber, true);

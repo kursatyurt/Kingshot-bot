@@ -121,26 +121,26 @@ namespace Bot.Core.Tasks.Modules
             _nextTerrorRally[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(20);
 
             await ClickRandomInRectAsync(account.InstanceNumber, logger, SearchIconRect);
-            await Task.Delay(2000, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
             await ClickAsync(account.InstanceNumber, logger, new Point(245, 900)); // Terror tab
-            await Task.Delay(1200, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(1200, cancellationToken);
             await ClickAsync(account.InstanceNumber, logger, new Point(360, 1215)); // Search
-            await Task.Delay(3000, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(3000, cancellationToken);
             await ClickAsync(account.InstanceNumber, logger, new Point(360, 490)); // Rally on the Terror's card
-            await Task.Delay(2500, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(2500, cancellationToken);
             var hold = await TakeScreenshotAsync(account.InstanceNumber, logger);
             if (hold == null || !IsCyanArea(hold, new Rectangle(240, 822, 240, 50)))
             {
                 logger.LogInfo($"[{account.AccountName}] No Terror rally now (no stamina or free march)");
                 await PressBackAsync(account.InstanceNumber, logger);
-                await Task.Delay(1000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                 await new LocatorService(logger, account).EnsureViewAsync(ViewType.MapView, account.InstanceNumber, cancellationToken);
                 return false;
             }
             await ClickAsync(account.InstanceNumber, logger, new Point(130, 587)); // always 3 min (user's choice)
-            await Task.Delay(800, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(800, cancellationToken);
             await ClickAsync(account.InstanceNumber, logger, new Point(360, 847)); // Hold a rally
-            await Task.Delay(2500, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(2500, cancellationToken);
             var deploy = await TakeScreenshotAsync(account.InstanceNumber, logger);
             if (deploy == null || !IsCyanArea(deploy, new Rectangle(420, 1180, 250, 20)))
             {
@@ -148,7 +148,7 @@ namespace Bot.Core.Tasks.Modules
                 return false;
             }
             await ClickAsync(account.InstanceNumber, logger, new Point(548, 1210)); // Deploy (troops come pre-filled)
-            await Task.Delay(2500, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(2500, cancellationToken);
             await ConfirmFormationWarningAsync(account, logger, cancellationToken);
             var after = await TakeScreenshotAsync(account.InstanceNumber, logger);
             if (after != null && new OCRService(logger).ExtractTextFromScreenArea(after, new Rectangle(220, 115, 280, 60))?.ToLower().Contains("more") == true)
@@ -157,9 +157,9 @@ namespace Bot.Core.Tasks.Modules
                 // it. Close both and try again once stamina has refilled (about 1 per 6 minutes).
                 logger.LogInfo($"[{account.AccountName}] No stamina for a Terror rally; saving stamina (no beast hunts) for 2.5 hours");
                 await ClickAsync(account.InstanceNumber, logger, new Point(668, 145));
-                await Task.Delay(800, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(800, cancellationToken);
                 await PressBackAsync(account.InstanceNumber, logger);
-                await Task.Delay(1000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                 // Beasts take 10 stamina each, so it would never reach 25: hold them until the rally's next try
                 _nextTerrorRally[account.InstanceNumber] = _nextBeastHunt[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(150);
                 await new LocatorService(logger, account).EnsureViewAsync(ViewType.MapView, account.InstanceNumber, cancellationToken);
@@ -184,15 +184,15 @@ namespace Bot.Core.Tasks.Modules
             var locator = new LocatorService(logger, account);
 
             await ClickRandomInRectAsync(account.InstanceNumber, logger, SearchIconRect);
-            await Task.Delay(2000, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
             await ClickAsync(account.InstanceNumber, logger, new Point(88, 900)); // Beasts tab
-            await Task.Delay(1200, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(1200, cancellationToken);
             Point? attack = null;
             for (int tries = 0; tries < 3 && attack == null; tries++)
             {
-                if (tries > 0) { await ClickAsync(account.InstanceNumber, logger, new Point(70, 1053)); await Task.Delay(600, cancellationToken); } // level −1
+                if (tries > 0) { await ClickAsync(account.InstanceNumber, logger, new Point(70, 1053)); await Bot.Core.Utils.Pace.Delay(600, cancellationToken); } // level −1
                 await ClickAsync(account.InstanceNumber, logger, new Point(360, 1215)); // Search
-                await Task.Delay(3000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(3000, cancellationToken);
                 var card = await TakeScreenshotAsync(account.InstanceNumber, logger);
                 attack = card == null ? null : FindOrangeButton(card);
             }
@@ -200,35 +200,35 @@ namespace Bot.Core.Tasks.Modules
             {
                 logger.LogInfo($"[{account.AccountName}] No beast found to hunt");
                 await PressBackAsync(account.InstanceNumber, logger); // close the search panel
-                await Task.Delay(1000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                 var panel = await TakeScreenshotAsync(account.InstanceNumber, logger);
                 if (panel != null && IsCyanArea(panel, new Rectangle(400, 1180, 120, 12))) // the first back only closed the beast card
                 {
                     await PressBackAsync(account.InstanceNumber, logger);
-                    await Task.Delay(1000, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                 }
                 await locator.EnsureViewAsync(ViewType.MapView, account.InstanceNumber, cancellationToken);
                 return false;
             }
             await ClickAsync(account.InstanceNumber, logger, a); // Attack
-            await Task.Delay(2500, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(2500, cancellationToken);
             var deploy = await TakeScreenshotAsync(account.InstanceNumber, logger);
             if (deploy == null || !IsCyanArea(deploy, new Rectangle(420, 1180, 250, 20)))
             {
                 logger.LogInfo($"[{account.AccountName}] No beast hunt now (no stamina or free march)");
                 await PressBackAsync(account.InstanceNumber, logger);
-                await Task.Delay(1000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                 var still = await TakeScreenshotAsync(account.InstanceNumber, logger);
                 if (still != null && IsCyanArea(still, new Rectangle(400, 1180, 120, 12))) // the search panel's Search button
                 {
                     await PressBackAsync(account.InstanceNumber, logger);
-                    await Task.Delay(1000, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                 }
                 await locator.EnsureViewAsync(ViewType.MapView, account.InstanceNumber, cancellationToken);
                 return false;
             }
             await ClickAsync(account.InstanceNumber, logger, new Point(548, 1210)); // Deploy (troops come pre-filled)
-            await Task.Delay(2500, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(2500, cancellationToken);
             await ConfirmFormationWarningAsync(account, logger, cancellationToken);
             var after = await TakeScreenshotAsync(account.InstanceNumber, logger);
             if (after != null && new OCRService(logger).ExtractTextFromScreenArea(after, new Rectangle(220, 115, 280, 60))?.ToLower().Contains("more") == true)
@@ -236,9 +236,9 @@ namespace Bot.Core.Tasks.Modules
                 // Not enough stamina: the game offers "Get More" over the Deploy screen. Close both and wait for stamina.
                 logger.LogInfo($"[{account.AccountName}] No stamina for a beast hunt, retrying in 30 minutes");
                 await ClickAsync(account.InstanceNumber, logger, new Point(668, 145));
-                await Task.Delay(800, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(800, cancellationToken);
                 await PressBackAsync(account.InstanceNumber, logger);
-                await Task.Delay(1000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                 _nextBeastHunt[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(30);
                 await locator.EnsureViewAsync(ViewType.MapView, account.InstanceNumber, cancellationToken);
                 return false;
@@ -273,9 +273,9 @@ namespace Bot.Core.Tasks.Modules
             if (shot == null || new OCRService(logger).ExtractTextFromScreenArea(shot, new Rectangle(220, 425, 280, 45))?.Contains("Confirm", StringComparison.OrdinalIgnoreCase) != true) return;
             logger.LogInfo($"[{account.AccountName}] Formation warning: deploying anyway");
             await ClickAsync(account.InstanceNumber, logger, new Point(212, 714)); // Don't show this again today
-            await Task.Delay(400, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(400, cancellationToken);
             await ClickAsync(account.InstanceNumber, logger, new Point(510, 789)); // Deploy
-            await Task.Delay(1500, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
         }
 
         private static bool IsCyanArea(byte[] screenshot, Rectangle rect)
@@ -359,7 +359,7 @@ namespace Bot.Core.Tasks.Modules
                 {
                     await locator.EnsureViewAsync(ViewType.MapView, account.InstanceNumber, cancellationToken);
                     await WaitIfPausedAsync(cancellationToken);
-                    await Task.Delay(1000, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                     try { onMap = await locator.DetectCurrentViewAsync(account.InstanceNumber, cancellationToken) == ViewType.MapView; }
                     catch (Exception ex) when (ex is not OperationCanceledException) { }
                 }
@@ -490,7 +490,7 @@ namespace Bot.Core.Tasks.Modules
                             }
                             logger.LogWarning($"[{account.AccountName}] Failed to send march for {currentTarget.ResourceType}; trying the next resource.");
                             await PressBackAsync(account.InstanceNumber, logger); // close the resource search panel left open
-                            await Task.Delay(800, cancellationToken);
+                            await Bot.Core.Utils.Pace.Delay(800, cancellationToken);
                             await locator.EnsureViewAsync(ViewType.MapView, account.InstanceNumber); // start the next search from the map
                         }
                         await Task.Delay(POLL_INTERVAL_MS, cancellationToken);
@@ -583,7 +583,7 @@ namespace Bot.Core.Tasks.Modules
                 {
                     logger.LogInfo($"[{account.AccountName}] ⚙️ Closing the map's graphics menu...");
                     await ClickRandomInRectAsync(account.InstanceNumber, logger, new Rectangle(38, 770, 20, 20));
-                    await Task.Delay(800, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(800, cancellationToken);
                 }
             }
 
@@ -716,7 +716,7 @@ namespace Bot.Core.Tasks.Modules
                             if (await ClickRandomInRectAsync(account.InstanceNumber, logger, deployRect))
                             {
                                 logger.LogInfo($"[{account.AccountName}] ✅ Clicked deploy button");
-                                await Task.Delay(1500, cancellationToken);
+                                await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
                                 await ConfirmFormationWarningAsync(account, logger, cancellationToken);
                                 deployClicked = true;
                                 break;
@@ -833,7 +833,7 @@ namespace Bot.Core.Tasks.Modules
                         byte[]? noDeploy = null;
                         for (int look = 0; look < 6 && !deployClicked; look++)
                         {
-                            await Task.Delay(1000, cancellationToken);
+                            await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                             noDeploy = await TakeScreenshotAsync(account.InstanceNumber, logger);
                             if (noDeploy == null) continue;
                             var (lateDeploy, lateRect, _) = _templateMatcher.MatchTemplate(noDeploy, deployButtonPath, account.InstanceNumber,
@@ -857,7 +857,7 @@ namespace Bot.Core.Tasks.Modules
                         {
                             logger.LogInfo($"[{account.AccountName}] Gather card still open; tapping Gather again");
                             await ClickRandomInRectAsync(account.InstanceNumber, logger, cardRect);
-                            await Task.Delay(2500, cancellationToken);
+                            await Bot.Core.Utils.Pace.Delay(2500, cancellationToken);
                             var retry = await TakeScreenshotAsync(account.InstanceNumber, logger);
                             var (retryDeploy, retryRect, _) = retry == null ? (false, Rectangle.Empty, 0.0) : _templateMatcher.MatchTemplate(retry, deployButtonPath, account.InstanceNumber,
                                 threshold: TEMPLATE_MATCH_THRESHOLD, scales: UnifiedTemplateMatchingService.StandardScales, searchArea: DeployButtonArea);
@@ -960,7 +960,7 @@ namespace Bot.Core.Tasks.Modules
                             {
                                 logger.LogInfo($"[{account.AccountName}] ✅ Clicked '{resourceImageName}' after {(DateTime.UtcNow - startTime).TotalMilliseconds:F0}ms.");
                                 logger.LogInfo($"[{account.AccountName}] ⏳ Waiting 500ms for UI to update before OCR...");
-                                await Task.Delay(500, cancellationToken); // Wait 0.5 seconds for OCR accuracy
+                                await Bot.Core.Utils.Pace.Delay(500, cancellationToken); // Wait 0.5 seconds for OCR accuracy
                                 return true;
                             }
                             await Task.Delay(POLL_INTERVAL_MS, cancellationToken);
@@ -1052,7 +1052,7 @@ namespace Bot.Core.Tasks.Modules
                     {
                         if (cancellationToken.IsCancellationRequested) return false;
                         if (!await ClickRandomInRectAsync(account.InstanceNumber, logger, buttonToClick)) return false;
-                        await Task.Delay(100, cancellationToken);
+                        await Bot.Core.Utils.Pace.Delay(100, cancellationToken);
                     }
                     return true;
                 }
@@ -1064,13 +1064,13 @@ namespace Bot.Core.Tasks.Modules
             // First reset to level 1 to ensure we start from a known state
             for (int i = 0; i < 7; i++) {
                 if (!await ClickRandomInRectAsync(account.InstanceNumber, logger, LevelMinusButtonRect)) return false;
-                await Task.Delay(100, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(100, cancellationToken);
             }
             
             // Then click up to desired level
             for (int i = 0; i < desiredLevel - 1; i++) {
                 if (!await ClickRandomInRectAsync(account.InstanceNumber, logger, LevelPlusButtonRect)) return false;
-                await Task.Delay(100, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(100, cancellationToken);
             }
             
             logger.LogInfo($"[{account.AccountName}] Successfully set level to {desiredLevel} using click method.");
@@ -1115,7 +1115,7 @@ namespace Bot.Core.Tasks.Modules
                     var screenshot = await TakeScreenshotAsync(instanceNumber, logger);
                     if (screenshot == null)
                     {
-                        await Task.Delay(200, cancellationToken);
+                        await Bot.Core.Utils.Pace.Delay(200, cancellationToken);
                         continue;
                     }
 
@@ -1149,7 +1149,7 @@ namespace Bot.Core.Tasks.Modules
                 }
 
                 // Wait 200ms before trying again
-                await Task.Delay(200, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(200, cancellationToken);
             }
 
             logger.LogWarning($"Could not find '{imageName}' within {timeoutSeconds} seconds");
@@ -1177,7 +1177,7 @@ namespace Bot.Core.Tasks.Modules
                     threshold: 0.6, timeoutSeconds: 3, useEnhancedMatching: false, searchArea: boostIconArea, cancellationToken: cancellationToken))
                 {
                     logger.LogInfo($"[{account.AccountName}] ✅ Found and clicked boost icon");
-                    await Task.Delay(1000, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
 
                     // Step 2: Click around 517,120 with random variation
                     var clickPoint = new Point(517 + new Random().Next(-3, 4), 120 + new Random().Next(-3, 4));
@@ -1185,7 +1185,7 @@ namespace Bot.Core.Tasks.Modules
 
                     if (await ClickAsync(account.InstanceNumber, logger, clickPoint))
                     {
-                        await Task.Delay(1000, cancellationToken);
+                        await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
 
                         // Step 3: Look for gather-boost.png and check timer
                         logger.LogInfo($"[{account.AccountName}] 🔍 Looking for gather-boost.png...");
@@ -1265,7 +1265,7 @@ namespace Bot.Core.Tasks.Modules
                 // Click where we checked for timer to activate boost selection
                 var timerClickPoint = new Point(timerArea.X + timerArea.Width / 2, timerArea.Y + timerArea.Height / 2);
                 await ClickAsync(account.InstanceNumber, logger, timerClickPoint);
-                await Task.Delay(500, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(500, cancellationToken);
 
                 // Determine which use button to look for based on boost duration setting
                 Rectangle useButtonArea;
@@ -1291,7 +1291,7 @@ namespace Bot.Core.Tasks.Modules
                     threshold: 0.6, timeoutSeconds: 3, useEnhancedMatching: false, searchArea: useButtonArea, cancellationToken: cancellationToken))
                 {
                     logger.LogInfo($"[{account.AccountName}] ✅ Successfully clicked {boostType} use button");
-                    await Task.Delay(1000, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
 
                     // Check for timer again after activation
                     using var ocrService2 = new OCRService(logger, timerOcrConfig);
@@ -1334,14 +1334,14 @@ namespace Bot.Core.Tasks.Modules
                     threshold: 0.6, timeoutSeconds: 3, useEnhancedMatching: false, searchArea: null, cancellationToken: cancellationToken))
                 {
                     logger.LogInfo($"[{account.AccountName}] ✅ Found and clicked buy-gather button");
-                    await Task.Delay(1000, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
 
                     // Look for gems-buy button
                     if (await FindAndClickImageWithTimeoutAsync("gems-buy.png", account.InstanceNumber, logger,
                         threshold: 0.6, timeoutSeconds: 3, useEnhancedMatching: false, searchArea: null, cancellationToken: cancellationToken))
                     {
                         logger.LogInfo($"[{account.AccountName}] ✅ Successfully purchased boost with gems");
-                        await Task.Delay(1000, cancellationToken);
+                        await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                     }
                     else
                     {
@@ -1373,7 +1373,7 @@ namespace Bot.Core.Tasks.Modules
                 logger.LogInfo($"[{account.AccountName}] 🖱️ Clicking back button (attempt {attempts}/{maxRetries}) to return to map...");
 
                 await ClickRandomInRectAsync(account.InstanceNumber, logger, backButtonArea);
-                await Task.Delay(1000, cancellationToken); // Wait 1 second as requested
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken); // Wait 1 second as requested
 
                 // Check if we're in map view by looking for map-view indicators
                 if (await CheckIfInMapViewAsync(account.InstanceNumber, logger, cancellationToken))
@@ -1386,7 +1386,7 @@ namespace Bot.Core.Tasks.Modules
 
                 if (attempts < maxRetries)
                 {
-                    await Task.Delay(500, cancellationToken); // Brief delay before retry
+                    await Bot.Core.Utils.Pace.Delay(500, cancellationToken); // Brief delay before retry
                 }
             }
 

@@ -111,7 +111,7 @@ namespace Bot.Core.Tasks.Modules
 
                 await WaitIfPausedAsync(cancellationToken);
                 if (cancellationToken.IsCancellationRequested) return TaskExecutionDetails.Failed("Task was cancelled");
-                await Task.Delay(500, cancellationToken); // Wait for menu to open
+                await Bot.Core.Utils.Pace.Delay(500, cancellationToken); // Wait for menu to open
 
                 // Alliance loot chests (from members' rallies) wait under Chests; claiming them is free
                 await ClaimAllianceChestsAsync(account, logger, cancellationToken);
@@ -132,7 +132,7 @@ namespace Bot.Core.Tasks.Modules
 
                 await WaitIfPausedAsync(cancellationToken);
                 if (cancellationToken.IsCancellationRequested) return TaskExecutionDetails.Failed("Task was cancelled");
-                await Task.Delay(1000, cancellationToken); // Wait for tech screen to load
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken); // Wait for tech screen to load
 
                 // Step 3: Look for green thumb
                 logger.LogInfo($"[{account.AccountName}] 🔍 Looking for green thumb technology...");
@@ -169,7 +169,7 @@ namespace Bot.Core.Tasks.Modules
                         
                         if (i < 1) // Don't wait after the last click
                         {
-                            await Task.Delay(500, cancellationToken);
+                            await Bot.Core.Utils.Pace.Delay(500, cancellationToken);
                         }
                     }
                     
@@ -178,7 +178,7 @@ namespace Bot.Core.Tasks.Modules
 
                 await WaitIfPausedAsync(cancellationToken);
                 if (cancellationToken.IsCancellationRequested) return TaskExecutionDetails.Failed("Task was cancelled");
-                await Task.Delay(1000, cancellationToken); // Wait for green thumb screen to load
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken); // Wait for green thumb screen to load
 
                 // Step 4: Find and click contribute button based on OCR count
                 logger.LogInfo($"[{account.AccountName}] 🔍 Looking for contribute button in area {ContributeButtonArea}...");
@@ -232,7 +232,7 @@ namespace Bot.Core.Tasks.Modules
                     if (string.IsNullOrWhiteSpace(ocrText))
                     {
                         // The first read sometimes comes back empty: re-read a fresh frame as bright text
-                        await Task.Delay(800, cancellationToken);
+                        await Bot.Core.Utils.Pace.Delay(800, cancellationToken);
                         var again = await TakeScreenshotAsync(account.InstanceNumber, logger);
                         if (again != null) ocrText = ocr.ExtractBrightTextFromScreenArea(again, ContributeCountRect, 190);
                     }
@@ -327,7 +327,7 @@ namespace Bot.Core.Tasks.Modules
                 }
                 else
                 {
-                    await Task.Delay(500, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(500, cancellationToken);
                 }
 
                 // Step 6: Click back button twice to ensure we're back at main screen
@@ -351,7 +351,7 @@ namespace Bot.Core.Tasks.Modules
                         logger.LogInfo($"[{account.AccountName}] ✅ Clicked back button");
                     }
                     
-                    await Task.Delay(1200, cancellationToken); // a tap during the page transition is ignored, leaving the Alliance page open
+                    await Bot.Core.Utils.Pace.Delay(1200, cancellationToken); // a tap during the page transition is ignored, leaving the Alliance page open
                 }
 
                 // Update execution time for this specific account
@@ -390,11 +390,11 @@ namespace Bot.Core.Tasks.Modules
             if (!await FindAndClickWithTimeoutAsync(account, logger, cancellationToken, Path.Combine(_templateFolder, "chests-button.png"),
                     "alliance chests", 3000, SEARCH_INTERVAL_MS))
                 return;
-            await Task.Delay(1500, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
             await ClaimAllianceGiftsAsync(account, logger, cancellationToken);
             // The page reopens on the last tab: on Alliance Gift there is no Claim All and the loot chests piled up to 99+
             await ClickAsync(account.InstanceNumber, logger, LootChestTab);
-            await Task.Delay(1500, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
 
             var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
             if (screenshot == null) return;
@@ -405,9 +405,9 @@ namespace Bot.Core.Tasks.Modules
             {
                 logger.LogInfo($"[{account.AccountName}] 🎁 Claiming all alliance loot chests");
                 await ClickRandomInRectAsync(account.InstanceNumber, logger, claimRect);
-                await Task.Delay(2500, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(2500, cancellationToken);
                 await ClickAsync(account.InstanceNumber, logger, new Point(360, 1150)); // "Tap anywhere to exit" the rewards
-                await Task.Delay(1500, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
             }
             else
             {
@@ -415,7 +415,7 @@ namespace Bot.Core.Tasks.Modules
             }
 
             await ClickAsync(account.InstanceNumber, logger, new Point(40, 40)); // Chests page back arrow → alliance menu
-            await Task.Delay(1500, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
         }
 
         private static readonly Point WarButton = new(190, 678);
@@ -431,24 +431,24 @@ namespace Bot.Core.Tasks.Modules
         private async Task RenewTerrorAutoJoinAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
         {
             await ClickAsync(account.InstanceNumber, logger, WarButton);
-            await Task.Delay(2000, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
             await ClickAsync(account.InstanceNumber, logger, AutoJoinButton);
-            await Task.Delay(1500, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
             var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
             if (screenshot != null && IsCyan(screenshot, AutoJoinEnableButton))
             {
                 logger.LogInfo($"[{account.AccountName}] ⚔️ Renewing Terror rally Auto-Join");
                 await ClickRandomInRectAsync(account.InstanceNumber, logger, AutoJoinEnableButton);
-                await Task.Delay(1500, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
             }
             else
             {
                 logger.LogInfo($"[{account.AccountName}] Auto-Join dialog not found; Terror rallies not renewed");
             }
             await ClickAsync(account.InstanceNumber, logger, AutoJoinClose);
-            await Task.Delay(1000, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
             await ClickAsync(account.InstanceNumber, logger, new Point(40, 40)); // War page back arrow → alliance menu
-            await Task.Delay(1500, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
         }
 
         private static bool IsCyan(byte[] screenshot, Rectangle rect)
@@ -470,7 +470,7 @@ namespace Bot.Core.Tasks.Modules
         private async Task ClaimAllianceGiftsAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
         {
             await ClickAsync(account.InstanceNumber, logger, AllianceGiftTab);
-            await Task.Delay(1500, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
             int claimed = 0;
             for (int page = 0; page < 6; page++) // ponytail: fixed page cap, enough for the few gifts a day brings
             {
@@ -482,10 +482,10 @@ namespace Bot.Core.Tasks.Modules
                     if (!IsLitGreen(screenshot, button)) continue;
                     await ClickRandomInRectAsync(account.InstanceNumber, logger, button);
                     claimed++;
-                    await Task.Delay(1000, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                 }
                 await SwipeAsync(account.InstanceNumber, logger, new Point(360, 1000), new Point(360, 620), 400);
-                await Task.Delay(1200, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1200, cancellationToken);
             }
             logger.LogInfo($"[{account.AccountName}] 🎁 Claimed {claimed} alliance gift(s)");
         }

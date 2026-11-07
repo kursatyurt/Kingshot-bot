@@ -121,7 +121,7 @@ namespace Bot.Core.Tasks.Modules
             }
             if (readable == 0 && screenshot != null) await SaveDebugAsync($"training-panel-unreadable-{account.InstanceNumber}.png", screenshot);
             await ClickAsync(account.InstanceNumber, logger, SidePanelCloseHandle); // the back key would open "Quit game?"
-            await Task.Delay(800, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(800, cancellationToken);
             return readable == 0 ? null : result;
         }
 
@@ -175,10 +175,10 @@ namespace Bot.Core.Tasks.Modules
             var y = Camps.First(c => c.Name == camp).Y;
             await OpenSidePanelAsync(account.InstanceNumber, logger, cancellationToken);
             await ClickAsync(account.InstanceNumber, logger, new Point(CampArrowX, y));
-            await Task.Delay(2500, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(2500, cancellationToken);
             logger.LogInfo($"[{account.AccountName}] 🪖 Collecting trained {camp}");
             await SwipeAsync(account.InstanceNumber, logger, CentredCamp, new Point(CentredCamp.X + 1, CentredCamp.Y + 1), 150);
-            await Task.Delay(2000, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
         }
 
         private async Task<bool> TrainCampAsync(AccountSettings account, LogService logger, string camp, CancellationToken cancellationToken)
@@ -186,7 +186,7 @@ namespace Bot.Core.Tasks.Modules
             var y = Camps.First(c => c.Name == camp).Y;
             await OpenSidePanelAsync(account.InstanceNumber, logger, cancellationToken);
             await ClickAsync(account.InstanceNumber, logger, new Point(CampArrowX, y));
-            await Task.Delay(2500, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(2500, cancellationToken);
 
             // A camp that does not exist yet opens its Build page (e.g. the Stable)
             var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
@@ -198,7 +198,7 @@ namespace Bot.Core.Tasks.Modules
             for (int look = 0; look < 2 && !buildFound && IsBuildingPage(screenshot); look++)
             {
                 // A tutorial glove can cover the Build button for a moment
-                await Task.Delay(1000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                 screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger) ?? screenshot;
                 (buildFound, buildRect, _) = _templateMatcher.MatchTemplate(screenshot, buildButton, account.InstanceNumber,
                     threshold: 0.85, searchArea: new Rectangle(150, 1100, 450, 160));
@@ -207,18 +207,18 @@ namespace Bot.Core.Tasks.Modules
             {
                 logger.LogInfo($"[{account.AccountName}] 🏗️ The {camp} camp is not built yet; building it");
                 await ClickRandomInRectAsync(account.InstanceNumber, logger, buildRect);
-                await Task.Delay(2000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
                 return true;
             }
 
             if (!await TapRingButtonAsync(account.InstanceNumber, logger,
                     Path.Combine(Path.GetDirectoryName(ImageTemplateFolder)!, "autobuild", "ring-train.png"), RingTrainButton))
             {
-                await Task.Delay(1000, cancellationToken); // a tutorial glove may cover it for a moment
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken); // a tutorial glove may cover it for a moment
                 await TapRingButtonAsync(account.InstanceNumber, logger,
                     Path.Combine(Path.GetDirectoryName(ImageTemplateFolder)!, "autobuild", "ring-train.png"), RingTrainButton);
             }
-            await Task.Delay(2500, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(2500, cancellationToken);
             screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
             if (screenshot == null) return false;
             // Only the Train page has the quantity slider; a camp already training shows Speedups in that spot instead
@@ -233,22 +233,22 @@ namespace Bot.Core.Tasks.Modules
                 {
                     logger.LogInfo($"[{account.AccountName}] 🏗️ The {camp} camp is not built yet; building it");
                     await ClickRandomInRectAsync(account.InstanceNumber, logger, lateRect);
-                    await Task.Delay(2000, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
                     return true;
                 }
                 logger.LogInfo($"[{account.AccountName}] {camp}: no Train page after the ring's Train; leaving it");
                 await SaveDebugAsync($"training-{camp}-no-train-page-{account.InstanceNumber}.png", screenshot);
                 await ClickAsync(account.InstanceNumber, logger, BackArrow);
-                await Task.Delay(1500, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
                 return false;
             }
 
             logger.LogInfo($"[{account.AccountName}] 🪖 Training {camp}");
             // The page's height varies by account (minus at y 948 or 1042); Train sits 162 px below the minus, on the right
             await ClickAsync(account.InstanceNumber, logger, new Point(TrainButtonX, minusRect.Y + TrainBelowMinus));
-            await Task.Delay(2000, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
             await ClickAsync(account.InstanceNumber, logger, BackArrow);
-            await Task.Delay(1500, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
             // Short of a resource, Train opens a dialog and the back arrow only closes that: leave the page too
             screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
             if (screenshot != null && _templateMatcher.MatchTemplate(screenshot, Path.Combine(ImageTemplateFolder, "minus-button.png"),
@@ -256,7 +256,7 @@ namespace Bot.Core.Tasks.Modules
             {
                 logger.LogInfo($"[{account.AccountName}] {camp}: still on the Train page (not enough resources?); leaving it");
                 await ClickAsync(account.InstanceNumber, logger, BackArrow);
-                await Task.Delay(1500, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
                 return false;
             }
             return true;

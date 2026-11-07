@@ -49,7 +49,7 @@ namespace Bot.Core.Models
             public const int SmallDelay = 1000;
             public const int MediumDelay = 2000;
             public const int QuickDelay = 500;
-            public const int BetweenRetries = 1500;
+            public const int BetweenRetries = 500;
             public const int AfterMenuClick = 1200;
             public const int AfterSettingAmount = 1000;
             public const int AfterConfirm = 1000;

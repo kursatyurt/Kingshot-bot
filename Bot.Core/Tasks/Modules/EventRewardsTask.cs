@@ -48,7 +48,7 @@ namespace Bot.Core.Tasks.Modules
             Rectangle iconRect = Rectangle.Empty;
             for (int look = 0; look < 3 && !iconFound; look++)
             {
-                await Task.Delay(1500, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
                 var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
                 if (screenshot == null) continue;
                 (iconFound, iconRect, _) = _templateMatcher.MatchTemplate(screenshot, Path.Combine(ImageTemplateFolder, "path-of-growth.png"),
@@ -62,19 +62,19 @@ namespace Bot.Core.Tasks.Modules
             }
 
             await ClickRandomInRectAsync(account.InstanceNumber, logger, iconRect);
-            await Task.Delay(2000, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
 
             int claimed = await ClaimAllAsync(account, logger, cancellationToken);
             foreach (var tab in new[] { DailyLoginTab, UpgradeTownCenterTab })
             {
                 await ClickAsync(account.InstanceNumber, logger, tab);
-                await Task.Delay(1500, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
                 claimed += await ClaimAllAsync(account, logger, cancellationToken);
             }
 
             logger.LogInfo($"[{account.AccountName}] 🎁 Claimed {claimed} Path of Growth reward(s)");
             await ClickAsync(account.InstanceNumber, logger, BackArrow);
-            await Task.Delay(1500, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
             return new TaskExecutionDetails(true, message: $"Claimed {claimed} event reward(s)");
         }
@@ -94,9 +94,9 @@ namespace Bot.Core.Tasks.Modules
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
             if (!await OpenSidePanelAsync(account.InstanceNumber, logger, cancellationToken)) return;
             await ClickAsync(account.InstanceNumber, logger, new Point(370, 268)); // Daily tab
-            await Task.Delay(1200, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(1200, cancellationToken);
             await ClickAsync(account.InstanceNumber, logger, new Point(408, 378)); // Gourmet Feast row button
-            await Task.Delay(2500, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(2500, cancellationToken);
 
             var feast = await TakeScreenshotAsync(account.InstanceNumber, logger);
             var claim = new Rectangle(300, 935, 160, 30);
@@ -110,12 +110,12 @@ namespace Bot.Core.Tasks.Modules
                 await File.WriteAllBytesAsync(Path.Combine(debugDir, $"feast-claim-{account.InstanceNumber}-{DateTime.Now:HHmm}.png"), feast, cancellationToken);
                 await ClickAsync(account.InstanceNumber, logger, new Point(380, 952));
                 feastClaimed = true;
-                await Task.Delay(2500, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(2500, cancellationToken);
             }
             else if (feast != null && HasDimmedBackdrop(feast))
             {
                 await ClickAsync(account.InstanceNumber, logger, new Point(608, 182)); // close the feast without claiming
-                await Task.Delay(1500, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
             }
 
             // The Storehouse is centred now; its chest bubble shows when the online chest is ready
@@ -140,9 +140,9 @@ namespace Bot.Core.Tasks.Modules
                 }
                 logger.LogInfo($"[{account.AccountName}] 🎁 Collecting the Storehouse online chest");
                 await ClickRandomInRectAsync(account.InstanceNumber, logger, rect);
-                await Task.Delay(2500, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(2500, cancellationToken);
                 await ClickAsync(account.InstanceNumber, logger, new Point(360, 1150)); // dismiss "Next Chest Ready In"
-                await Task.Delay(1500, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
             }
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
         }
@@ -190,7 +190,7 @@ namespace Bot.Core.Tasks.Modules
                 if (!found || !IsLitGreen(screenshot, rect)) break; // grey Claim: not reached yet
                 await ClickRandomInRectAsync(account.InstanceNumber, logger, rect);
                 claimed++;
-                await Task.Delay(2000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
             }
             return claimed;
         }

@@ -82,7 +82,7 @@ namespace Bot.Core.Tasks.Modules
                     return TaskExecutionDetails.Failed("Failed to click missions scroll button");
                 }
 
-                await Task.Delay(1000, cancellationToken); // Wait for missions interface to load
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken); // Wait for missions interface to load
 
                 // Step 3: Verify missions interface loaded by checking for chapter, daily, or missions-scroll
                 logger.LogInfo($"[{account.AccountName}] Verifying missions interface loaded...");
@@ -104,7 +104,7 @@ namespace Bot.Core.Tasks.Modules
                     logger.LogInfo($"[{account.AccountName}] Processing Chapter tab - notifications found");
                     if (await FindAndClickTabAsync("chapter.png", account.InstanceNumber, logger, "Chapter"))
                     {
-                        await Task.Delay(500, cancellationToken);
+                        await Bot.Core.Utils.Pace.Delay(500, cancellationToken);
                         chapterClaimAllUsed = await ProcessMissionsTabAsync("Chapter", account.InstanceNumber, logger, cancellationToken);
                     }
                     else
@@ -121,7 +121,7 @@ namespace Bot.Core.Tasks.Modules
                 if (chapterClaimAllUsed)
                 {
                     logger.LogInfo($"[{account.AccountName}] Chapter claim-all used - waiting 2 seconds and re-opening missions menu...");
-                    await Task.Delay(2000, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
                     
                     // Try to re-open missions menu
                     if (!await ReopenMissionsMenuAsync(account, logger, cancellationToken))
@@ -151,7 +151,7 @@ namespace Bot.Core.Tasks.Modules
                     logger.LogInfo($"[{account.AccountName}] Processing Daily tab - notifications found");
                     if (await FindAndClickTabAsync("daily.png", account.InstanceNumber, logger, "Daily"))
                     {
-                        await Task.Delay(500, cancellationToken);
+                        await Bot.Core.Utils.Pace.Delay(500, cancellationToken);
                         await ProcessMissionsTabAsync("Daily", account.InstanceNumber, logger, cancellationToken);
                     }
                     else
@@ -171,7 +171,7 @@ namespace Bot.Core.Tasks.Modules
                     logger.LogInfo($"[{account.AccountName}] Processing Growth tab - notifications found");
                     if (await FindAndClickTabAsync("growth.png", account.InstanceNumber, logger, "Growth"))
                     {
-                        await Task.Delay(500, cancellationToken);
+                        await Bot.Core.Utils.Pace.Delay(500, cancellationToken);
                         await ProcessMissionsTabAsync("Growth", account.InstanceNumber, logger, cancellationToken);
                     }
                     else
@@ -226,7 +226,7 @@ namespace Bot.Core.Tasks.Modules
                     }
                 }
                 
-                await Task.Delay(200, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(200, cancellationToken);
             }
             
             return false;
@@ -266,7 +266,7 @@ namespace Bot.Core.Tasks.Modules
                         logger.LogInfo($"Verified claim-all button with confidence {confidence:F3} >= {CLAIM_BUTTON_CONFIDENCE_THRESHOLD}, clicking...");
                         if (await ClickRandomInRectAsync(instanceNumber, logger, matchRect))
                         {
-                            await Task.Delay(1000, cancellationToken);
+                            await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                             
                             // Look for reward-image after claim-all and keep clicking until not detected
                             logger.LogInfo($"Looking for reward-image after claim-all in {tabName} tab...");
@@ -327,7 +327,7 @@ namespace Bot.Core.Tasks.Modules
                                     lastClaimTime = DateTime.UtcNow; // Reset timer on successful click
                                     
                                     // Wait 0.5s after clicking before looking for next claim button
-                                    await Task.Delay(500, cancellationToken);
+                                    await Bot.Core.Utils.Pace.Delay(500, cancellationToken);
                                     continue;
                                 }
                             }
@@ -346,7 +346,7 @@ namespace Bot.Core.Tasks.Modules
                     }
                     
                     // Wait a bit before checking again
-                    await Task.Delay(200, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(200, cancellationToken);
                 }
                 
                 if (claimCount >= maxClaimAttempts)
@@ -391,7 +391,7 @@ namespace Bot.Core.Tasks.Modules
                     return true;
                 }
                 
-                await Task.Delay(200, cancellationToken); // Check every 200ms
+                await Bot.Core.Utils.Pace.Delay(200, cancellationToken); // Check every 200ms
             }
             
             // Log best confidence when image not found
@@ -710,7 +710,7 @@ namespace Bot.Core.Tasks.Modules
                     if (await FindAndClickRewardImageAsync(instanceNumber, logger))
                     {
                         logger.LogInfo($"Successfully clicked reward-image #{clickCount}");
-                        await Task.Delay(500, cancellationToken); // Wait 0.5s after clicking
+                        await Bot.Core.Utils.Pace.Delay(500, cancellationToken); // Wait 0.5s after clicking
                     }
                     else
                     {
@@ -752,7 +752,7 @@ namespace Bot.Core.Tasks.Modules
                 }
                 
                 // Wait 0.5 seconds before next check
-                await Task.Delay(500, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(500, cancellationToken);
             }
             
             if (hasEverBeenDetected)

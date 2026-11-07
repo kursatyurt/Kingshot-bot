@@ -109,11 +109,11 @@ namespace Bot.Core.Tasks.Modules
             try
             {
                 await ClickAsync(account.InstanceNumber, logger, new Point(405, 820)); // Tech Research → centres the Academy
-                await Task.Delay(2500, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(2500, cancellationToken);
                 await ClickAsync(account.InstanceNumber, logger, new Point(650, 700)); // Command Center
-                await Task.Delay(2000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
                 await ClickAsync(account.InstanceNumber, logger, new Point(690, 975)); // its ring's Upgrade
-                await Task.Delay(2000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
                 var dialog = await TakeScreenshotAsync(account.InstanceNumber, logger);
                 using (var words = new OCRService(logger))
                 {
@@ -156,7 +156,7 @@ namespace Bot.Core.Tasks.Modules
             // hand. Only backpack items stay unopened while the Town Center waits for resources.
             var townCenterShort = FarmingTask.TownCenterIsShortOfResources(account.InstanceNumber);
             await SwipeAsync(account.InstanceNumber, logger, CentredBuildingPoint, new Point(CentredBuildingPoint.X + 1, CentredBuildingPoint.Y + 1), 150);
-            await Task.Delay(1500, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
             if (!await TapRingButtonAsync(account.InstanceNumber, logger, Path.Combine(ImageTemplateFolder, "ring-upgrade.png"), BuildingRingUpgradeButton))
             {
                 logger.LogInfo($"[{account.AccountName}] The suggested building has no Upgrade on its ring; leaving it");
@@ -255,7 +255,7 @@ namespace Bot.Core.Tasks.Modules
                 logger.LogInfo($"[{account.AccountName}] 🏗️ Building a newly unlocked building");
                 await ClickRandomInRectAsync(account.InstanceNumber, logger, rect);
                 built++;
-                await Task.Delay(2500, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(2500, cancellationToken);
             }
         }
 
@@ -301,7 +301,7 @@ namespace Bot.Core.Tasks.Modules
                     // The camera sweeps into town for a few seconds after launch, so give it time and a few tries
                     for (int attempt = 1; attempt <= 3 && !opened; attempt++)
                     {
-                        await Task.Delay(3000, cancellationToken);
+                        await Bot.Core.Utils.Pace.Delay(3000, cancellationToken);
                         if (!await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken, maxRetries: 5)) continue;
                         (opened, busyFor) = await OpenTownCenterAsync(account, logger, locator, cancellationToken);
                         if (busyFor != null) return TownCenterBusy(account, logger, busyFor.Value);
@@ -418,7 +418,7 @@ namespace Bot.Core.Tasks.Modules
                     continue; // idle (or unreadable): nothing to speed up
                 }
                 await ClickAsync(account.InstanceNumber, logger, arrow);
-                await Task.Delay(2500, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(2500, cancellationToken);
                 if (await UseQuickSpeedupsOnRingAsync(account, logger, name, cancellationToken) && name == "Construction")
                     builderSpedUp = true;
             }
@@ -433,12 +433,12 @@ namespace Bot.Core.Tasks.Modules
                 // The arrow sometimes only centres the building: tapping it opens its ring, or (Town Center) a page
                 // with Finish (gems) and a cyan Construction Speedup button side by side at the bottom
                 await ClickAsync(account.InstanceNumber, logger, CentredBuildingPoint);
-                await Task.Delay(2000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
                 var page = await TakeScreenshotAsync(account.InstanceNumber, logger);
                 if (page != null && IsCyan(page, PageSpeedupButton) && IsOrange(page, PageFinishButton))
                 {
                     await ClickRandomInRectAsync(account.InstanceNumber, logger, PageSpeedupButton);
-                    await Task.Delay(2000, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
                 }
                 else if (!await TapRingSpeedupsAsync(account, logger, cancellationToken))
                 {
@@ -454,19 +454,19 @@ namespace Bot.Core.Tasks.Modules
                 return false;
             }
             await ClickRandomInRectAsync(account.InstanceNumber, logger, QuickUseButton);
-            await Task.Delay(1800, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(1800, cancellationToken);
             var confirm = await TakeScreenshotAsync(account.InstanceNumber, logger);
             // The confirmation lists the items; the first dialog's orange Finish (gems) must be gone
             if (confirm == null || IsOrange(confirm, FinishButton) || !IsCyan(confirm, QuickUseConfirmButton))
             {
                 logger.LogInfo($"[{account.AccountName}] {name}: no speedups to use (Quick Use offered none)");
                 await PressBackAsync(account.InstanceNumber, logger); // close the Speedup dialog
-                await Task.Delay(1000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                 return false;
             }
             logger.LogInfo($"[{account.AccountName}] ⏩ {name}: using speedups (Quick Use)");
             await ClickRandomInRectAsync(account.InstanceNumber, logger, QuickUseConfirmButton);
-            await Task.Delay(2500, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(2500, cancellationToken);
             // Short of the specific speedup, the game offers General Speedups: decline, they're kept for
             // construction and research
             var offer = await TakeScreenshotAsync(account.InstanceNumber, logger);
@@ -475,23 +475,23 @@ namespace Bot.Core.Tasks.Modules
                 logger.LogInfo($"[{account.AccountName}] {name}: not spending General Speedups");
                 _nextSpeedupCheck[account.InstanceNumber] = DateTime.UtcNow.AddHours(2); // none of its own left: stop retrying every 10 min
                 await ClickAsync(account.InstanceNumber, logger, new Point(637, 447)); // its X
-                await Task.Delay(1000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                 await PressBackAsync(account.InstanceNumber, logger); // the Quick Use dialog under it
-                await Task.Delay(1000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
             }
             // With more time left than the speedups cover, the Speedup dialog stays open: close it
             var left = await TakeScreenshotAsync(account.InstanceNumber, logger);
             if (left != null && IsCyan(left, QuickUseButton))
             {
                 await PressBackAsync(account.InstanceNumber, logger);
-                await Task.Delay(1000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
             }
             // The building's upgrade page ("Upgrade Bonus") is still underneath: leave it too
             left = await TakeScreenshotAsync(account.InstanceNumber, logger);
             if (left != null && new OCRService(logger).ExtractTextFromScreenArea(left, new Rectangle(30, 555, 320, 60))?.ToLower().Contains("upgrade bonus") == true)
             {
                 await PressBackAsync(account.InstanceNumber, logger);
-                await Task.Delay(1000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
             }
             return true;
         }
@@ -501,7 +501,7 @@ namespace Bot.Core.Tasks.Modules
             var ring = await TakeScreenshotAsync(account.InstanceNumber, logger);
             if (ring == null || FindSpeedupsLabel(ring) is not Rectangle label) return false;
             await ClickAsync(account.InstanceNumber, logger, new Point(label.X + label.Width / 2, label.Y - 40)); // icon above its label
-            await Task.Delay(2000, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
             return true;
         }
 
@@ -656,7 +656,7 @@ namespace Bot.Core.Tasks.Modules
 
             // Go centres the camera on the building and opens its action ring (Details / Upgrade / Train)
             await ClickRandomInRectAsync(account.InstanceNumber, logger, goRect);
-            await Task.Delay(2500, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(2500, cancellationToken);
             var afterGo = await TakeScreenshotAsync(account.InstanceNumber, logger);
             if (afterGo != null)
             {
@@ -685,7 +685,7 @@ namespace Bot.Core.Tasks.Modules
                 // Go sometimes only centres the camera without opening the ring: press the building, then Upgrade again
                 logger.LogInfo($"[{account.AccountName}] No upgrade dialog after Go; pressing the centred building to open its ring ({retry}/3)");
                 await SwipeAsync(account.InstanceNumber, logger, CentredBuildingPoint, new Point(CentredBuildingPoint.X + 1, CentredBuildingPoint.Y + 1), 150);
-                await Task.Delay(1200, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1200, cancellationToken);
                 await TapRingButtonAsync(account.InstanceNumber, logger, Path.Combine(ImageTemplateFolder, "ring-upgrade.png"), BuildingRingUpgradeButton);
                 missing = await ReadRequirementsAsync(account, logger, cancellationToken);
             }
@@ -716,7 +716,7 @@ namespace Bot.Core.Tasks.Modules
                     }
                 }
                 await PressBackAsync(account.InstanceNumber, logger); // the furniture page has no back arrow
-                await Task.Delay(800, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(800, cancellationToken);
                 await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
                 if (furnitureUpgraded)
                 {
@@ -779,12 +779,12 @@ namespace Bot.Core.Tasks.Modules
             using var ocr = new OCRService(logger, new OCRConfiguration { ScaleFactor = 3.0f, PageSegMode = Tesseract.PageSegMode.SingleLine });
             for (int extra = 1; extra <= 3; extra++)
             {
-                await Task.Delay(4000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(4000, cancellationToken);
                 await OpenSidePanelAsync(account.InstanceNumber, logger, cancellationToken); // side panel: is the builder free?
                 var panel = await TakeScreenshotAsync(account.InstanceNumber, logger);
                 var builder = panel == null ? "" : ocr.ExtractBrightTextFromScreenArea(panel, new Rectangle(150, 376, 160, 30));
                 await ClickAsync(account.InstanceNumber, logger, new Point(464, 544)); // close the panel
-                await Task.Delay(800, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(800, cancellationToken);
                 if (!builder.Contains("Idle", StringComparison.OrdinalIgnoreCase))
                 {
                     // A real upgrade timer: come back when the builder is free rather than after the usual 10 minutes
@@ -794,7 +794,7 @@ namespace Bot.Core.Tasks.Modules
                 }
 
                 await SwipeAsync(account.InstanceNumber, logger, CentredBuildingPoint, new Point(CentredBuildingPoint.X + 1, CentredBuildingPoint.Y + 1), 150);
-                await Task.Delay(1200, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1200, cancellationToken);
                 if (!await TapRingButtonAsync(account.InstanceNumber, logger, Path.Combine(ImageTemplateFolder, "ring-upgrade.png"), BuildingRingUpgradeButton)) return;
                 var missing = await ReadRequirementsAsync(account, logger, cancellationToken);
                 if (missing == null || missing.Count > 0) { await PressBackAsync(account.InstanceNumber, logger); return; }
@@ -828,7 +828,7 @@ namespace Bot.Core.Tasks.Modules
             if (!await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken)) return;
 
             await ClickAsync(account.InstanceNumber, logger, QuestBar);
-            await Task.Delay(3000, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(3000, cancellationToken);
             if (await OnFurniturePageAsync(account, logger)) await FurnishBuildingAsync(account, logger, cancellationToken);
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
         }
@@ -847,18 +847,18 @@ namespace Bot.Core.Tasks.Modules
                 var page = await TakeScreenshotAsync(account.InstanceNumber, logger);
                 if (page == null || !IsFurnitureSlot(page, slotCentre)) break;
                 await ClickAsync(account.InstanceNumber, logger, slotCentre);
-                await Task.Delay(1200, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1200, cancellationToken);
                 for (int tap = 0; tap < 6; tap++)
                 {
                     var shot = await TakeScreenshotAsync(account.InstanceNumber, logger);
                     if (shot == null || !IsCyan(shot, FurnitureActionButton)) break;
                     await ClickRandomInRectAsync(account.InstanceNumber, logger, FurnitureActionButton);
-                    await Task.Delay(2000, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
                     if (!await OnFurniturePageAsync(account, logger))
                     {
                         logger.LogInfo($"[{account.AccountName}] Furniture needs more resources; stopping");
                         await PressBackAsync(account.InstanceNumber, logger);
-                        await Task.Delay(1000, cancellationToken);
+                        await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                         if (upgrades > 0) logger.LogInfo($"[{account.AccountName}] 🪑 Furnished {upgrades} time(s)");
                         return;
                     }
@@ -904,7 +904,7 @@ namespace Bot.Core.Tasks.Modules
 
             logger.LogInfo($"[{account.AccountName}] 🪑 Upgrading the work building's furniture");
             await ClickRandomInRectAsync(account.InstanceNumber, logger, upgradeRect);
-            await Task.Delay(1500, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
             await RequestAllianceHelpAsync(account, logger, cancellationToken);
             return true;
         }
@@ -929,7 +929,7 @@ namespace Bot.Core.Tasks.Modules
                 if (!obtainFound) break;
 
                 await ClickRandomInRectAsync(account.InstanceNumber, logger, obtainRect);
-                await Task.Delay(1500, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
 
                 var dialogClosed = false;
                 for (int use = 1; use <= 100; use++) // the user wants backpack resources spent to progress
@@ -946,7 +946,7 @@ namespace Bot.Core.Tasks.Modules
                     }
                     logger.LogInfo($"[{account.AccountName}] Using a backpack resource item ({use})");
                     await ClickRandomInRectAsync(account.InstanceNumber, logger, useRect);
-                    await Task.Delay(1200, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(1200, cancellationToken);
                 }
 
                 if (!dialogClosed)
@@ -992,7 +992,7 @@ namespace Bot.Core.Tasks.Modules
             var started = DateTime.UtcNow;
             for (int seen = 0; seen < 2 && DateTime.UtcNow - started < TimeSpan.FromSeconds(60);)
             {
-                await Task.Delay(2000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
                 var shot = await TakeScreenshotAsync(account.InstanceNumber, logger);
                 seen = shot != null && _templateMatcher.MatchTemplate(shot, baseView, account.InstanceNumber, 0.7f).Item1 ? seen + 1 : 0;
             }
@@ -1021,7 +1021,7 @@ namespace Bot.Core.Tasks.Modules
             var greenCheck = Path.Combine(ImageTemplateFolder, "green-check.png");
             for (int attempt = 1; attempt <= 5; attempt++)
             {
-                await Task.Delay(1000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                 var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
                 if (screenshot == null) continue;
 

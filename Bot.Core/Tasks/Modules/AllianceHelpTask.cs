@@ -93,7 +93,7 @@ namespace Bot.Core.Tasks.Modules
                     if (helpButtonFound)
                     {
                         logger.LogInfo($"[{account.AccountName}] ✅ Found and clicked alliance help button on attempt {attempt}");
-                        await Task.Delay(2000, cancellationToken); // Wait for help to be sent
+                        await Bot.Core.Utils.Pace.Delay(2000, cancellationToken); // Wait for help to be sent
                         return TaskExecutionDetails.Succeeded();
                     }
 

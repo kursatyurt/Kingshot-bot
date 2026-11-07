@@ -70,7 +70,7 @@ namespace Bot.Core.Tasks.Modules
                 if (!await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken))
                     return TaskExecutionDetails.Failed("Could not reach the city view");
                 await ClickAsync(account.InstanceNumber, logger, ConquestTab);
-                await Task.Delay(3000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(3000, cancellationToken);
                 if (!await OnConquestScreenAsync(account, logger))
                 {
                     await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
@@ -79,15 +79,15 @@ namespace Bot.Core.Tasks.Modules
 
                 logger.LogInfo($"[{account.AccountName}] 🎁 Claiming Rebel Conquest idle income");
                 await ClickAsync(account.InstanceNumber, logger, IdleChestClaim);
-                await Task.Delay(2000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
                 await ClickAsync(account.InstanceNumber, logger, IdleIncomeClaimButton); // "Idle Income" dialog's Claim
-                await Task.Delay(2000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
                 await ClickAsync(account.InstanceNumber, logger, new Point(360, 200)); // "Tap anywhere to exit" the rewards
-                await Task.Delay(1500, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
 
                 // Only the chest: the user doesn't want Conquest stages fought
                 await PressBackAsync(account.InstanceNumber, logger);
-                await Task.Delay(1500, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
                 await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
 
                 // Update collection time
@@ -129,19 +129,19 @@ namespace Bot.Core.Tasks.Modules
         {
             if (!await OnConquestScreenAsync(account, logger)) return 0;
             await ClickAsync(account.InstanceNumber, logger, ConquerButton);
-            await Task.Delay(3000, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(3000, cancellationToken);
             int cleared = 0;
             while (cleared < MaxStagesPerRun && !cancellationToken.IsCancellationRequested)
             {
                 await ClickAsync(account.InstanceNumber, logger, QuickDeployButton);
-                await Task.Delay(1500, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
                 await ClickAsync(account.InstanceNumber, logger, FightButton);
 
                 // Battles last ~20-60 s; the result screen has Town and Continue side by side
                 byte[]? result = null;
                 for (int wait = 0; wait < 30 && result == null; wait++)
                 {
-                    await Task.Delay(3000, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(3000, cancellationToken);
                     var shot = await TakeScreenshotAsync(account.InstanceNumber, logger);
                     if (shot != null && IsCyanButton(shot, ResultTownButton)) result = shot;
                 }
@@ -156,13 +156,13 @@ namespace Bot.Core.Tasks.Modules
                 {
                     logger.LogInfo($"[{account.AccountName}] Conquest stage lost; trying again next run");
                     await ClickRandomInRectAsync(account.InstanceNumber, logger, ResultTownButton);
-                    await Task.Delay(3000, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(3000, cancellationToken);
                     return cleared;
                 }
                 cleared++;
                 logger.LogInfo($"[{account.AccountName}] 🏆 Conquest stage cleared ({cleared} this run)");
                 await ClickRandomInRectAsync(account.InstanceNumber, logger, ResultContinueButton); // next stage's squad
-                await Task.Delay(3000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(3000, cancellationToken);
             }
             return cleared;
         }

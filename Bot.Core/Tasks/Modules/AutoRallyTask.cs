@@ -150,7 +150,7 @@ namespace Bot.Core.Tasks.Modules
                         logger.LogInfo($"[{account.AccountName}] ✅ Successfully navigated to base view");
                     }
                     
-                    await Task.Delay(1000, cancellationToken); // Wait for view transition
+                    await Bot.Core.Utils.Pace.Delay(1000, cancellationToken); // Wait for view transition
                 }
                 
                 var rallyIconPath = Path.Combine(_templateFolder, RALLY_ICON);
@@ -212,7 +212,7 @@ namespace Bot.Core.Tasks.Modules
                 }
 
                 logger.LogInfo($"[{account.AccountName}] ✅ Successfully found and clicked rally icon");
-                await Task.Delay(1000, cancellationToken); // Wait for rally screen to load
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken); // Wait for rally screen to load
 
                 // Initialize march counter for this account (using cached account ID for proper isolation)
                 MarchesUsed.TryAdd(accountId, 0);
@@ -252,14 +252,14 @@ namespace Bot.Core.Tasks.Modules
                         logger.LogWarning($"[{account.AccountName}] ⚠️ Rally join error occurred, continuing to next rally...");
                     }
 
-                    await Task.Delay(1000, cancellationToken); // Brief pause between rally attempts
+                    await Bot.Core.Utils.Pace.Delay(1000, cancellationToken); // Brief pause between rally attempts
                 }
 
                 // Click back to exit rally screen
                 logger.LogInfo($"[{account.AccountName}] 🔚 Exiting rally screen...");
                 var backButtonPath = Path.Combine(_templateFolder, BACK_BUTTON);
                 await FindAndClickWithTimeoutAsync(account, logger, cancellationToken, backButtonPath, "back button", 2000, SEARCH_INTERVAL_MS);
-                await Task.Delay(500, cancellationToken); // Wait for navigation to complete
+                await Bot.Core.Utils.Pace.Delay(500, cancellationToken); // Wait for navigation to complete
                 
                 // Save execution time
                 LastExecutionTimes[accountId] = DateTime.Now;
@@ -340,7 +340,7 @@ namespace Bot.Core.Tasks.Modules
                     return RallyJoinResult.NoMoreRallies;
                 }
 
-                await Task.Delay(500, cancellationToken); // Wait for click to register
+                await Bot.Core.Utils.Pace.Delay(500, cancellationToken); // Wait for click to register
 
                 // Step 2: Look for equalize or max march button
                 logger.LogInfo($"[{account.AccountName}] 🔍 Checking for equalize or max march buttons...");
@@ -352,10 +352,10 @@ namespace Bot.Core.Tasks.Modules
                 if (await FindAndClickWithTimeoutAsync(account, logger, cancellationToken, maxMarchPath, "max march", 1000, SEARCH_INTERVAL_MS))
                 {
                     logger.LogInfo($"[{account.AccountName}] 🎖️ Max marches reached - clicking back");
-                    await Task.Delay(500, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(500, cancellationToken);
                     var backPath = Path.Combine(_templateFolder, BACK_BUTTON);
                     await FindAndClickWithTimeoutAsync(account, logger, cancellationToken, backPath, "back button", 2000, SEARCH_INTERVAL_MS);
-                    await Task.Delay(500, cancellationToken); // Wait for navigation to complete
+                    await Bot.Core.Utils.Pace.Delay(500, cancellationToken); // Wait for navigation to complete
                     return RallyJoinResult.MaxMarchesReached;
                 }
                 
@@ -366,7 +366,7 @@ namespace Bot.Core.Tasks.Modules
                     return RallyJoinResult.Error;
                 }
 
-                await Task.Delay(500, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(500, cancellationToken);
 
                 // Step 3: Look for and click deploy button
                 logger.LogInfo($"[{account.AccountName}] 🔍 Looking for deploy button...");
@@ -377,7 +377,7 @@ namespace Bot.Core.Tasks.Modules
                     return RallyJoinResult.Error;
                 }
 
-                await Task.Delay(1000, cancellationToken); // Wait for deploy to process
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken); // Wait for deploy to process
 
                 // Step 4: Look for and click confirm join button first
                 logger.LogInfo($"[{account.AccountName}] 🔍 Looking for confirm join button...");
@@ -386,7 +386,7 @@ namespace Bot.Core.Tasks.Modules
                 if (await FindAndClickWithTimeoutAsync(account, logger, cancellationToken, errorJoinPath, "confirm join", 2000, SEARCH_INTERVAL_MS))
                 {
                     logger.LogWarning($"[{account.AccountName}] ⚠️ Confirm join dialog detected and clicked - rally join failed");
-                    await Task.Delay(1000, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                     return RallyJoinResult.Error; // Will retry from green plus stage
                 }
 
@@ -445,7 +445,7 @@ namespace Bot.Core.Tasks.Modules
                 
                 // Scroll from bottom up (swipe up)
                 await ScrollUpAsync(account.InstanceNumber, logger, cancellationToken);
-                await Task.Delay(1000, cancellationToken); // Wait for scroll to complete
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken); // Wait for scroll to complete
 
                 // Check rally menu visibility after scrolling
                 logger.LogInfo($"[{account.AccountName}] 🔍 Checking rally menu visibility after scroll attempt {attempt}...");
@@ -468,7 +468,7 @@ namespace Bot.Core.Tasks.Modules
             logger.LogInfo($"[{account.AccountName}] 🚫 Green plus button not found after {maxScrollAttempts} scroll attempts - clicking back");
             var backPath = Path.Combine(_templateFolder, BACK_BUTTON);
             await FindAndClickWithTimeoutAsync(account, logger, cancellationToken, backPath, "back button", 2000, SEARCH_INTERVAL_MS);
-            await Task.Delay(500, cancellationToken); // Wait for navigation to complete
+            await Bot.Core.Utils.Pace.Delay(500, cancellationToken); // Wait for navigation to complete
             
             return false;
         }
@@ -813,7 +813,7 @@ namespace Bot.Core.Tasks.Modules
                         logger.LogInfo($"[{account.AccountName}] ✅ Successfully navigated to base view");
                     }
                     
-                    await Task.Delay(1000, cancellationToken); // Wait for view transition
+                    await Bot.Core.Utils.Pace.Delay(1000, cancellationToken); // Wait for view transition
                 }
 
                 // First try: Look for rally icon directly
@@ -846,7 +846,7 @@ namespace Bot.Core.Tasks.Modules
                         logger.LogInfo($"[{account.AccountName}] ✅ Successfully navigated to base view for alliance search");
                     }
                     
-                    await Task.Delay(1000, cancellationToken); // Wait for view transition
+                    await Bot.Core.Utils.Pace.Delay(1000, cancellationToken); // Wait for view transition
                 }
                 
                 // Step 1: Click alliance icon
@@ -859,7 +859,7 @@ namespace Bot.Core.Tasks.Modules
                     return false;
                 }
 
-                await Task.Delay(1000, cancellationToken); // Wait for alliance screen to load
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken); // Wait for alliance screen to load
 
                 // Step 2: Click war icon
                 var warIconPath = Path.Combine(_templateFolder, WAR_ICON);
@@ -893,7 +893,7 @@ namespace Bot.Core.Tasks.Modules
                     return TaskExecutionDetails.Failed("Could not navigate to rally screen for Auto Join setup");
                 }
 
-                await Task.Delay(1000, cancellationToken); // Wait for rally screen to load
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken); // Wait for rally screen to load
 
                 // Step 2: Check for Auto-Join or Auto-joining text
                 using var ocrService = new OCRService(logger, new OCRConfiguration
@@ -935,7 +935,7 @@ namespace Bot.Core.Tasks.Modules
                     logger.LogInfo($"[{account.AccountName}] 📝 Cleaned text for matching: '{cleanedText}'");
                     logger.LogInfo($"[{account.AccountName}] 🎯 Clicking close auto-join dialog at {CloseAutoJoinPoint}");
                     await ClickAsync(account.InstanceNumber, logger, CloseAutoJoinPoint); // Close dialog
-                    await Task.Delay(500, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(500, cancellationToken);
                     return new TaskExecutionDetails(true, message: "Auto-Join option not available, continuing with manual rally");
                 }
             }
@@ -972,7 +972,7 @@ namespace Bot.Core.Tasks.Modules
 
                         // Click on "Auto-joining..." text to open options
                         await ClickCenterOfAreaAsync(account.InstanceNumber, logger, AutoJoinTextArea);
-                        await Task.Delay(500, cancellationToken);
+                        await Bot.Core.Utils.Pace.Delay(500, cancellationToken);
 
                         // Look for "Stop" text and click it
                         screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
@@ -985,7 +985,7 @@ namespace Bot.Core.Tasks.Modules
                             if (stopText.Contains("Stop", StringComparison.OrdinalIgnoreCase))
                             {
                                 await ClickCenterOfAreaAsync(account.InstanceNumber, logger, StopTextArea);
-                                await Task.Delay(1000, cancellationToken);
+                                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
 
                                 // Now enable auto-join again
                                 return await EnableAutoJoinAsync(account, logger, cancellationToken, ocrService);
@@ -994,7 +994,7 @@ namespace Bot.Core.Tasks.Modules
                             {
                                 logger.LogWarning($"[{account.AccountName}] ⚠️ Stop button not found");
                                 await ClickAsync(account.InstanceNumber, logger, CloseAutoJoinPoint);
-                                await Task.Delay(500, cancellationToken);
+                                await Bot.Core.Utils.Pace.Delay(500, cancellationToken);
                                 return new TaskExecutionDetails(true, message: "Could not restart auto-join, continuing with manual rally");
                             }
                         }
@@ -1003,7 +1003,7 @@ namespace Bot.Core.Tasks.Modules
                     {
                         logger.LogInfo($"[{account.AccountName}] ✅ Auto-join timer sufficient (>{account.AutoRallySettings.AutoJoinMinHours} hours), continuing with auto-join enabled");
                         await ClickAsync(account.InstanceNumber, logger, CloseAutoJoinPoint);
-                        await Task.Delay(500, cancellationToken);
+                        await Bot.Core.Utils.Pace.Delay(500, cancellationToken);
                         return new TaskExecutionDetails(true, message: "Auto-join already active with sufficient time");
                     }
                 }
@@ -1011,7 +1011,7 @@ namespace Bot.Core.Tasks.Modules
                 {
                     logger.LogWarning($"[{account.AccountName}] ⚠️ Could not parse timer: '{timerText}'");
                     await ClickAsync(account.InstanceNumber, logger, CloseAutoJoinPoint);
-                    await Task.Delay(500, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(500, cancellationToken);
                     return new TaskExecutionDetails(true, message: "Could not read auto-join timer, continuing with manual rally");
                 }
 
@@ -1030,7 +1030,7 @@ namespace Bot.Core.Tasks.Modules
             {
                 // Click on Auto-Join text
                 await ClickCenterOfAreaAsync(account.InstanceNumber, logger, AutoJoinTextArea);
-                await Task.Delay(1000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
 
                 // Look for "Enable" text with up to 2 seconds timeout
                 var startTime = DateTime.UtcNow;
@@ -1052,22 +1052,22 @@ namespace Bot.Core.Tasks.Modules
                             break;
                         }
                     }
-                    await Task.Delay(500, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(500, cancellationToken);
                 }
 
                 if (!enableFound)
                 {
                     logger.LogWarning($"[{account.AccountName}] ⚠️ Enable button not found within 2 seconds");
                     await ClickAsync(account.InstanceNumber, logger, CloseAutoJoinPoint);
-                    await Task.Delay(500, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(500, cancellationToken);
                     return new TaskExecutionDetails(true, message: "Enable button not found, continuing with manual rally");
                 }
 
-                await Task.Delay(500, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(500, cancellationToken);
 
                 // Click close button (642,259)
                 await ClickAsync(account.InstanceNumber, logger, CloseAutoJoinPoint);
-                await Task.Delay(500, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(500, cancellationToken);
 
                 logger.LogInfo($"[{account.AccountName}] ✅ Auto-join enabled successfully");
                 return new TaskExecutionDetails(true, message: "Auto-join enabled successfully");

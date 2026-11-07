@@ -41,7 +41,7 @@ namespace Bot.Core.Tasks.Modules
 
             logger.LogInfo($"[{account.AccountName}] ⚔️ Rebel Assault: defending the city");
             await ClickRandomInRectAsync(account.InstanceNumber, logger, iconRect);
-            await Task.Delay(2500, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(2500, cancellationToken);
             if (!await FindAndClickImageAsync("battle-button.png", account.InstanceNumber, logger, threshold: 0.85, searchArea: BattleArea))
             {
                 await PressBackAsync(account.InstanceNumber, logger);
@@ -52,7 +52,7 @@ namespace Bot.Core.Tasks.Modules
             var start = DateTime.UtcNow;
             while (DateTime.UtcNow - start < MaxBattle)
             {
-                await Task.Delay(10000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(10000, cancellationToken);
                 var shot = await TakeScreenshotAsync(account.InstanceNumber, logger);
                 if (shot == null) continue;
                 var (done, townRect, _) = _templateMatcher.MatchTemplate(shot, Path.Combine(ImageTemplateFolder, "town-button.png"),
@@ -70,7 +70,7 @@ namespace Bot.Core.Tasks.Modules
                     userNotifications?.ShowStatus($"Rebel Assault lost on {account.AccountName}", NotificationType.Error);
                 }
                 await ClickRandomInRectAsync(account.InstanceNumber, logger, townRect);
-                await Task.Delay(4000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(4000, cancellationToken);
                 await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
                 return new TaskExecutionDetails(true, message: "Rebel Assault fought");
             }

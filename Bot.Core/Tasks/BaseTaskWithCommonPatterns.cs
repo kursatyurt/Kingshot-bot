@@ -419,11 +419,11 @@ namespace Bot.Core.Tasks
                         searchArea: new Rectangle(400, 460, 140, 170)).found)
                 {
                     await ClickAsync(instanceNumber, logger, new Point(80, 268)); // Town tab
-                    await Task.Delay(700, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(700, cancellationToken);
                     return true;
                 }
                 await ClickAsync(instanceNumber, logger, new Point(12, 550));
-                await Task.Delay(1300, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1300, cancellationToken);
             }
             logger.LogInfo("The city side panel did not open");
             return false;
@@ -769,7 +769,7 @@ namespace Bot.Core.Tasks
                             logger.LogError($"ADB recovery steps failed: {adbEx.Message}");
                         }
                         // V2 system handles connection cleanup automatically
-                        await Task.Delay(2000, cancellationToken); // Allow time for device to reappear or connection to be ready for re-establishment
+                        await Bot.Core.Utils.Pace.Delay(2000, cancellationToken); // Allow time for device to reappear or connection to be ready for re-establishment
                         var newController = await GetADBController(instanceNumber, logger); // Attempt to re-get/re-establish
                         if (newController == null) logger.LogError("Failed to re-establish ADB connection after suspected loss.");
                         else logger.LogInfo("ADB connection re-established after suspected loss.");
@@ -1178,7 +1178,7 @@ namespace Bot.Core.Tasks
             // an empty read too early meant "no march out" and a wasted search with the only march still gathering
             static bool Readable(string t) => System.Text.RegularExpressions.Regex.IsMatch(t, @"\d+\s*/\s*\d+") || System.Text.RegularExpressions.Regex.IsMatch(t.Trim(), @"^\d\d\d$");
             for (int reread = 0; reread < 3 && !Readable(text); reread++) { // partial reads like "1" too
-                await Task.Delay(1500, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
                 screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
                 text = screenshot == null ? "" : marchOcr.ExtractBrightTextFromScreenArea(screenshot, marchCountRect);
                 logger.LogInfo($"[{account.AccountName}] March capacity OCR text (re-read): '{text}'");
@@ -1223,7 +1223,7 @@ namespace Bot.Core.Tasks
             var handshake = Path.Combine(Path.GetDirectoryName(ImageTemplateFolder)!, "alliance", "request-help-bubble.png");
             for (int attempt = 1; attempt <= 3; attempt++)
             {
-                await Task.Delay(1000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                 var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
                 if (screenshot == null) continue;
 
@@ -1232,7 +1232,7 @@ namespace Bot.Core.Tasks
                 {
                     logger.LogInfo($"[{account.AccountName}] Requesting alliance help (confidence {confidence:F2})");
                     await ClickRandomInRectAsync(account.InstanceNumber, logger, rect);
-                    await Task.Delay(1000, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                     return;
                 }
             }

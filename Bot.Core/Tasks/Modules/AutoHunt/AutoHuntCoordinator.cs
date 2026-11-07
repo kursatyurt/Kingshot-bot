@@ -79,7 +79,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                 // Wait for map view to fully stabilize
                 await WaitIfPausedAsync(cancellationToken);
                 if (cancellationToken.IsCancellationRequested) return TaskExecutionDetails.Failed("Task was cancelled");
-                await Task.Delay(2000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
 
                 // Check available marches before doing anything else
                 int initialMarches = await ReadAvailableMarchesAsync(account, logger, cancellationToken);
@@ -139,7 +139,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                             {
                                 return TaskExecutionDetails.Failed("Could not enter hunt mode");
                             }
-                            await Task.Delay(2000, cancellationToken);
+                            await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
                         }
 
                         // Detect targets - directly implemented in coordinator
@@ -177,14 +177,14 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                             if (shot != null && new OCRService(logger).ExtractTextFromScreenArea(shot, new Rectangle(220, 115, 280, 60))?.ToLower().Contains("more") == true)
                             {
                                 await ClickAsync(account.InstanceNumber, logger, new Point(668, 145));
-                                await Task.Delay(800, cancellationToken);
+                                await Bot.Core.Utils.Pace.Delay(800, cancellationToken);
                             }
                             // The Deploy screen stays open under that dialog; leave it with its back arrow
                             shot = await TakeScreenshotAsync(account.InstanceNumber, logger);
                             if (shot != null && new OCRService(logger).ExtractTextFromScreenArea(shot, new Rectangle(90, 15, 160, 50))?.ToLower().Contains("deploy") == true)
                             {
                                 await ClickAsync(account.InstanceNumber, logger, new Point(50, 40));
-                                await Task.Delay(800, cancellationToken);
+                                await Bot.Core.Utils.Pace.Delay(800, cancellationToken);
                             }
                             await ReturnToMapViewDirectly(account, logger, cancellationToken);
                             return new TaskExecutionDetails(true, message: "Stamina depleted, moving to next module");
@@ -293,7 +293,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                 // Click king
                 if (!await ClickRandomInRectAsync(account.InstanceNumber, logger, target.MatchLocation))
                     return TargetProcessResult.Failed("Failed to click king target");
-                await Task.Delay(2000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
 
                 // Click view button
                 if (!await FindAndClickImageAsync("view-button.png", account.InstanceNumber, logger))
@@ -331,12 +331,12 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
 
                     return TargetProcessResult.Failed("No view button found");
                 }
-                await Task.Delay(1500, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
 
                 // Click attack button
                 if (!await FindAndClickImageAsync("attack-button.png", account.InstanceNumber, logger))
                     return TargetProcessResult.Failed("Failed to click attack button");
-                await Task.Delay(1000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
 
                 // Check prediction text before proceeding
                 var prediction = await ReadPredictionText(account, logger);
@@ -354,7 +354,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                     if (await FindAndClickImageAsync("deploy-back.png", account.InstanceNumber, logger))
                     {
                         logger.LogInfo($"[{account.AccountName}] Clicked deploy-back button to return to hunt view");
-                        await Task.Delay(1000, cancellationToken);
+                        await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                     }
                     
                     return TargetProcessResult.Failed("Prediction indicates failure");
@@ -373,7 +373,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                     return TargetProcessResult.StaminaEmpty("Stamina depleted during king attack");
                 }
 
-                await Task.Delay(2000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
 
                 // Final max march check
                 var marchSettings = GetAutoHuntSettings(account);
@@ -404,7 +404,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                 // Click bear
                 if (!await ClickRandomInRectAsync(account.InstanceNumber, logger, target.MatchLocation))
                     return TargetProcessResult.Failed("Failed to click bear target");
-                await Task.Delay(1000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
 
                 // Click view button
                 if (!await FindAndClickImageAsync("view-button.png", account.InstanceNumber, logger))
@@ -441,12 +441,12 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
 
                     return TargetProcessResult.Failed("No view button found");
                 }
-                await Task.Delay(1000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
 
                 // Click attack button
                 if (!await FindAndClickImageAsync("attack-button.png", account.InstanceNumber, logger))
                     return TargetProcessResult.Failed("Failed to click attack button");
-                await Task.Delay(1000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
 
                 // Check prediction text before equalize
                 var initialPrediction = await ReadPredictionText(account, logger);
@@ -465,7 +465,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                     if (await FindAndClickImageAsync("deploy-back.png", account.InstanceNumber, logger))
                     {
                         logger.LogInfo($"[{account.AccountName}] Clicked deploy-back button to return to hunt view");
-                        await Task.Delay(1000, cancellationToken);
+                        await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                     }
                     
                     return TargetProcessResult.Failed("Prediction indicates failure before equalize");
@@ -478,7 +478,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                     logger.LogInfo($"[{account.AccountName}] Equalize enabled - clicking equalize button");
                     if (!await FindAndClickImageAsync("equalize.png", account.InstanceNumber, logger))
                         return TargetProcessResult.Failed("Failed to click equalize button");
-                    await Task.Delay(1000, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                 }
                 else
                 {
@@ -502,7 +502,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                     if (await FindAndClickImageAsync("deploy-back.png", account.InstanceNumber, logger))
                     {
                         logger.LogInfo($"[{account.AccountName}] Clicked deploy-back button to return to hunt view");
-                        await Task.Delay(1000, cancellationToken);
+                        await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                     }
                     
                     return TargetProcessResult.Failed("Prediction indicates failure after equalize");
@@ -519,7 +519,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                     return TargetProcessResult.StaminaEmpty("Stamina depleted during bear attack");
                 }
 
-                await Task.Delay(2000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
 
                 // Final max march check
                 var marchSettings = GetAutoHuntSettings(account);
@@ -550,7 +550,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                 // Click scout
                 if (!await ClickRandomInRectAsync(account.InstanceNumber, logger, target.MatchLocation))
                     return TargetProcessResult.Failed("Failed to click scout target");
-                await Task.Delay(1000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
 
                 // Click view button
                 if (!await FindAndClickImageAsync("view-button.png", account.InstanceNumber, logger))
@@ -579,14 +579,14 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
 
                     return TargetProcessResult.Failed("No view button found");
                 }
-                await Task.Delay(1000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
 
                 // Click rescue
                 if (!await FindAndClickImageAsync("rescue.png", account.InstanceNumber, logger))
                     return TargetProcessResult.Failed("Failed to click rescue button");
 
                 // Check for stamina
-                await Task.Delay(1000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                 var staminaCheckScreenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
                 if (staminaCheckScreenshot != null)
                 {
@@ -625,7 +625,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                 // Click attack
                 if (!await ClickRandomInRectAsync(account.InstanceNumber, logger, target.MatchLocation))
                     return TargetProcessResult.Failed("Failed to click attack target");
-                await Task.Delay(1000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
 
                 // Click view button
                 if (!await FindAndClickImageAsync("view-button.png", account.InstanceNumber, logger))
@@ -662,12 +662,12 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
 
                     return TargetProcessResult.Failed("No view button found");
                 }
-                await Task.Delay(1000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
 
                 // Click conquer
                 if (!await FindAndClickImageAsync("conquer.png", account.InstanceNumber, logger))
                     return TargetProcessResult.Failed("Failed to click conquer button");
-                await Task.Delay(1000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
 
                 // Check for stamina
                 var staminaCheckScreenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
@@ -688,21 +688,21 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                 // Try to find and click quick-deploy
                 if (!await FindAndClickQuickDeployDirectly(account, logger, cancellationToken))
                     return TargetProcessResult.Failed("Failed to find quick deploy");
-                await Task.Delay(1000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
 
                 // Click fight
                 if (!await FindAndClickImageAsync("fight.png", account.InstanceNumber, logger))
                     return TargetProcessResult.Failed("Failed to click fight button");
 
                 // Wait for battle result
-                await Task.Delay(3000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(3000, cancellationToken);
 
                 DateTime startTime = DateTime.UtcNow;
                 bool resultFound = false;
                 bool wasVictory = false;
 
                 logger.LogInfo($"[{account.AccountName}] Waiting 5 seconds before checking battle result...");
-                await Task.Delay(5000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(5000, cancellationToken);
                 
                 logger.LogInfo($"[{account.AccountName}] Now checking for battle result using OCR (up to 20 seconds)...");
 
@@ -756,7 +756,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                         logger.LogInfo($"[{account.AccountName}] Battle result OCR progress: {elapsed:F1}s elapsed, {checkCount} checks completed");
                     }
 
-                    await Task.Delay(500, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(500, cancellationToken);
                 }
 
                 if (!resultFound)
@@ -850,7 +850,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                 huntModeFound = await IsInHuntMode(account, logger);
                 if (!huntModeFound)
                 {
-                    await Task.Delay(500, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(500, cancellationToken);
                 }
             }
 
@@ -919,12 +919,12 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                     foundTick = true;
                     foundAnyTick = true;
                     await ProcessTickFound(account, logger, matchRect, confidence, accountId, settings, cancellationToken);
-                    await Task.Delay(500, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(500, cancellationToken);
                     tickScanStart = DateTime.UtcNow;
                 }
                 else
                 {
-                    await Task.Delay(200, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(200, cancellationToken);
                 }
 
                 timeSinceLastTick = DateTime.UtcNow - tickScanStart;
@@ -952,7 +952,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
             if (await ClickRandomInRectAsync(account.InstanceNumber, logger, matchRect))
             {
                 logger.LogInfo($"[{account.AccountName}] Successfully clicked tick");
-                await Task.Delay(500, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(500, cancellationToken);
                 
                 // Remove overlapping used areas
                 RemoveOverlappingUsedAreas(account, logger, matchRect, accountId, settings);
@@ -1060,7 +1060,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                     break;
                 }
 
-                await Task.Delay(200, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(200, cancellationToken);
             }
         }
 
@@ -1205,7 +1205,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                     if (await ClickAsync(account.InstanceNumber, logger, AutoHuntConstants.LevelUpDismissPoint))
                     {
                         logger.LogInfo($"[{account.AccountName}] Clicked level-up dismiss point");
-                        await Task.Delay(500, cancellationToken);
+                        await Bot.Core.Utils.Pace.Delay(500, cancellationToken);
                     }
                 }
             }
@@ -1365,7 +1365,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                 var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
                 if (screenshot == null)
                 {
-                    await Task.Delay(200, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(200, cancellationToken);
                     continue;
                 }
 
@@ -1392,7 +1392,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                     logger.LogInfo($"[{account.AccountName}] Still looking for quick-deploy button... ({elapsed:F1}s elapsed)");
                 }
 
-                await Task.Delay(200, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(200, cancellationToken);
             }
 
             if (quickDeployFound)
@@ -1480,14 +1480,14 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
             {
                 logger.LogInfo($"[{account.AccountName}] Claiming a finished rescue mission");
                 await ClickAsync(account.InstanceNumber, logger, new Point(360, 920));
-                await Task.Delay(2000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
                 current = await TakeScreenshotAsync(account.InstanceNumber, logger);
             }
             if (current != null && new OCRService(logger).ExtractTextFromScreenArea(current, new Rectangle(160, 1155, 400, 55)).Contains("Tap anywhere"))
             {
                 logger.LogInfo($"[{account.AccountName}] Closing a Rewards popup");
                 await ClickAsync(account.InstanceNumber, logger, new Point(360, 1000));
-                await Task.Delay(1500, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
                 current = await TakeScreenshotAsync(account.InstanceNumber, logger);
             }
             // A stray tap on a locked march slot opens the March Queue popup (Research/Activate/Buy); only its X is safe
@@ -1495,7 +1495,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
             {
                 logger.LogInfo($"[{account.AccountName}] Closing the March Queue popup");
                 await ClickAsync(account.InstanceNumber, logger, new Point(642, 340));
-                await Task.Delay(1500, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
                 current = await TakeScreenshotAsync(account.InstanceNumber, logger);
             }
             return current;
@@ -1574,7 +1574,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                 if (onIntel || IsIntelScreen(shot, logger))
                 {
                     await ClickAsync(account.InstanceNumber, logger, new Point(48, 40));
-                    await Task.Delay(1500, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
                 }
             }
 
@@ -1663,7 +1663,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                     return false;
                 }
 
-                await Task.Delay(200, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(200, cancellationToken);
             }
 
             return buttonFound;
@@ -1674,7 +1674,7 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
             LogService logger, 
             CancellationToken cancellationToken)
         {
-            await Task.Delay(1000, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
             var confirmScreenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
             if (confirmScreenshot != null)
             {
@@ -1702,9 +1702,9 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                 {
                     logger.LogInfo($"[{account.AccountName}] Found confirmation dialog, clicking confirm points");
                     await ClickAsync(account.InstanceNumber, logger, new Point(212, 714));
-                    await Task.Delay(500, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(500, cancellationToken);
                     await ClickAsync(account.InstanceNumber, logger, new Point(456, 770));
-                    await Task.Delay(1000, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                 }
             }
 

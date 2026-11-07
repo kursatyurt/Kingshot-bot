@@ -182,7 +182,7 @@ namespace Bot.Core.Tasks.Modules
 
                     if (clickedSomething)
                     {
-                        await Task.Delay(500, cancellationToken); // Wait 0.5s after clicking
+                        await Bot.Core.Utils.Pace.Delay(500, cancellationToken); // Wait 0.5s after clicking
                     }
 
                     // Check for map views
@@ -219,7 +219,7 @@ namespace Bot.Core.Tasks.Modules
                     {
                         // Pages without a back arrow (e.g. a work building's furniture page) close with the back key
                         await PressBackAsync(account.InstanceNumber, logger);
-                        await Task.Delay(800, cancellationToken);
+                        await Bot.Core.Utils.Pace.Delay(800, cancellationToken);
                     }
                 }
                 catch (Exception ex)
@@ -314,7 +314,7 @@ namespace Bot.Core.Tasks.Modules
                     userNotifications?.ShowStatus("Stopping emulator instance...", NotificationType.Info);
                     logger.LogInfo($"[{account.AccountName}] Stopping instance {account.InstanceNumber}...");
                     await instanceManager.StopInstanceAsync(account.InstanceNumber, cancellationToken);
-                    await Task.Delay(5000, cancellationToken); // Wait for instance to fully stop
+                    await Bot.Core.Utils.Pace.Delay(5000, cancellationToken); // Wait for instance to fully stop
 
                     // Step 2: Start the instance
                     userNotifications?.ShowStatus("Starting emulator instance...", NotificationType.Info);
@@ -330,7 +330,7 @@ namespace Bot.Core.Tasks.Modules
                     // Step 3: Wait for instance to be fully booted (with timeout protection for parallel instances)
                     userNotifications?.ShowStatus("Waiting for emulator to fully boot...", NotificationType.Info);
                     logger.LogInfo($"[{account.AccountName}] Waiting for instance to be fully booted...");
-                    await Task.Delay(20000, cancellationToken); // Wait for instance to fully boot
+                    await Bot.Core.Utils.Pace.Delay(20000, cancellationToken); // Wait for instance to fully boot
                     
                     // Note: We maintain semaphore ownership during recovery to ensure this instance
                     // slot is not accidentally given to another account during the restart process

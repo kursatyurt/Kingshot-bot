@@ -63,7 +63,7 @@ namespace Bot.Core.Tasks.Modules
 
             // 2. Academy ring → Research (only on its normal idle ring: Details / Upgrade / Research)
             await ClickAsync(account.InstanceNumber, logger, ResearchArrow);
-            await Task.Delay(2500, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(2500, cancellationToken);
             var ring = await TakeScreenshotAsync(account.InstanceNumber, logger);
             var ringUpgrade = Path.Combine(Path.GetDirectoryName(ImageTemplateFolder)!, "autobuild", "ring-upgrade.png");
             if (ring == null || !_templateMatcher.MatchTemplate(ring, ringUpgrade, account.InstanceNumber, threshold: 0.9,
@@ -74,13 +74,13 @@ namespace Bot.Core.Tasks.Modules
                 return new TaskExecutionDetails(true, message: "Academy not ready");
             }
             await ClickAsync(account.InstanceNumber, logger, RingResearchButton);
-            await Task.Delay(2500, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(2500, cancellationToken);
 
             // 3. Category tab, then items top to bottom
             var researchType = settings.NextResearchType(account.InstanceNumber);
             var tab = researchType switch { ResearchType.Economy => new Point(361, 123), ResearchType.Battle => new Point(585, 120), _ => new Point(130, 116) };
             await ClickAsync(account.InstanceNumber, logger, tab);
-            await Task.Delay(1500, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
 
             // The tree runs far below one screen (Command Tactics II, the next march queue, is deep in Growth):
             // find the items on each page by their level badges, then scroll on until the page stops changing.
@@ -102,7 +102,7 @@ namespace Bot.Core.Tasks.Modules
                 {
                     var before = await TakeScreenshotAsync(account.InstanceNumber, logger);
                     await SwipeAsync(account.InstanceNumber, logger, new Point(360, 300), new Point(360, 1100), 300);
-                    await Task.Delay(800, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(800, cancellationToken);
                     var after = await TakeScreenshotAsync(account.InstanceNumber, logger);
                     if (before != null && after != null && SamePage(before, after)) break;
                 }
@@ -121,7 +121,7 @@ namespace Bot.Core.Tasks.Modules
                 {
                     var badge = badgeOcr.ExtractBrightTextFromScreenArea(pageShot, new Rectangle(item.X - 35, item.Y + 46, 70, 28));
                     await ClickAsync(account.InstanceNumber, logger, item);
-                    await Task.Delay(1500, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
                     var dialog = await TakeScreenshotAsync(account.InstanceNumber, logger);
                     var research = dialog == null ? null : FindResearchButton(dialog);
                     if (research is Point button)
@@ -142,11 +142,11 @@ namespace Bot.Core.Tasks.Modules
                     if (dialog != null && HasDialogOpen(dialog))
                     {
                         await PressBackAsync(account.InstanceNumber, logger); // close a locked, maxed or deferred item
-                        await Task.Delay(1000, cancellationToken);
+                        await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                     }
                 }
                 await SwipeAsync(account.InstanceNumber, logger, new Point(360, 1000), new Point(360, 420), 1500); // slow: no fling
-                await Task.Delay(1200, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1200, cancellationToken);
             }
 
             }
@@ -160,7 +160,7 @@ namespace Bot.Core.Tasks.Modules
             _nextCheck[account.InstanceNumber] = empties < settings.CategoryCount ? DateTime.UtcNow : DateTime.UtcNow.AddMinutes(60);
             if (empties >= settings.CategoryCount) _emptyScans[account.InstanceNumber] = 0;
             await PressBackAsync(account.InstanceNumber, logger); // leave Tech Research ourselves
-            await Task.Delay(1000, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
             return new TaskExecutionDetails(true, message: $"No {researchType} research available");
         }
@@ -206,7 +206,7 @@ namespace Bot.Core.Tasks.Modules
         {
             logger.LogInfo($"[{account.AccountName}] 🔬 Starting {researchType} research: {what}");
             await ClickAsync(account.InstanceNumber, logger, button);
-            await Task.Delay(2000, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
             // Short of a resource, the game opens "Get More": use owned packs (green Use, never the orange gem
             // "Buy & Use"), close it with back and tap Research again. Each missing resource opens its own dialog.
             for (int attempt = 0; attempt < 3; attempt++)
@@ -218,19 +218,19 @@ namespace Bot.Core.Tasks.Modules
                 {
                     logger.LogInfo($"[{account.AccountName}] Research short of a resource: using an owned pack");
                     await ClickAsync(account.InstanceNumber, logger, pack);
-                    await Task.Delay(1500, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
                     shot = await TakeScreenshotAsync(account.InstanceNumber, logger);
                 }
                 // Get More usually closes itself once the resource is covered, back on the research dialog
                 if (shot == null || FindResearchButton(shot) == null)
                 {
                     await PressBackAsync(account.InstanceNumber, logger);
-                    await Task.Delay(1500, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
                     shot = await TakeScreenshotAsync(account.InstanceNumber, logger);
                 }
                 if (shot == null || FindResearchButton(shot) is not Point again) break;
                 await ClickAsync(account.InstanceNumber, logger, again);
-                await Task.Delay(2000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
             }
             // The running research shows a cyan Help bar at the bottom of the tree: ask the alliance right here
             var started = await TakeScreenshotAsync(account.InstanceNumber, logger);
@@ -238,7 +238,7 @@ namespace Bot.Core.Tasks.Modules
             {
                 logger.LogInfo($"[{account.AccountName}] 🤝 Asking alliance help for the research");
                 await ClickAsync(account.InstanceNumber, logger, new Point(603, 1197));
-                await Task.Delay(1000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
             }
             AutoTechnologySettings.AdvanceResearchType(account.InstanceNumber);
             _nextCheck[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(5); // short researches finish fast
@@ -256,7 +256,7 @@ namespace Bot.Core.Tasks.Modules
             }
             // The game stays on the research tree; leave it with its back arrow rather than through lost-screen recovery
             await FindAndClickImageAsync("back-arrow.png", account.InstanceNumber, logger, threshold: 0.8, searchArea: new Rectangle(0, 0, 160, 90));
-            await Task.Delay(1500, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
             await RequestAllianceHelpAsync(account, logger, cancellationToken); // the Academy's handshake bubble
             return new TaskExecutionDetails(true, message: $"Started {researchType} research");

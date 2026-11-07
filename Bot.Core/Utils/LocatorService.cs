@@ -94,7 +94,7 @@ namespace Bot.Core.Utils
                         return false; // Should not be reached
                     }
                     _logger.LogInfo($"[Locator] ⏳ View not detected, waiting 2 seconds before retry...");
-                    await Task.Delay(2000, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
                     continue;
                 }
                 
@@ -117,7 +117,7 @@ namespace Bot.Core.Utils
                 if (attempt < maxRetries)
                 {
                     _logger.LogInfo($"[Locator] ⏳ Waiting 2 seconds before retry...");
-                    await Task.Delay(2000, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
                 }
             }
 
@@ -372,7 +372,7 @@ namespace Bot.Core.Utils
                 _logger.LogInfo($"[Locator] 🖱️ Clicking center location ({clickPoint.X}, {clickPoint.Y}) within {targetImageName} bounds {matchRect}");
                 await adbController.TapAsync(clickPoint.X, clickPoint.Y, cancellationToken);
                 
-                await Task.Delay(1000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
 
                 _logger.LogInfo($"[Locator] 👀 Looking for {verifyImageName} for 12 seconds to verify navigation...");
                 
@@ -396,7 +396,7 @@ namespace Bot.Core.Utils
                         }
                     }
                     
-                    await Task.Delay(500, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(500, cancellationToken);
                 }
 
                 _logger.LogError($"[Locator] ❌ Timed out waiting for {verifyImageName} after navigation");

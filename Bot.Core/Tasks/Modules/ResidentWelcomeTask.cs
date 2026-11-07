@@ -62,7 +62,7 @@ namespace Bot.Core.Tasks.Modules
                         break;
                     }
 
-                    await Task.Delay(500, cancellationToken); // Check every 0.5 seconds
+                    await Bot.Core.Utils.Pace.Delay(500, cancellationToken); // Check every 0.5 seconds
                 }
 
                 if (!residentFound)
@@ -91,7 +91,7 @@ namespace Bot.Core.Tasks.Modules
                     // The newcomer walks, so a tap can miss the moving bubble; tap it again
                     await FindAndClickImageAsync("resident.png", account.InstanceNumber, logger, threshold: 0.6);
 
-                    await Task.Delay(500, cancellationToken); // Check every 0.5 seconds
+                    await Bot.Core.Utils.Pace.Delay(500, cancellationToken); // Check every 0.5 seconds
                 }
 
                 if (!welcomeInFound)
@@ -102,12 +102,12 @@ namespace Bot.Core.Tasks.Modules
                     var popup = await TakeScreenshotAsync(account.InstanceNumber, logger);
                     if (popup != null && new OCRService(logger).ExtractTextFromScreenArea(popup, new Rectangle(120, 450, 480, 70))?.Contains("arrived", StringComparison.OrdinalIgnoreCase) == true)
                     {
-                        await Task.Delay(2000, cancellationToken);
+                        await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
                         await ClickAsync(account.InstanceNumber, logger, new Point(357, 1121)); // Welcome in
                         logger.LogInfo($"[{account.AccountName}] Welcomed the residents (faded button)");
                         return TaskExecutionDetails.Succeeded();
                     }
-                    await Task.Delay(1500, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
                     }
                     logger.LogWarning($"[{account.AccountName}] Welcome-in button not found after clicking resident icon");
                     return new TaskExecutionDetails(true, message: "No welcome popup opened"); // the icon was not a newcomer; recovery would only add noise

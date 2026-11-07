@@ -38,10 +38,10 @@ namespace Bot.Core.Tasks.Modules
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
             if (!await OpenSidePanelAsync(account.InstanceNumber, logger, cancellationToken)) return TaskExecutionDetails.Failed("Side panel did not open");
             await ClickAsync(account.InstanceNumber, logger, new Point(370, 269)); // Daily tab
-            await Task.Delay(800, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(800, cancellationToken);
             await ClaimDailyRowsAsync(account, logger, cancellationToken);
             await SwipeAsync(account.InstanceNumber, logger, new Point(220, 750), new Point(220, 300), 800);
-            await Task.Delay(1500, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
             await ClaimDailyRowsAsync(account, logger, cancellationToken);
 
             var panel = await TakeScreenshotAsync(account.InstanceNumber, logger);
@@ -66,9 +66,9 @@ namespace Bot.Core.Tasks.Modules
 
             logger.LogInfo($"[{account.AccountName}] 🏟️ Arena: {attempts} challenge(s) left");
             await ClickAsync(account.InstanceNumber, logger, new Point(404, rowY)); // row's arrow
-            await Task.Delay(3000, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(3000, cancellationToken);
             await ClickAsync(account.InstanceNumber, logger, new Point(360, 1214)); // Challenge
-            await Task.Delay(2500, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(2500, cancellationToken);
 
             int won = 0, fought = 0;
             bool refreshed = false;
@@ -94,12 +94,12 @@ namespace Bot.Core.Tasks.Modules
                     }
                     await ClickAsync(account.InstanceNumber, logger, new Point(360, 1046)); // Free Refresh
                     refreshed = true;
-                    await Task.Delay(2000, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
                     continue;
                 }
 
                 await ClickAsync(account.InstanceNumber, logger, new Point(624, RowY[target])); // that row's swords
-                await Task.Delay(3000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(3000, cancellationToken);
                 // Without the deploy screen these taps land outside the Challenge List and close it
                 var deploy = await TakeScreenshotAsync(account.InstanceNumber, logger);
                 if (deploy == null || new OCRService(logger).ExtractTextFromScreenArea(deploy, new Rectangle(40, 1160, 640, 80))?.Contains("Fight", StringComparison.OrdinalIgnoreCase) != true)
@@ -111,7 +111,7 @@ namespace Bot.Core.Tasks.Modules
                     break;
                 }
                 await ClickAsync(account.InstanceNumber, logger, new Point(190, 1200)); // Quick Deploy
-                await Task.Delay(1500, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
                 await ClickAsync(account.InstanceNumber, logger, new Point(528, 1200)); // Fight
                 fought++;
 
@@ -120,7 +120,7 @@ namespace Bot.Core.Tasks.Modules
                 bool resultRead = false;
                 while (DateTime.UtcNow - start < TimeSpan.FromMinutes(3))
                 {
-                    await Task.Delay(5000, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(5000, cancellationToken);
                     var shot = await TakeScreenshotAsync(account.InstanceNumber, logger);
                     if (shot == null) continue;
                     var ocr = new OCRService(logger);
@@ -129,7 +129,7 @@ namespace Bot.Core.Tasks.Modules
                     if (victory) won++;
                     logger.LogInfo($"[{account.AccountName}] Arena fight {fought}: {(victory ? "won" : "lost")}");
                     await ClickAsync(account.InstanceNumber, logger, new Point(360, 1100));
-                    await Task.Delay(2500, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(2500, cancellationToken);
                     resultRead = true;
                     break;
                 }
@@ -146,9 +146,9 @@ namespace Bot.Core.Tasks.Modules
             if (fought >= attempts) _nextCheck[account.InstanceNumber] = DateTime.UtcNow.AddHours(6);
             // Close the Challenge List, then leave the Arena page with its back arrow (the locator would call this lost)
             await ClickAsync(account.InstanceNumber, logger, new Point(668, 192));
-            await Task.Delay(1000, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
             await FindAndClickImageAsync("back-arrow.png", account.InstanceNumber, logger, threshold: 0.85, searchArea: new Rectangle(0, 0, 160, 90));
-            await Task.Delay(1500, cancellationToken);
+            await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
             return new TaskExecutionDetails(true, message: $"Arena: won {won}/{fought}");
         }
@@ -180,17 +180,17 @@ namespace Bot.Core.Tasks.Modules
                 if (y is not int row) return;
                 logger.LogInfo($"[{account.AccountName}] 🎁 Claiming a finished Daily row");
                 await ClickAsync(account.InstanceNumber, logger, new Point(404, row + 4));
-                await Task.Delay(2000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
                 if (!await IsSidePanelOpenAsync(account, logger)) // a reward popup covers the panel
                 {
                     await PressBackAsync(account.InstanceNumber, logger);
-                    await Task.Delay(1200, cancellationToken);
+                    await Bot.Core.Utils.Pace.Delay(1200, cancellationToken);
                     if (!await IsSidePanelOpenAsync(account, logger))
                     {
                         // The back closed the panel itself: reopen it on the Daily tab
                         if (!await OpenSidePanelAsync(account.InstanceNumber, logger, cancellationToken)) return;
                         await ClickAsync(account.InstanceNumber, logger, new Point(370, 269));
-                        await Task.Delay(800, cancellationToken);
+                        await Bot.Core.Utils.Pace.Delay(800, cancellationToken);
                     }
                 }
             }

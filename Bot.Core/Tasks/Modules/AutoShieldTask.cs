@@ -96,7 +96,7 @@ namespace Bot.Core.Tasks.Modules
                         {
                             logger.LogWarning($"[{account.AccountName}] Could not find back button, shield menu may still be open.");
                         }
-                        await Task.Delay(1000, cancellationToken); // Wait for navigation
+                        await Bot.Core.Utils.Pace.Delay(1000, cancellationToken); // Wait for navigation
                         
                         return new TaskExecutionDetails(true, message: $"Shield active: {currentShieldTime.Value.TotalHours:F1}h");
                     }
@@ -204,7 +204,7 @@ namespace Bot.Core.Tasks.Modules
                 }
 
                 // Wait 1 second after clicking shield icon for OCR to work properly
-                await Task.Delay(1000, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                 return true;
             }
             catch (Exception ex)
@@ -339,7 +339,7 @@ namespace Bot.Core.Tasks.Modules
                     if (buyUseFound)
                     {
                         logger.LogInfo($"[{account.AccountName}] Buy-use button clicked, waiting 1 second then clicking confirmation at 357,781");
-                        await Task.Delay(1000, cancellationToken);
+                        await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                         await ClickAsync(account.InstanceNumber, logger, new Point(357, 781));
                         logger.LogInfo($"[{account.AccountName}] Clicked confirmation point at 357,781");
                     }
@@ -417,7 +417,7 @@ namespace Bot.Core.Tasks.Modules
                     if (buyUseFound)
                     {
                         logger.LogInfo($"[{account.AccountName}] Buy-use button clicked, waiting 1 second then clicking confirmation at 357,781");
-                        await Task.Delay(1000, cancellationToken);
+                        await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                         await ClickAsync(account.InstanceNumber, logger, new Point(357, 781));
                         logger.LogInfo($"[{account.AccountName}] Clicked confirmation point at 357,781");
                     }
@@ -443,7 +443,7 @@ namespace Bot.Core.Tasks.Modules
                         {
                             logger.LogWarning($"[{account.AccountName}] Could not find back button, shield menu may still be open.");
                         }
-                        await Task.Delay(1000, cancellationToken); // Wait for navigation
+                        await Bot.Core.Utils.Pace.Delay(1000, cancellationToken); // Wait for navigation
                         
                         return true; // Shield was applied successfully
                     }
