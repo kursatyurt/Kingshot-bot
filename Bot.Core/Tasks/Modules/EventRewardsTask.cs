@@ -20,7 +20,6 @@ namespace Bot.Core.Tasks.Modules
         public override TaskType TaskType => TaskType.EventRewards;
         public override string Name => "Event Rewards";
         protected override string GetImageFolderName() => "events";
-        protected override TimeSpan MinInterval => TimeSpan.FromMinutes(30); // its rewards come on hour-long timers
 
         private static readonly TimeSpan Interval = TimeSpan.FromHours(3);
         private static readonly ConcurrentDictionary<int, DateTime> _lastRun = new();
@@ -31,7 +30,9 @@ namespace Bot.Core.Tasks.Modules
         private static readonly Point UpgradeTownCenterTab = new Point(360, 650);
         private static readonly Point BackArrow = new Point(40, 40);
 
-        protected override bool OnCooldown(AccountSettings account) => _lastRun.TryGetValue(account.InstanceNumber, out var last) && DateTime.UtcNow - last < Interval;
+        // Runs whenever the online chest is due (its timer is read after each collection) or Path of Growth's 3 h is up
+        protected override bool OnCooldown(AccountSettings account) => _lastRun.TryGetValue(account.InstanceNumber, out var last) && DateTime.UtcNow - last < Interval
+            && _nextStorehouseCheck.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next;
 
         protected override async Task<TaskExecutionDetails> ExecuteTaskLogicAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken, bool isReRun = false, IUserNotificationService? userNotifications = null)
         {
@@ -141,10 +142,23 @@ namespace Bot.Core.Tasks.Modules
                 logger.LogInfo($"[{account.AccountName}] 🎁 Collecting the Storehouse online chest");
                 await ClickRandomInRectAsync(account.InstanceNumber, logger, rect);
                 await Bot.Core.Utils.Pace.Delay(2500, cancellationToken);
+                var popup = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                if (popup != null && ParseTimer(new OCRService(logger).ExtractBrightTextFromScreenArea(popup, new Rectangle(220, 1090, 280, 55), 100)) is { } wait)
+                {
+                    _nextStorehouseCheck[account.InstanceNumber] = DateTime.UtcNow + wait + TimeSpan.FromSeconds(10);
+                    logger.LogInfo($"[{account.AccountName}] Next online chest in {wait}");
+                }
                 await ClickAsync(account.InstanceNumber, logger, new Point(360, 1150)); // dismiss "Next Chest Ready In"
                 await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
             }
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
+        }
+
+        /// <summary>"00:59:57" → 59 min 57 s; null when OCR found no timer.</summary>
+        public static TimeSpan? ParseTimer(string? text)
+        {
+            var m = System.Text.RegularExpressions.Regex.Match(text ?? "", @"(\d{1,2}):(\d{2}):(\d{2})");
+            return m.Success ? new TimeSpan(int.Parse(m.Groups[1].Value), int.Parse(m.Groups[2].Value), int.Parse(m.Groups[3].Value)) : null;
         }
 
         private static bool HasBubbleFrame(byte[] screenshot)
