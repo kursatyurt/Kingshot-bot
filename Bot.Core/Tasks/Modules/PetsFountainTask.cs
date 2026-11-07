@@ -64,6 +64,9 @@ namespace Bot.Core.Tasks.Modules
                 }
             }
 
+            var adventure = await PetAdventureAsync(account, logger, locator, cancellationToken);
+            if (adventure != null) done.Add(adventure);
+
             var accountId = AccountDetectionTask.GetCachedAccountId(account.InstanceNumber);
             if (string.IsNullOrEmpty(accountId)) accountId = $"Account_{account.AccountName}_{account.InstanceNumber}";
             var days = LoadPetsDays();
@@ -80,6 +83,130 @@ namespace Bot.Core.Tasks.Modules
 
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
             return new TaskExecutionDetails(true, message: done.Count > 0 ? string.Join("; ", done) : "Nothing to do");
+        }
+
+        private static readonly Rectangle AdventureMap = new(0, 150, 720, 1000);
+        private static readonly Point[] PetSlots = { new(142, 657), new(286, 657), new(430, 657), new(574, 657) };
+
+        /// <summary>
+        /// Pet Adventure: opens each finished (green tick) treasure spot's chest, then sends a free pet to a free spot
+        /// (only those show Select Pet) while "Remaining attempts today" is above 0. Start costs pet food only; no gems
+        /// and no attempt purchases are ever tapped.
+        /// </summary>
+        private async Task<string?> PetAdventureAsync(AccountSettings account, LogService logger, LocatorService locator, CancellationToken cancellationToken)
+        {
+            int n = account.InstanceNumber;
+            await locator.EnsureViewAsync(ViewType.BaseView, n, cancellationToken);
+            if (!await OpenDailyTabAsync(account, logger, cancellationToken) || await RowYAsync(account, logger, "pet-adventure-row.png") is not int py)
+                return null;
+            await ClickAsync(n, logger, new Point(404, py));
+            if (!await WaitForImageAsync("pet-adventure-title.png", n, logger, cancellationToken, 6000, threshold: 0.85))
+                return null;
+
+            int claimed = 0, sent = 0;
+            for (int i = 0; i < 4; i++)
+            {
+                var (found, tick, _) = await WaitForImageWithPositionAsync("adventure-done-tick.png", n, logger, cancellationToken, 1500, threshold: 0.85, searchArea: AdventureMap);
+                if (!found) break;
+                await ClickAsync(n, logger, new Point(tick.X + tick.Width / 2 - 54, tick.Y + tick.Height / 2 + 46)); // the spot under the tick
+                await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
+                await ClickAsync(n, logger, new Point(360, 820)); // open the chest
+                await Bot.Core.Utils.Pace.Delay(2500, cancellationToken);
+                await ClickAsync(n, logger, new Point(360, 1180)); // "Tap anywhere to exit"
+                await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
+                await ClosePopupsAsync(account, logger, cancellationToken);
+                claimed++;
+            }
+
+            for (int i = 0; i < 4; i++)
+            {
+                var map = await TakeScreenshotAsync(n, logger);
+                if (map == null || ParseAttempts(new OCRService(logger).ExtractBrightTextFromScreenArea(map, new Rectangle(150, 110, 420, 50))) is not > 0) break;
+                bool dispatched = false;
+                foreach (var spot in FindAll(map, Path.Combine(ImageTemplateFolder, "adventure-chest.png"), 0.8, AdventureMap))
+                {
+                    await ClickAsync(n, logger, new Point(spot.X + spot.Width / 2, spot.Y + spot.Height / 2));
+                    await Bot.Core.Utils.Pace.Delay(1800, cancellationToken);
+                    if (await WaitForImageAsync("select-pet-button.png", n, logger, cancellationToken, 1500, threshold: 0.85))
+                    {
+                        await ClickAsync(n, logger, new Point(360, 1046)); // Select Pet
+                        await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
+                        var list = await TakeScreenshotAsync(n, logger);
+                        if (list != null && Array.FindIndex(PetSlots, p => IsPetFree(list, p)) is var free and >= 0)
+                        {
+                            await ClickAsync(n, logger, PetSlots[free]);
+                            await Bot.Core.Utils.Pace.Delay(800, cancellationToken);
+                            if (await WaitForImageAsync("start-button.png", n, logger, cancellationToken, 1500, threshold: 0.85))
+                            {
+                                logger.LogInfo($"[{account.AccountName}] 🐾 Sending a pet on adventure");
+                                await ClickAsync(n, logger, new Point(360, 1004)); // Start (pet food)
+                                await Bot.Core.Utils.Pace.Delay(2500, cancellationToken);
+                                sent++;
+                                dispatched = true;
+                            }
+                        }
+                    }
+                    await ClosePopupsAsync(account, logger, cancellationToken);
+                    if (dispatched) break;
+                }
+                if (!dispatched) break; // no free spot or no free pet
+            }
+
+            await ClickAsync(n, logger, new Point(48, 40)); // Pet Adventure → enclosure
+            await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
+            await ClickAsync(n, logger, new Point(48, 40)); // leave the enclosure
+            await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
+            logger.LogInfo($"[{account.AccountName}] Pet Adventure: {claimed} chest(s) opened, {sent} pet(s) sent");
+            return claimed + sent > 0 ? $"Pet Adventure: {claimed} chest(s), {sent} pet(s) sent" : null;
+        }
+
+        private async Task ClosePopupsAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
+        {
+            for (int i = 0; i < 3; i++)
+            {
+                var (found, x, _) = await WaitForImageWithPositionAsync("popup-close.png", account.InstanceNumber, logger, cancellationToken, 800, threshold: 0.85);
+                if (!found) return;
+                await ClickAsync(account.InstanceNumber, logger, new Point(x.X + x.Width / 2, x.Y + x.Height / 2));
+                await Bot.Core.Utils.Pace.Delay(1200, cancellationToken);
+            }
+        }
+
+        /// <summary>"Remaining attempts today: 2" → 2.</summary>
+        public static int? ParseAttempts(string? text)
+        {
+            var m = System.Text.RegularExpressions.Regex.Match(text ?? "", @"today\W*(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            return m.Success ? int.Parse(m.Groups[1].Value) : null;
+        }
+
+        /// <summary>A pet slot holding a portrait without the red "In Adventure" label.</summary>
+        public static bool IsPetFree(byte[] screenshot, Point slot)
+        {
+            using var img = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
+            using var roi = new OpenCvSharp.Mat(img, new OpenCvSharp.Rect(slot.X - 55, slot.Y - 30, 110, 50));
+            using var red = new OpenCvSharp.Mat();
+            OpenCvSharp.Cv2.InRange(roi, new OpenCvSharp.Scalar(0, 0, 170), new OpenCvSharp.Scalar(90, 80, 255), red);
+            OpenCvSharp.Cv2.MeanStdDev(roi, out _, out var sd);
+            bool empty = sd.Val0 + sd.Val1 + sd.Val2 < 45; // plain beige list background, portraits are busy
+            return !empty && OpenCvSharp.Cv2.CountNonZero(red) < 150;
+        }
+
+        /// <summary>Every place the template matches above the threshold, best first.</summary>
+        public static List<Rectangle> FindAll(byte[] screenshot, string templatePath, double threshold, Rectangle area)
+        {
+            var hits = new List<Rectangle>();
+            using var img = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
+            using var tpl = OpenCvSharp.Cv2.ImRead(templatePath, OpenCvSharp.ImreadModes.Color);
+            using var roi = new OpenCvSharp.Mat(img, new OpenCvSharp.Rect(area.X, area.Y, area.Width, area.Height));
+            using var res = new OpenCvSharp.Mat();
+            OpenCvSharp.Cv2.MatchTemplate(roi, tpl, res, OpenCvSharp.TemplateMatchModes.CCoeffNormed);
+            for (int i = 0; i < 6; i++)
+            {
+                OpenCvSharp.Cv2.MinMaxLoc(res, out _, out double max, out _, out var loc);
+                if (max < threshold) break;
+                hits.Add(new Rectangle(area.X + loc.X, area.Y + loc.Y, tpl.Width, tpl.Height));
+                OpenCvSharp.Cv2.Rectangle(res, new OpenCvSharp.Rect(loc.X - tpl.Width / 2, loc.Y - tpl.Height / 2, tpl.Width, tpl.Height), OpenCvSharp.Scalar.All(-1), -1);
+            }
+            return hits;
         }
 
         /// <summary>True when Comforting Embrace was used.</summary>
