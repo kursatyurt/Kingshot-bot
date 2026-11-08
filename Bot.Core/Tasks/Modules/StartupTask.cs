@@ -275,6 +275,10 @@ namespace Bot.Core.Tasks.Modules
                         continue;
                     }
 
+                    // A popup left over from before the restart (a map tile's Gather card, ...) hides the view markers: Back closes it
+                    if ((DateTime.UtcNow - startTime).TotalSeconds > 15)
+                        await PressBackAsync(account.InstanceNumber, logger);
+
                     if ((DateTime.UtcNow - startTime).TotalMilliseconds < POST_LOAD_DURATION_MS)
                     {
                         logger.LogInfo($"[{account.AccountName}] ⏳ No UI elements detected, waiting before next attempt...");
