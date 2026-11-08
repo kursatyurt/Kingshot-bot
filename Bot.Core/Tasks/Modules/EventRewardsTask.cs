@@ -97,10 +97,15 @@ namespace Bot.Core.Tasks.Modules
             if (!await OpenSidePanelAsync(account.InstanceNumber, logger, cancellationToken)) return;
             await ClickAsync(account.InstanceNumber, logger, new Point(370, 268)); // Daily tab
             await Bot.Core.Utils.Pace.Delay(1200, cancellationToken);
-            await ClickAsync(account.InstanceNumber, logger, new Point(408, 378)); // Gourmet Feast row button
+            // Ready rows move up, so the order changes: find each row by its icon. The Online Rewards row only shows
+            // when the chest is ready, and its button centres the Storehouse with the chest bubble.
+            var panel = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            int? onlineY = panel == null ? null : RowY(panel, "online-rewards-row.png", account.InstanceNumber);
+            int feastY = (panel == null ? null : RowY(panel, "gourmet-feast-row.png", account.InstanceNumber)) ?? 378;
+            await ClickAsync(account.InstanceNumber, logger, new Point(408, onlineY ?? feastY));
             await Bot.Core.Utils.Pace.Delay(2500, cancellationToken);
 
-            var feast = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            var feast = onlineY == null ? await TakeScreenshotAsync(account.InstanceNumber, logger) : null;
             var claim = new Rectangle(300, 935, 160, 30);
             bool feastClaimed = false;
             // Without a feast ready the row button goes straight to the Storehouse: that spot is then green grass
@@ -153,6 +158,12 @@ namespace Bot.Core.Tasks.Modules
                 await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
             }
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
+        }
+
+        private int? RowY(byte[] panel, string icon, int instance)
+        {
+            var (found, rect, _) = _templateMatcher.MatchTemplate(panel, Path.Combine(ImageTemplateFolder, icon), instance, threshold: 0.85, searchArea: new Rectangle(0, 290, 120, 570));
+            return found ? rect.Y + rect.Height / 2 : null;
         }
 
         /// <summary>"00:59:57" → 59 min 57 s; null when OCR found no timer.</summary>
