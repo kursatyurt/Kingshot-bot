@@ -114,6 +114,16 @@ namespace Bot.Core.Tests
         }
 
         [Test]
+        public void IntelMissionCardShowsExpires() // what AutoHunt reads to close a card it left open
+        {
+            var shot = System.IO.File.ReadAllBytes(System.IO.Path.Combine(TestContext.CurrentContext.TestDirectory, "intel-card.png"));
+            string text;
+            try { text = new Bot.Core.Utils.OCRService(new Bot.Core.Logging.LogService()).ExtractTextFromScreenArea(shot, new System.Drawing.Rectangle(180, 840, 360, 45)); }
+            catch (InvalidOperationException) { Assert.Ignore("Tesseract native libraries not next to the test binaries"); return; }
+            Assert.That(text, Does.Contain("Expires"));
+        }
+
+        [Test]
         public void ParsesTitleThenStatusLines()
         {
             var rows = SidePanelStatus.Parse("Building Queue\nEmbassy Upgrading\n05:41:43 |\nTech Research\nIdle\n");

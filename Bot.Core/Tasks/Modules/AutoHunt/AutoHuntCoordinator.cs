@@ -1505,6 +1505,14 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                 await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
                 current = await TakeScreenshotAsync(account.InstanceNumber, logger);
             }
+            // An Intel mission card ("Beast Hunting Lv. 8 … Expires in … View") left open when no target suited: Back closes it
+            if (current != null && new OCRService(logger).ExtractTextFromScreenArea(current, new Rectangle(180, 840, 360, 45)).Contains("Expires"))
+            {
+                logger.LogInfo($"[{account.AccountName}] Closing an Intel mission card");
+                await PressBackAsync(account.InstanceNumber, logger);
+                await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
+                current = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            }
             // A stray tap on a locked march slot opens the March Queue popup (Research/Activate/Buy); only its X is safe
             if (current != null && new OCRService(logger).ExtractTextFromScreenArea(current, new Rectangle(200, 315, 320, 55)).Contains("March"))
             {
