@@ -174,12 +174,21 @@ namespace Bot.Core.Tasks.Modules
                 if (!dispatched) break; // no free spot or no free pet
             }
 
-            await ClickAsync(n, logger, new Point(48, 40)); // Pet Adventure → enclosure
-            await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
-            await ClickAsync(n, logger, new Point(48, 40)); // leave the enclosure
-            await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
+            await LeaveToCityAsync(account, logger, cancellationToken); // Pet Adventure → enclosure → city
             logger.LogInfo($"[{account.AccountName}] Pet Adventure: {claimed} chest(s) opened, {sent} pet(s) sent");
             return claimed + sent > 0 ? $"Pet Adventure: {claimed} chest(s), {sent} pet(s) sent" : null;
+        }
+
+        /// <summary>Back arrow until the city shows (Pet Adventure and the enclosure each need one; a slow screen eats a tap).</summary>
+        private async Task LeaveToCityAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
+        {
+            var baseView = Path.Combine(AppContext.BaseDirectory, "templates", "images", "locator", "base-view.png");
+            for (int i = 0; i < 4; i++)
+            {
+                if (await TakeScreenshotAsync(account.InstanceNumber, logger) is { } shot && _templateMatcher.MatchTemplate(shot, baseView, account.InstanceNumber, 0.7).found) return;
+                await ClickAsync(account.InstanceNumber, logger, new Point(48, 40));
+                await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
+            }
         }
 
         private async Task ClosePopupsAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
@@ -268,8 +277,7 @@ namespace Bot.Core.Tasks.Modules
             }
             await ClickAsync(account.InstanceNumber, logger, new Point(668, 152)); // close Pet Skill
             await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
-            await ClickAsync(account.InstanceNumber, logger, new Point(48, 40));  // leave the enclosure
-            await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
+            await LeaveToCityAsync(account, logger, cancellationToken); // leave the enclosure
             logger.LogInfo($"[{account.AccountName}] Pets: {result}");
             return used;
         }
