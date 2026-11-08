@@ -75,6 +75,7 @@ namespace Bot.Core.Tests
         [TestCase("Available: 962/2.160", 962, 2160)]
         [TestCase("Available: 17/2160", 17, 2160)]
         [TestCase("Available: 292/1", null, null)]   // capacity cut off: no reading rather than "full"
+        [TestCase("Available: 141/216", null, null)] // a dropped digit
         public void ParsesFountainFillOrRejectsAMisread(string text, int? have, int? cap)
         {
             var parsed = SidePanelStatus.ParseFountain(text);

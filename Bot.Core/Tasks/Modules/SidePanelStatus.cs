@@ -92,10 +92,11 @@ namespace Bot.Core.Tasks.Modules
         /// <summary>"Available: 962/2.160" → (962, 2160); thousands separators read as '.' or ','.</summary>
         public static (int, int)? ParseFountain(string text)
         {
-            // OCR can put a space after the separator ("1, 800"); a capacity under 100 or below the amount is a misread
+            // OCR can put a space after the separator ("1, 800") or drop a digit ("216"): a capacity that is not a
+        // multiple of 360, or below the amount, is a misread
             var m = Regex.Match(text, @"Available\W*(\d[\d.,]*)\s*/\s*(\d+(?:[.,]\s?\d{3})*)", RegexOptions.IgnoreCase);
             return m.Success && int.TryParse(Regex.Replace(m.Groups[1].Value, @"\D", ""), out var have)
-                && int.TryParse(Regex.Replace(m.Groups[2].Value, @"\D", ""), out var cap) && cap >= 100 && cap >= have ? (have, cap) : null;
+                && int.TryParse(Regex.Replace(m.Groups[2].Value, @"\D", ""), out var cap) && cap % 360 == 0 && cap >= have ? (have, cap) : null; // capacities seen: 1,440 / 1,800 / 2,160
         }
 
         private static TimeSpan? TimerOf(string line)

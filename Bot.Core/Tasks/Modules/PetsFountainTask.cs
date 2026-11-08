@@ -74,7 +74,15 @@ namespace Bot.Core.Tasks.Modules
             {
                 // The row's tick or arrow both open My Island, which can hold water either way: always look
                 await ClickAsync(account.InstanceNumber, logger, new Point(404, fy.Value));
-                if (await WaitForImageAsync("my-island-title.png", account.InstanceNumber, logger, cancellationToken, 8000, threshold: 0.85))
+                bool onIsland = await WaitForImageAsync("my-island-title.png", account.InstanceNumber, logger, cancellationToken, 8000, threshold: 0.85);
+                if (!onIsland && await TakeScreenshotAsync(account.InstanceNumber, logger) is { } missed)
+                {
+                    var path = Path.Combine(AppContext.BaseDirectory, "logs", "screenshots", $"island_notopen_{account.InstanceNumber}_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.png");
+                    Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                    await File.WriteAllBytesAsync(path, missed, cancellationToken);
+                    logger.LogWarning($"[{account.AccountName}] Fountain row did not open My Island; saved {path}");
+                }
+                if (onIsland)
                 {
                     var collected = await CollectWaterBubblesAsync(account, logger, cancellationToken);
                     if (collected > 0) done.Add($"collected {collected} water bubble(s)");
