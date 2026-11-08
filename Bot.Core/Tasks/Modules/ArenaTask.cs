@@ -24,14 +24,37 @@ namespace Bot.Core.Tasks.Modules
         protected override string GetImageFolderName() => "arena";
 
         private static readonly ConcurrentDictionary<int, DateTime> _nextCheck = new();
+        // Instance → UTC day whose challenges are all used; on disk so a restart does not open the Arena again
+        private static readonly string DoneFile = Path.Combine(AppContext.BaseDirectory, "data", "arena_done.json");
+
+        private static bool DoneToday(int n)
+        {
+            try { return File.Exists(DoneFile) && System.Text.Json.JsonSerializer.Deserialize<Dictionary<int, DateTime>>(File.ReadAllText(DoneFile))?.GetValueOrDefault(n) == DateTime.UtcNow.Date; }
+            catch { return false; }
+        }
+
+        /// <summary>All challenges used: nothing until the 00:00 UTC reset.</summary>
+        private static void MarkDoneToday(int n)
+        {
+            try
+            {
+                var done = File.Exists(DoneFile) ? System.Text.Json.JsonSerializer.Deserialize<Dictionary<int, DateTime>>(File.ReadAllText(DoneFile)) ?? new() : new();
+                done[n] = DateTime.UtcNow.Date;
+                Directory.CreateDirectory(Path.GetDirectoryName(DoneFile)!);
+                File.WriteAllText(DoneFile, System.Text.Json.JsonSerializer.Serialize(done));
+            }
+            catch { }
+            _nextCheck[n] = DateTime.UtcNow.Date.AddDays(1).AddMinutes(5);
+        }
         private static readonly int[] RowY = { 360, 493, 626, 758, 891 }; // swords buttons of the 5 Challenge List rows
 
-        protected override bool OnCooldown(AccountSettings account) => _nextCheck.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next;
+        protected override bool OnCooldown(AccountSettings account) => DoneToday(account.InstanceNumber)
+            || _nextCheck.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next;
 
         protected override async Task<TaskExecutionDetails> ExecuteTaskLogicAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken, bool isReRun = false, IUserNotificationService? userNotifications = null)
         {
-            if (_nextCheck.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next)
-                return new TaskExecutionDetails(true, message: "Arena checked recently");
+            if (OnCooldown(account))
+                return new TaskExecutionDetails(true, message: "Arena done for today or checked recently");
             _nextCheck[account.InstanceNumber] = DateTime.UtcNow.AddHours(3);
 
             var locator = new LocatorService(logger, account, TaskType);
@@ -59,7 +82,7 @@ namespace Bot.Core.Tasks.Modules
             var attempts = m.Success ? int.Parse(m.Groups[1].Value) : 5;
             if (attempts == 0)
             {
-                _nextCheck[account.InstanceNumber] = DateTime.UtcNow.AddHours(6);
+                MarkDoneToday(account.InstanceNumber);
                 await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
                 return new TaskExecutionDetails(true, message: "No Arena attempts left");
             }
@@ -79,7 +102,7 @@ namespace Bot.Core.Tasks.Modules
                 // The list's own counter is the real one: at 0 every swords button is grey and does nothing
                 if (Regex.IsMatch(new OCRService(logger).ExtractTextFromScreenArea(list, new Rectangle(200, 950, 240, 40)) ?? "", @"challenges\W*0\b", RegexOptions.IgnoreCase))
                 {
-                    _nextCheck[account.InstanceNumber] = DateTime.UtcNow.AddHours(6);
+                    MarkDoneToday(account.InstanceNumber);
                     logger.LogInfo($"[{account.AccountName}] Arena: no daily challenges left");
                     break;
                 }
@@ -143,7 +166,7 @@ namespace Bot.Core.Tasks.Modules
                 }
             }
 
-            if (fought >= attempts) _nextCheck[account.InstanceNumber] = DateTime.UtcNow.AddHours(6);
+            if (fought >= attempts) MarkDoneToday(account.InstanceNumber);
             // Close the Challenge List, then leave the Arena page with its back arrow (the locator would call this lost)
             await ClickAsync(account.InstanceNumber, logger, new Point(668, 192));
             await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
