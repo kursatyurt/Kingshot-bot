@@ -93,6 +93,17 @@ namespace Bot.Core.Tests
         }
 
         [Test]
+        public void LeftoverDeployScreenReadsDeploy() // what AutoHunt reads before looking for its hunt button
+        {
+            var shot = System.IO.File.ReadAllBytes(System.IO.Path.Combine(TestContext.CurrentContext.TestDirectory, "deploy-screen.png"));
+            string text;
+            try { text = new Bot.Core.Utils.OCRService(new Bot.Core.Logging.LogService()).ExtractBrightTextFromScreenArea(shot, new System.Drawing.Rectangle(80, 15, 240, 50), 190); }
+            catch (InvalidOperationException) { Assert.Ignore("Tesseract native libraries not next to the test binaries"); return; }
+            Assert.That(text, Does.Contain("Deploy").IgnoreCase);
+            Assert.That(new Bot.Core.Utils.OCRService(new Bot.Core.Logging.LogService()).ExtractBrightTextFromScreenArea(System.IO.File.ReadAllBytes(System.IO.Path.Combine(TestContext.CurrentContext.TestDirectory, "city.png")), new System.Drawing.Rectangle(80, 15, 240, 50), 190), Does.Not.Contain("Deploy").IgnoreCase);
+        }
+
+        [Test]
         public void ParsesTitleThenStatusLines()
         {
             var rows = SidePanelStatus.Parse("Building Queue\nEmbassy Upgrading\n05:41:43 |\nTech Research\nIdle\n");

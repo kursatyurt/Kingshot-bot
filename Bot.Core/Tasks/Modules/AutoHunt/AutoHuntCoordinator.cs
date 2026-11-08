@@ -1511,6 +1511,13 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                 logger.LogInfo($"[{account.AccountName}] Already on the Intel Mission screen");
                 return true;
             }
+            // A Deploy screen left from the previous step covers the hunt button: back out of it first
+            if (current != null && new OCRService(logger).ExtractBrightTextFromScreenArea(current, new Rectangle(80, 15, 240, 50), 190).Contains("Deploy", StringComparison.OrdinalIgnoreCase))
+            {
+                logger.LogInfo($"[{account.AccountName}] Closing a leftover Deploy screen");
+                await PressBackAsync(account.InstanceNumber, logger);
+                await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
+            }
             logger.LogInfo($"[{account.AccountName}] Looking for hunt button...");
             if (await WaitForImageAsync("hunt-button.png", account.InstanceNumber, logger, cancellationToken,
                 timeoutMs: 2000, threshold: 0.6, searchArea: AutoHuntConstants.HuntButtonArea))
