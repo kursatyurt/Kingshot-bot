@@ -193,6 +193,32 @@ namespace Bot.Core.Utils
                     finally { _closingPanel = false; }
                 }
 
+                // The cloud transition between city and map (an almost uniform pale screen): wait it out and look again
+                if (!_closingPanel)
+                {
+                    using var mat = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Grayscale);
+                    OpenCvSharp.Cv2.MeanStdDev(mat, out var mean, out var sd);
+                    if (mean.Val0 > 190 && sd.Val0 < 25)
+                    {
+                        _logger.LogInfo("[Locator] Cloud transition - waiting for it to finish");
+                        await Task.Delay(3000, cancellationToken);
+                        _closingPanel = true;
+                        try { return await DetectCurrentViewAsync(instanceNumber, cancellationToken); }
+                        finally { _closingPanel = false; }
+                    }
+                }
+
+                // Chat left open (its "Chat" title top left): Back closes it
+                if (!_closingPanel && new OCRService(_logger).ExtractBrightTextFromScreenArea(screenshot, new Rectangle(90, 15, 130, 50), 190)?.Contains("Chat", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    _logger.LogInfo("[Locator] Chat is open - closing it with Back");
+                    await adbController.InputKeyEventAsync(4, cancellationToken); // Back
+                    await Task.Delay(1500, cancellationToken);
+                    _closingPanel = true;
+                    try { return await DetectCurrentViewAsync(instanceNumber, cancellationToken); }
+                    finally { _closingPanel = false; }
+                }
+
                 // The "Reward for first purchase / TOP UP NOW" promo after a game start: Back closes it (TOP UP is never tapped)
                 if (!_closingPanel && new OCRService(_logger).ExtractBrightTextFromScreenArea(screenshot, new Rectangle(60, 120, 600, 120), 190)?.Contains("first purchas", StringComparison.OrdinalIgnoreCase) == true)
                 {

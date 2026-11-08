@@ -1,0 +1,31 @@
+using System.IO;
+using NUnit.Framework;
+
+namespace Bot.Core.Tests
+{
+    /// <summary>Screens the locator once reported as "lost" (2026-11-08), checked the way LocatorService checks them.</summary>
+    public class LostScreenTests
+    {
+        private static byte[] Shot(string f) => File.ReadAllBytes(Path.Combine(TestContext.CurrentContext.TestDirectory, f));
+
+        private static bool IsCloud(byte[] s)
+        {
+            using var mat = OpenCvSharp.Cv2.ImDecode(s, OpenCvSharp.ImreadModes.Grayscale);
+            OpenCvSharp.Cv2.MeanStdDev(mat, out var mean, out var sd);
+            return mean.Val0 > 190 && sd.Val0 < 25;
+        }
+
+        private static bool IsChat(byte[] s) => new Bot.Core.Utils.OCRService(new Bot.Core.Logging.LogService())
+            .ExtractBrightTextFromScreenArea(s, new System.Drawing.Rectangle(90, 15, 130, 50), 190)?.Contains("Chat", System.StringComparison.OrdinalIgnoreCase) == true;
+
+        [Test]
+        public void CloudAndChatAreRecognised()
+        {
+            Assert.That(IsCloud(Shot("lost-cloud.png")), Is.True);
+            Assert.That(IsCloud(Shot("lost-chat.png")), Is.False);
+            Assert.That(IsCloud(Shot("panel-town.png")), Is.False);
+            Assert.That(IsChat(Shot("lost-chat.png")), Is.True);
+            Assert.That(IsChat(Shot("panel-town.png")), Is.False);
+        }
+    }
+}
