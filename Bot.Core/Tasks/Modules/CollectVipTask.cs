@@ -280,6 +280,20 @@ namespace Bot.Core.Tasks.Modules
 
                 await Bot.Core.Utils.Pace.Delay(500, cancellationToken); // Wait for navigation
 
+                // The close/back templates can miss: leave the level popup and the VIP page with Back while either shows
+                for (int i = 0; i < 3; i++)
+                {
+                    var left = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                    if (left == null) break;
+                    bool onVip = _templateMatcher.MatchTemplate(left, Path.Combine(ImageTemplateFolder, "vip-chest.png"), account.InstanceNumber,
+                                     threshold: GameCoordinates.Thresholds.StandardConfidence, searchArea: VipChestSearchArea).found
+                                 || _templateMatcher.MatchTemplate(left, Path.Combine(ImageTemplateFolder, "level-close.png"), account.InstanceNumber,
+                                     threshold: GameCoordinates.Thresholds.StandardConfidence).found;
+                    if (!onVip) break;
+                    await PressBackAsync(account.InstanceNumber, logger);
+                    await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
+                }
+
                 // Update collection time only if both VIP rewards were clicked
                 if (_vipRewardsClicked && _vipRewards2Clicked)
                 {

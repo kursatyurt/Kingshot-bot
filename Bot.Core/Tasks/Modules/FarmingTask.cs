@@ -140,8 +140,14 @@ namespace Bot.Core.Tasks.Modules
             if (hold == null || !IsCyanArea(hold, new Rectangle(240, 822, 240, 50)))
             {
                 logger.LogInfo($"[{account.AccountName}] No Terror rally now (no stamina or free march)");
-                await PressBackAsync(account.InstanceNumber, logger);
-                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
+                // Back closes the rally dialog; the search panel under it needs a second Back
+                var mapView = Path.Combine(AppContext.BaseDirectory, "templates", "images", "locator", "map-view.png");
+                for (int back = 0; back < 2; back++)
+                {
+                    await PressBackAsync(account.InstanceNumber, logger);
+                    await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
+                    if (await TakeScreenshotAsync(account.InstanceNumber, logger) is { } map && _templateMatcher.MatchTemplate(map, mapView, account.InstanceNumber, 0.7).found) break;
+                }
                 await new LocatorService(logger, account).EnsureViewAsync(ViewType.MapView, account.InstanceNumber, cancellationToken);
                 return false;
             }
