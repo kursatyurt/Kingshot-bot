@@ -87,7 +87,7 @@ namespace Bot.Core.Tasks
         // Timing controls for auto tasks to prevent excessive triggering
         private static readonly ConcurrentDictionary<int, DateTime> _lastAllianceHelpTime = new();
         private static readonly ConcurrentDictionary<int, DateTime> _lastAutoHealTime = new();
-        private static readonly TimeSpan AutoTaskCooldown = TimeSpan.FromMinutes(1); // 1 minute cooldown
+        private static readonly TimeSpan AutoTaskCooldown = TimeSpan.FromSeconds(30);
         
         private static readonly string[] ResourceIcons = { "bread.png", "wood.png", "stone.png", "iron.png" };
         

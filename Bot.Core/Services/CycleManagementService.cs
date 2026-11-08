@@ -364,7 +364,12 @@ namespace Bot.Core.Services
                         for (int minute = 0; minute < waitMinutes; minute++)
                         {
                             if (cycleToken.IsCancellationRequested) break;
-                            await Task.Delay(TimeSpan.FromMinutes(1), cycleToken); 
+                            // Allies' help requests are answered while waiting too, every 30 s
+                            for (int half = 0; half < 2; half++)
+                            {
+                                await Task.Delay(TimeSpan.FromSeconds(30), cycleToken);
+                                await HelpAlliesAsync(config, cycleToken);
+                            }
                             _logger.LogInfo($"⏳ Wait time remaining: {waitMinutes - minute - 1} minutes");
                         }
                     }
@@ -386,6 +391,21 @@ namespace Bot.Core.Services
                 _cycleGlobalCts = null;
                 _instanceSemaphore.Dispose();
                 _logger.LogInfo("Cycle management service stopped and cleaned up.");
+            }
+        }
+
+        private async Task HelpAlliesAsync(BotConfig config, CancellationToken cancellationToken)
+        {
+            foreach (var account in config.Accounts.Where(a => a.IsEnabled && a.EnabledTasks.Contains(TaskType.AutoAllianceHelp)))
+            {
+                try
+                {
+                    var help = new Tasks.Modules.AllianceHelpTask { MaxAttempts = 1 };
+                    await help.InitializeAsync(_logger, cancellationToken);
+                    await help.ExecuteAsync(account, _logger, cancellationToken);
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex) { _logger.LogWarning($"[{account.AccountName}] Alliance Help between cycles failed: {ex.Message}"); }
             }
         }
 

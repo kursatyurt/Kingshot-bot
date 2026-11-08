@@ -106,7 +106,7 @@ namespace Bot.Core.Tasks.Modules
                 }
 
                 logger.LogInfo($"[{account.AccountName}] ℹ️ No alliance help button found after {maxAttempts} attempts");
-                _nextCheck[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(5);
+                _nextCheck[account.InstanceNumber] = DateTime.UtcNow.AddSeconds(30); // one screenshot: allies get help within ~30 s
                 return TaskExecutionDetails.Succeeded(); // Still return success as no help button is a valid state
             }
             catch (Exception ex)
