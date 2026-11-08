@@ -225,6 +225,9 @@ namespace Bot.Core.Utils
                     _logger.LogInfo("[Locator] Connection lost - tapping Reconnect");
                     await adbController.TapAsync(512, 788, cancellationToken);
                     await Task.Delay(8000, cancellationToken);
+                    // Reconnecting reloads the game: wait for the loading screen here, the re-check below skips it
+                    for (int i = 0; i < 12 && await adbController.TakeScreenshotAsync(cancellationToken) is { } s && IsLoadingScreen(s); i++)
+                        await Task.Delay(5000, cancellationToken);
                     _closingPanel = true;
                     try { return await DetectCurrentViewAsync(instanceNumber, cancellationToken); }
                     finally { _closingPanel = false; }
