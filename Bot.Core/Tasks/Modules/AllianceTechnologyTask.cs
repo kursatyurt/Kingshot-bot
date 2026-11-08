@@ -176,10 +176,9 @@ namespace Bot.Core.Tasks.Modules
                             logger.LogInfo($"[{account.AccountName}] ✅ Clicked back button");
                         }
                         
-                        if (i < 1) // Don't wait after the last click
-                        {
-                            await Bot.Core.Utils.Pace.Delay(500, cancellationToken);
-                        }
+                        // Let the page close before looking again: a back arrow still sliding away was matched and the
+                        // tap then landed on the city's governor avatar at the same spot, opening the Governor Profile
+                        await Bot.Core.Utils.Pace.Delay(1200, cancellationToken);
                     }
                     
                     return new TaskExecutionDetails(true, message: "Green thumb not available, task completed");
