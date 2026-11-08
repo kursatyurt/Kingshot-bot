@@ -183,7 +183,7 @@ namespace Bot.Core.Utils
                 }
 
                 // Celebration screens (a new troop tier, rewards) say "Tap anywhere to continue": tap and look again
-                if (!_closingPanel && new OCRService(_logger).ExtractBrightTextFromScreenArea(screenshot, new Rectangle(100, 1190, 520, 80), 190)?.Contains("anywhere", StringComparison.OrdinalIgnoreCase) == true)
+                if (!_closingPanel && new OCRService(_logger).ExtractBrightTextFromScreenArea(screenshot, new Rectangle(60, 980, 600, 290), 190)?.Contains("anywhere", StringComparison.OrdinalIgnoreCase) == true)
                 {
                     _logger.LogInfo("[Locator] 'Tap anywhere to continue' screen - tapping it away");
                     await adbController.TapAsync(360, 1000, cancellationToken);

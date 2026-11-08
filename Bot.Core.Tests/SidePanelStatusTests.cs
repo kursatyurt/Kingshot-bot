@@ -82,12 +82,13 @@ namespace Bot.Core.Tests
             Assert.That(parsed, Is.EqualTo(have == null ? null : ((int, int)?)(have.Value, cap!.Value)));
         }
 
-        [Test]
-        public void NewTroopPopupSaysTapAnywhere() // what the locator reads to dismiss it
+        [TestCase("tap-anywhere.png")]  // new troop tier: text low on the screen
+        [TestCase("victory.png")]       // beast Victory rewards: text higher up
+        public void TapAnywhereScreensAreRecognised(string file) // what the locator reads to dismiss them
         {
-            var shot = System.IO.File.ReadAllBytes(System.IO.Path.Combine(TestContext.CurrentContext.TestDirectory, "tap-anywhere.png"));
+            var shot = System.IO.File.ReadAllBytes(System.IO.Path.Combine(TestContext.CurrentContext.TestDirectory, file));
             string text;
-            try { text = new Bot.Core.Utils.OCRService(new Bot.Core.Logging.LogService()).ExtractBrightTextFromScreenArea(shot, new System.Drawing.Rectangle(100, 1190, 520, 80), 190); }
+            try { text = new Bot.Core.Utils.OCRService(new Bot.Core.Logging.LogService()).ExtractBrightTextFromScreenArea(shot, new System.Drawing.Rectangle(60, 980, 600, 290), 190); }
             catch (InvalidOperationException) { Assert.Ignore("Tesseract native libraries not next to the test binaries"); return; }
             Assert.That(text, Does.Contain("anywhere").IgnoreCase);
         }
