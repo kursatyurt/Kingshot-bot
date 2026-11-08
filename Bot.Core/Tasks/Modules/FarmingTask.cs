@@ -905,6 +905,9 @@ namespace Bot.Core.Tasks.Modules
                             await ClickAsync(account.InstanceNumber, logger, new Point(642, 340));
                             await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                         }
+                        // The resource search panel stays open and hides the map button: Back closes it
+                        await PressBackAsync(account.InstanceNumber, logger);
+                        await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                         throw new NoTroopsAvailableException();
                     }
 
