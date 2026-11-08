@@ -197,7 +197,7 @@ namespace Bot.Core.Utils
                 if (!_closingPanel && new OCRService(_logger).ExtractBrightTextFromScreenArea(screenshot, new Rectangle(60, 120, 600, 120), 190)?.Contains("first purchas", StringComparison.OrdinalIgnoreCase) == true)
                 {
                     _logger.LogInfo("[Locator] First-purchase promo - closing it with Back");
-                    await adbController.PressBackButtonAsync(cancellationToken);
+                    await adbController.InputKeyEventAsync(4, cancellationToken); // Back
                     await Task.Delay(1500, cancellationToken);
                     _closingPanel = true;
                     try { return await DetectCurrentViewAsync(instanceNumber, cancellationToken); }
