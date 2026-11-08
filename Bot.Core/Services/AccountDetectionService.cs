@@ -124,6 +124,7 @@ namespace Bot.Core.Services
                 if (!string.IsNullOrEmpty(accountId))
                 {
                     _logger.LogInfo($"[{account.AccountName}] ✅ Successfully detected account ID: '{accountId}'");
+                    _lastGoodId[account.InstanceNumber] = accountId;
                     return accountId;
                 }
                 else
@@ -253,8 +254,16 @@ namespace Bot.Core.Services
         /// <summary>
         /// Generates a fallback account ID when detection fails
         /// </summary>
+        // The profile sometimes draws after the OCR shot: one failed read must not swap the ID that keys every timer
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, string> _lastGoodId = new();
+
         private string GetFallbackAccountId(AccountSettings account)
         {
+            if (_lastGoodId.TryGetValue(account.InstanceNumber, out var lastGood))
+            {
+                _logger.LogInfo($"[{account.AccountName}] Account ID not readable this time - keeping '{lastGood}'");
+                return lastGood;
+            }
             // Use instance number and account name as fallback
             string fallbackId = $"inst{account.InstanceNumber}_{account.AccountName}_fallback";
             _logger.LogWarning($"[{account.AccountName}] ⚠️ Account detection failed - using fallback ID: '{fallbackId}'");
