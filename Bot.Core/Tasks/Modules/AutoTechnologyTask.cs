@@ -49,7 +49,9 @@ namespace Bot.Core.Tasks.Modules
             {
                 // The red dot on Tech Research is the game saying something can be researched
                 if (!dots.HasDot("Research")) return true;
-                if (GetTaskSettings<AutoTechnologySettings>(account).AllEmpty(n)) AutoTechnologySettings.ClearEmpty(n); // a dot means a tree opened
+                // Every tree scanned empty: the dot can stay lit for what the bot cannot start; wait for the marks to lapse
+                // or for the Academy upgrade to finish rather than rescanning everything each cycle
+                if (GetTaskSettings<AutoTechnologySettings>(account).AllEmpty(n)) return true;
                 return dots.Town.Any(r => r.Is("Research") && r.Timer != null);
             }
             if (GetTaskSettings<AutoTechnologySettings>(account).AllEmpty(n)) return true;
@@ -110,6 +112,7 @@ namespace Bot.Core.Tasks.Modules
             ResearchType researchType = default;
             for (int tree = 0; tree < settings.CategoryCount; tree++)
             {
+            if (settings.AllEmpty(account.InstanceNumber)) break; // every tree just came up empty: do not wrap round to a blocked one
             bool academyGate = false;
             researchType = settings.NextResearchType(account.InstanceNumber);
             var tab = researchType switch { ResearchType.Economy => new Point(361, 123), ResearchType.Battle => new Point(585, 120), _ => new Point(130, 116) };
