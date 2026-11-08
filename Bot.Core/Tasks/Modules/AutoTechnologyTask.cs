@@ -21,7 +21,6 @@ namespace Bot.Core.Tasks.Modules
         public override string Name => "Auto Technology";
 
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, DateTime> _nextCheck = new();
-        private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, int> _emptyScans = new(); // categories found empty in a row
 
         private static readonly Point SidePanelCloseHandle = new Point(464, 544);
         private static readonly Rectangle ResearchStatusArea = new Rectangle(150, 822, 160, 30);
@@ -76,8 +75,11 @@ namespace Bot.Core.Tasks.Modules
             await ClickAsync(account.InstanceNumber, logger, RingResearchButton);
             await Bot.Core.Utils.Pace.Delay(2500, cancellationToken);
 
-            // 3. Category tab, then items top to bottom
-            var researchType = settings.NextResearchType(account.InstanceNumber);
+            // 3. Category tab, then items top to bottom; an empty tree moves on to the next tab in the same visit
+            ResearchType researchType = default;
+            for (int tree = 0; tree < settings.CategoryCount; tree++)
+            {
+            researchType = settings.NextResearchType(account.InstanceNumber);
             var tab = researchType switch { ResearchType.Economy => new Point(361, 123), ResearchType.Battle => new Point(585, 120), _ => new Point(130, 116) };
             await ClickAsync(account.InstanceNumber, logger, tab);
             await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
@@ -154,14 +156,13 @@ namespace Bot.Core.Tasks.Modules
 
             logger.LogInfo($"[{account.AccountName}] No {researchType} research available right now");
             AutoTechnologySettings.MarkEmpty(account.InstanceNumber, researchType);
-            // Try the other category on the next cycle; only when every category came up empty wait an hour
-            var empties = _emptyScans.AddOrUpdate(account.InstanceNumber, 1, (_, n) => n + 1);
-            _nextCheck[account.InstanceNumber] = empties < settings.CategoryCount ? DateTime.UtcNow : DateTime.UtcNow.AddMinutes(60);
-            if (empties >= settings.CategoryCount) _emptyScans[account.InstanceNumber] = 0;
+            }
+            // Every tree came up empty: look again in an hour
+            _nextCheck[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(60);
             await PressBackAsync(account.InstanceNumber, logger); // leave Tech Research ourselves
             await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
-            return new TaskExecutionDetails(true, message: $"No {researchType} research available");
+            return new TaskExecutionDetails(true, message: "No research available in any tree");
         }
 
         /// <summary>
@@ -240,7 +241,6 @@ namespace Bot.Core.Tasks.Modules
                 await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
             }
             _nextCheck[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(5); // short researches finish fast
-            _emptyScans[account.InstanceNumber] = 0;
             // The tree's bottom bar shows the running research's timer: no new research can start before it ends
             if (started != null)
             {
