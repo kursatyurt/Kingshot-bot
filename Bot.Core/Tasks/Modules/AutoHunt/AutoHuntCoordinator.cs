@@ -1567,9 +1567,9 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                     await huntLocator.EnsureViewAsync(ViewType.MapView, account.InstanceNumber, cancellationToken);
                     logger.LogInfo($"[{account.AccountName}] Locator service completed view recovery, retrying hunt button detection");
                     
-                    // Retry after locator service with timeout
+                    // Retry after locator service; the city-to-map cloud transition can take longer than 2 s
                     if (await WaitForImageAsync("hunt-button.png", account.InstanceNumber, logger, cancellationToken,
-                        timeoutMs: 2000, threshold: 0.6, searchArea: AutoHuntConstants.HuntButtonArea))
+                        timeoutMs: 8000, threshold: 0.6, searchArea: AutoHuntConstants.HuntButtonArea))
                     {
                         // Found the hunt button, now click it
                         if (!await FindAndClickImageAsync("hunt-button.png", account.InstanceNumber, logger,
