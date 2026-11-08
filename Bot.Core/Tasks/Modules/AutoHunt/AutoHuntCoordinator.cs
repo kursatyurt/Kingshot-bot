@@ -749,6 +749,10 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                         logger.LogWarning($"[{account.AccountName}] OCR error on check #{checkCount}: {ex.Message}");
                     }
 
+                    // A missed Fight tap leaves Squad Settings showing: tap Fight again
+                    if (!resultFound && checkCount % 6 == 0 && await FindAndClickImageAsync("fight.png", account.InstanceNumber, logger))
+                        logger.LogInfo($"[{account.AccountName}] Still on Squad Settings - tapped Fight again");
+
                     // Log progress every 3 checks or every 2 seconds
                     if (checkCount % 3 == 0 || (DateTime.UtcNow - startTime).TotalSeconds >= checkCount * 2)
                     {
