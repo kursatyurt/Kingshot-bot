@@ -19,6 +19,17 @@ namespace Bot.Core.Tests
             .ExtractBrightTextFromScreenArea(s, new System.Drawing.Rectangle(90, 15, 130, 50), 190)?.Contains("Chat", System.StringComparison.OrdinalIgnoreCase) == true;
 
         [Test]
+        public void LoadingScreenIsRecognised()
+        {
+            static bool Loading(byte[] s) => new Bot.Core.Utils.OCRService(new Bot.Core.Logging.LogService())
+                .ExtractBrightTextFromScreenArea(s, new System.Drawing.Rectangle(250, 1145, 220, 40), 190)?.Contains('%') == true;
+            Assert.That(Loading(Shot("lost-loading.png")), Is.True);
+            Assert.That(Loading(Shot("panel-town.png")), Is.False);
+            Assert.That(Loading(Shot("lost-emporium.png")), Is.False);
+            Assert.That(Loading(Shot("lost-chat.png")), Is.False);
+        }
+
+        [Test]
         public void EmporiumIsRecognised()
         {
             static string Title(byte[] s) => new Bot.Core.Utils.OCRService(new Bot.Core.Logging.LogService())

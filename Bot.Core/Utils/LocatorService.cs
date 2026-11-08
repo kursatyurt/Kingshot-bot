@@ -208,6 +208,17 @@ namespace Bot.Core.Utils
                     }
                 }
 
+                // Game loading screen (after a restart or Reconnect): wait for the bar to finish instead of pressing Back
+                if (!_closingPanel && IsLoadingScreen(screenshot))
+                {
+                    _logger.LogInfo("[Locator] Game is loading - waiting for it");
+                    for (int i = 0; i < 12 && await adbController.TakeScreenshotAsync(cancellationToken) is { } s && IsLoadingScreen(s); i++)
+                        await Task.Delay(5000, cancellationToken);
+                    _closingPanel = true;
+                    try { return await DetectCurrentViewAsync(instanceNumber, cancellationToken); }
+                    finally { _closingPanel = false; }
+                }
+
                 // "Connection lost" dialog: Back does nothing, Reconnect brings the game back
                 if (!_closingPanel && new OCRService(_logger).ExtractTextFromScreenArea(screenshot, new Rectangle(100, 570, 520, 70))?.Contains("Unable to connect", StringComparison.OrdinalIgnoreCase) == true)
                 {
@@ -290,6 +301,10 @@ namespace Bot.Core.Utils
                 return await HandleNoViewDetected($"[Locator] Error detecting view: {ex.Message}");
             }
         }
+
+        /// <summary>The loading bar at the bottom shows a percentage ("45.67%").</summary>
+        public bool IsLoadingScreen(byte[] screenshot) =>
+            new OCRService(_logger).ExtractBrightTextFromScreenArea(screenshot, new Rectangle(250, 1145, 220, 40), 190)?.Contains('%') == true;
 
         private async Task<ViewType> HandleNoViewDetected(string errorMessage)
         {
