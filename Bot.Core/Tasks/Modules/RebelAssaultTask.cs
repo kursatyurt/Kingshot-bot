@@ -28,6 +28,26 @@ namespace Bot.Core.Tasks.Modules
         private static readonly Rectangle ResultButtonsArea = new Rectangle(0, 820, 720, 200);
         private static readonly Rectangle SkipArea = new Rectangle(500, 40, 220, 120);
         private static readonly TimeSpan MaxBattle = TimeSpan.FromMinutes(15);
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, DateTime> _assaultAt = new();
+
+        // A countdown under the icon means the wave is still on its way: its dialog has no Battle button until then
+        protected override bool OnCooldown(AccountSettings account) => _assaultAt.TryGetValue(account.InstanceNumber, out var at) && DateTime.UtcNow < at;
+
+        /// <summary>The red "00:44:59" under the rebel icon (red digits only; the art around them drops out).</summary>
+        public static TimeSpan? ReadCountdown(byte[] screenshot, OCRService ocr)
+        {
+            using var img = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
+            using var roi = new OpenCvSharp.Mat(img, new OpenCvSharp.Rect(10, 276, 130, 32));
+            using var mask = new OpenCvSharp.Mat();
+            OpenCvSharp.Cv2.InRange(roi, new OpenCvSharp.Scalar(0, 0, 200), new OpenCvSharp.Scalar(90, 90, 255), mask);
+            using var inverted = new OpenCvSharp.Mat();
+            OpenCvSharp.Cv2.BitwiseNot(mask, inverted);
+            using var big = new OpenCvSharp.Mat();
+            OpenCvSharp.Cv2.Resize(inverted, big, new OpenCvSharp.Size(0, 0), 4, 4, OpenCvSharp.InterpolationFlags.Cubic);
+            using var bgr = new OpenCvSharp.Mat();
+            OpenCvSharp.Cv2.CvtColor(big, bgr, OpenCvSharp.ColorConversionCodes.GRAY2BGR);
+            return EventRewardsTask.ParseTimer(ocr.ExtractTextFromMat(bgr));
+        }
 
         protected override async Task<TaskExecutionDetails> ExecuteTaskLogicAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken, bool isReRun = false, IUserNotificationService? userNotifications = null)
         {
@@ -39,6 +59,12 @@ namespace Bot.Core.Tasks.Modules
             var (iconShown, iconRect, _) = _templateMatcher.MatchTemplate(city, Path.Combine(ImageTemplateFolder, "rebel-icon.png"),
                 account.InstanceNumber, threshold: 0.8, searchArea: IconArea);
             if (!iconShown) return new TaskExecutionDetails(true, message: "No Rebel Assault");
+            if (ReadCountdown(city, new OCRService(logger)) is { } wait && wait > TimeSpan.FromSeconds(30))
+            {
+                _assaultAt[account.InstanceNumber] = DateTime.UtcNow + wait;
+                logger.LogInfo($"[{account.AccountName}] ⚔️ Rebel Assault arrives in {wait}; defending then");
+                return new TaskExecutionDetails(true, message: $"Rebel Assault in {wait}");
+            }
 
             logger.LogInfo($"[{account.AccountName}] ⚔️ Rebel Assault: defending the city");
             await ClickRandomInRectAsync(account.InstanceNumber, logger, iconRect);

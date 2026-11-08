@@ -135,6 +135,16 @@ namespace Bot.Core.Tests
         }
 
         [Test]
+        public void ReadsTheRebelAssaultCountdown()
+        {
+            var shot = System.IO.File.ReadAllBytes(System.IO.Path.Combine(TestContext.CurrentContext.TestDirectory, "rebel-countdown.png"));
+            TimeSpan? wait;
+            try { wait = Bot.Core.Tasks.Modules.RebelAssaultTask.ReadCountdown(shot, new Bot.Core.Utils.OCRService(new Bot.Core.Logging.LogService())); }
+            catch (InvalidOperationException) { Assert.Ignore("Tesseract native libraries not next to the test binaries"); return; }
+            Assert.That(wait, Is.EqualTo(new TimeSpan(0, 44, 59)));
+        }
+
+        [Test]
         public void ParsesTitleThenStatusLines()
         {
             var rows = SidePanelStatus.Parse("Building Queue\nEmbassy Upgrading\n05:41:43 |\nTech Research\nIdle\n");
