@@ -42,6 +42,23 @@ namespace Bot.Core.Tests
             Assert.That(Read("panel-daily-online.png").Any(r => r.Is("Online Rewards")), Is.True);
         }
 
+        [TestCase("panel-town.png", "Research")]
+        [TestCase("panel-daily-online.png", "Online Rewards")]
+        [TestCase("panel-daily-pets-done.png", "Adventure")]
+        [TestCase("panel-daily.png", null)]
+        [TestCase("panel-wilderness.png", null)]
+        public void RedDotsMarkTheRowsWithSomethingToDo(string file, string? row)
+        {
+            var shot = System.IO.File.ReadAllBytes(System.IO.Path.Combine(TestContext.CurrentContext.TestDirectory, file));
+            var dots = SidePanelStatus.RowDots(shot);
+            Assert.That(dots, Has.Count.EqualTo(row == null ? 0 : 1));
+            if (row == null) return;
+            string title;
+            try { title = new Bot.Core.Utils.OCRService(new Bot.Core.Logging.LogService()).ExtractBrightTextFromScreenArea(shot, new System.Drawing.Rectangle(70, dots[0] - 8, 300, 32), 190); }
+            catch (InvalidOperationException) { Assert.Ignore("Tesseract native libraries not next to the test binaries"); return; }
+            Assert.That(title, Does.Contain(row));
+        }
+
         [Test]
         public void ParsesTitleThenStatusLines()
         {

@@ -31,7 +31,13 @@ namespace Bot.Core.Tasks.Modules
         public override string Name => "Side Panel Scan";
         protected override string GetImageFolderName() => "locator";
 
-        public record Scan(DateTime At, List<PanelRow> Town, List<PanelRow> Wilderness, List<PanelRow> Daily);
+        /// <summary>Rows and the titles of rows carrying a red dot (the game's "something to do here").</summary>
+        public record Scan(DateTime At, List<PanelRow> Town, List<PanelRow> Wilderness, List<PanelRow> Daily, List<string> Dots)
+        {
+            public bool HasDot(string word) => Dots.Any(d => d.Contains(word, StringComparison.OrdinalIgnoreCase));
+            /// <summary>A dotted Town row that is a building queue (not a camp, not research).</summary>
+            public bool BuildingDot => Dots.Any(d => d.StartsWith("Town:") && !new[] { "Infantry", "Cavalry", "Archer", "Research" }.Any(w => d.Contains(w, StringComparison.OrdinalIgnoreCase)));
+        }
 
         private static readonly ConcurrentDictionary<int, Scan> _latest = new();
         private static readonly Rectangle PanelText = new(70, 300, 300, 560);
@@ -56,6 +62,18 @@ namespace Bot.Core.Tasks.Modules
             return rows;
         }
 
+        /// <summary>Top edges of the red dots on the rows' arrow buttons (15 px blobs at x≈410; red status text is smaller).</summary>
+        public static List<int> RowDots(byte[] screenshot)
+        {
+            using var img = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
+            using var roi = new OpenCvSharp.Mat(img, new OpenCvSharp.Rect(395, 290, 50, 580));
+            using var mask = new OpenCvSharp.Mat();
+            OpenCvSharp.Cv2.InRange(roi, new OpenCvSharp.Scalar(0, 0, 190), new OpenCvSharp.Scalar(90, 90, 255), mask);
+            OpenCvSharp.Cv2.FindContours(mask, out var contours, out _, OpenCvSharp.RetrievalModes.External, OpenCvSharp.ContourApproximationModes.ApproxSimple);
+            return contours.Select(OpenCvSharp.Cv2.BoundingRect).Where(b => b.Width is >= 12 and <= 20 && b.Height is >= 12 and <= 20)
+                .Select(b => b.Y + 290).OrderBy(y => y).ToList();
+        }
+
         private static TimeSpan? TimerOf(string line)
         {
             var m = Regex.Match(line, @"(\d{1,2}):(\d{2}):(\d{2})");
@@ -70,19 +88,23 @@ namespace Bot.Core.Tasks.Modules
             await InitializeAsync(logger, cancellationToken);
             if (!await OpenSidePanelAsync(n, logger, cancellationToken)) return; // opens on the Town tab
             var ocr = new OCRService(logger);
-            async Task<List<PanelRow>> ReadTab(Point tab)
+            var dots = new List<string>();
+            async Task<List<PanelRow>> ReadTab(Point tab, string name)
             {
                 await ClickAsync(n, logger, tab);
                 await Pace.Delay(800, cancellationToken);
                 var shot = await TakeScreenshotAsync(n, logger);
-                return shot == null ? new() : Parse(ocr.ExtractBrightTextFromScreenArea(shot, PanelText, 190));
+                if (shot == null) return new();
+                foreach (var y in RowDots(shot)) // the row's title sits just below its arrow's dot
+                    dots.Add($"{name}:{ocr.ExtractBrightTextFromScreenArea(shot, new Rectangle(70, y - 8, 300, 32), 190).Trim()}");
+                return Parse(ocr.ExtractBrightTextFromScreenArea(shot, PanelText, 190));
             }
-            var scan = new Scan(DateTime.UtcNow, await ReadTab(new Point(80, 268)), await ReadTab(new Point(225, 268)), await ReadTab(new Point(370, 268)));
+            var scan = new Scan(DateTime.UtcNow, await ReadTab(new Point(80, 268), "Town"), await ReadTab(new Point(225, 268), "Wilderness"), await ReadTab(new Point(370, 268), "Daily"), dots);
             await ClickAsync(n, logger, new Point(464, 544)); // close the panel by its ◁ handle
             await Pace.Delay(600, cancellationToken);
             _latest[n] = scan;
             string Show(List<PanelRow> rows) => string.Join(", ", rows.Where(r => r.Timer != null || r.Idle).Select(r => $"{r.Title}={(r.Idle ? "Idle" : r.Timer.ToString())}"));
-            logger.LogInfo($"[{account.AccountName}] 📋 Panel - Town: {Show(scan.Town)} | Wilderness: {Show(scan.Wilderness)} | Daily: {Show(scan.Daily)}");
+            logger.LogInfo($"[{account.AccountName}] 📋 Panel - Town: {Show(scan.Town)} | Wilderness: {Show(scan.Wilderness)} | Daily: {Show(scan.Daily)} | 🔴 {string.Join(", ", dots)}");
         }
 
         protected override Task<TaskExecutionDetails> ExecuteTaskLogicAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken, bool isReRun = false, IUserNotificationService? userNotifications = null)

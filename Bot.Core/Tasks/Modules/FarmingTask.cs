@@ -88,7 +88,8 @@ namespace Bot.Core.Tasks.Modules
         protected override bool OnCooldown(AccountSettings account)
         {
             if (SidePanelStatus.Latest(account.InstanceNumber) is { } p && p.Wilderness.Any(r => r.Timer != null || r.Idle))
-                return !p.Wilderness.Any(r => r.Idle) && DateTime.UtcNow < p.At + p.Wilderness.Where(r => r.Timer != null).Min(r => r.Timer!.Value);
+                return !p.Wilderness.Any(r => r.Idle) && !p.Dots.Any(d => d.StartsWith("Wilderness:"))
+                    && DateTime.UtcNow < p.At + p.Wilderness.Where(r => r.Timer != null).Min(r => r.Timer!.Value);
             return NextMarchReturn.TryGetValue(account.InstanceNumber, out var back) && DateTime.UtcNow < back;
         }
         private readonly string _templateFolder;

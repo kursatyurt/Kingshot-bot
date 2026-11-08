@@ -13,6 +13,7 @@ namespace Bot.Core.Tests
             // As stored in config: taskSettings["AutoTechnology"] = {"ResearchTypes":[0,1,2]} (Growth, Economy, Battle)
             var settings = JsonSerializer.Deserialize<AutoTechnologySettings>("{\"ResearchTypes\":[0,1,2]}")!;
             const int instance = 9001;
+            AutoTechnologySettings.ClearEmpty(instance); // marks persist on disk between runs
 
             Assert.AreEqual(ResearchType.Growth, settings.NextResearchType(instance));
             Assert.AreEqual(ResearchType.Growth, settings.NextResearchType(instance), "Growth stays first while it has research");
@@ -27,6 +28,7 @@ namespace Bot.Core.Tests
         {
             var settings = JsonSerializer.Deserialize<AutoTechnologySettings>("{\"ResearchTypes\":[0,1,2]}")!;
             const int instance = 9003;
+            AutoTechnologySettings.ClearEmpty(instance);
             foreach (var t in new[] { ResearchType.Growth, ResearchType.Economy, ResearchType.Battle })
                 AutoTechnologySettings.MarkEmpty(instance, t, System.TimeSpan.FromHours(6));
             Assert.That(settings.AllEmpty(instance), Is.True, "nothing to scan while the Academy blocks every tree");

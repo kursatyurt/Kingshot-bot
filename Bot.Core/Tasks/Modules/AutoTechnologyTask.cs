@@ -45,6 +45,13 @@ namespace Bot.Core.Tasks.Modules
                 if (upgrading) _academyUpgrading[n] = true;
                 else if (_academyUpgrading.TryRemove(n, out _)) { AutoTechnologySettings.ClearEmpty(n); _allEmptyUntil.TryRemove(n, out _); }
             }
+            if (SidePanelStatus.Latest(n) is { } dots)
+            {
+                // The red dot on Tech Research is the game saying something can be researched
+                if (!dots.HasDot("Research")) return true;
+                if (GetTaskSettings<AutoTechnologySettings>(account).AllEmpty(n)) AutoTechnologySettings.ClearEmpty(n); // a dot means a tree opened
+                return dots.Town.Any(r => r.Is("Research") && r.Timer != null);
+            }
             if (GetTaskSettings<AutoTechnologySettings>(account).AllEmpty(n)) return true;
             if (SidePanelStatus.Latest(n)?.Town.FirstOrDefault(r => r.Is("Research") && (r.Timer != null || r.Idle)) is { } row)
                 return row.Timer != null || (_allEmptyUntil.TryGetValue(n, out var until) && DateTime.UtcNow < until);

@@ -26,7 +26,7 @@ namespace Bot.Core.Tasks.Modules
         // The side panel's building queues: nothing to do while every queue counts down
         protected override bool OnCooldown(AccountSettings account) => SidePanelStatus.Latest(account.InstanceNumber) is { } p
             && p.Town.Where(r => !r.Is("Infantry") && !r.Is("Cavalry") && !r.Is("Archer") && !r.Is("Research")) is var queues
-            && queues.Any(r => r.Timer != null) && !queues.Any(r => r.Idle);
+            && !p.BuildingDot && !queues.Any(r => r.Idle);
         private const int MIN_CLICK_DELAY_MS = 500; // Minimum delay between clicks
         private const int MAX_CLICK_DELAY_MS = 1000; // Maximum delay between clicks
         private static readonly Random _random = new Random();

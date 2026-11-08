@@ -36,7 +36,7 @@ namespace Bot.Core.Tasks.Modules
 
         /// <summary>The Daily tab shows an Online Rewards row only while a chest waits, and the feast row loses its timer when ready.</summary>
         private static bool StorehouseDue(int n) => SidePanelStatus.Latest(n) is { } p
-            ? p.Daily.Any(r => r.Is("Online Rewards")) || p.Daily.Any(r => r.Is("Gourmet") && r.Timer == null && !r.Idle)
+            ? p.Daily.Any(r => r.Is("Online Rewards")) || p.HasDot("Online") || p.HasDot("Gourmet")
             : !(_nextStorehouseCheck.TryGetValue(n, out var next) && DateTime.UtcNow < next);
 
         protected override async Task<TaskExecutionDetails> ExecuteTaskLogicAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken, bool isReRun = false, IUserNotificationService? userNotifications = null)

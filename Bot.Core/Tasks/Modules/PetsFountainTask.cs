@@ -37,8 +37,7 @@ namespace Bot.Core.Tasks.Modules
         /// </summary>
         private static bool PetsDue(int n) =>
             !(_lastPetRun.TryGetValue(n, out var last) && DateTime.UtcNow - last < TimeSpan.FromMinutes(30))
-            && SidePanelStatus.Latest(n)?.Daily.Where(r => r.Is("Adventure")).ToList() is { Count: > 0 } rows
-            && rows.All(r => r.Timer == null); // the section header shares the row's title
+            && SidePanelStatus.Latest(n)?.HasDot("Adventure") == true; // the red dot: a chest to open or a pet to send
 
         private static bool FountainDue(int n) => !(_nextCheck.TryGetValue(n, out var next) && DateTime.UtcNow < next);
 
