@@ -16,6 +16,7 @@ namespace Bot.Core.Tasks.Modules
 {
     public class ConquestCollectTask : BaseTaskWithCommonPatterns
     {
+        protected override TimeSpan MinInterval => TimeSpan.FromMinutes(15);
         public override TaskType TaskType => TaskType.ConquestCollect;
         protected override string GetImageFolderName() => "conquest";
         public override string Name => "Conquest Collection";

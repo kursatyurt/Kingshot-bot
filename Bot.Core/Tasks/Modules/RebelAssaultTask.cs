@@ -18,6 +18,7 @@ namespace Bot.Core.Tasks.Modules
     /// </summary>
     public class RebelAssaultTask : BaseTaskWithCommonPatterns
     {
+        protected override TimeSpan MinInterval => TimeSpan.FromMinutes(10);
         public override TaskType TaskType => TaskType.RebelAssault;
         public override string Name => "Rebel Assault";
         protected override string GetImageFolderName() => "rebelassault";

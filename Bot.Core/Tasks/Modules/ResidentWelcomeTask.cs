@@ -13,6 +13,7 @@ namespace Bot.Core.Tasks.Modules
 {
     public class ResidentWelcomeTask : BaseTaskWithCommonPatterns
     {
+        protected override TimeSpan MinInterval => TimeSpan.FromMinutes(15);
         public override TaskType TaskType => TaskType.ResidentWelcome;
         public override string Name => "Resident Welcome";
 

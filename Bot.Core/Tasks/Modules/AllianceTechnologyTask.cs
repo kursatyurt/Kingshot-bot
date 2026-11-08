@@ -21,6 +21,7 @@ namespace Bot.Core.Tasks.Modules
     /// </summary>
     public class AllianceTechnologyTask : BaseTaskWithCommonPatterns
     {
+        protected override TimeSpan MinInterval => TimeSpan.FromMinutes(30); // donation points refill slowly
         public override TaskType TaskType => TaskType.AllianceTechnology;
         protected override string GetImageFolderName() => "alliancetech";
         public override string Name => "Alliance Technology";

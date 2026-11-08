@@ -19,6 +19,7 @@ namespace Bot.Core.Tasks.Modules
 {
     public class ClaimMailTask : BaseTaskWithCommonPatterns
     {
+        protected override TimeSpan MinInterval => TimeSpan.FromMinutes(30); // mail trickles in
         public override TaskType TaskType => TaskType.ClaimMail;
         public override string Name => "Claim Mail";
 

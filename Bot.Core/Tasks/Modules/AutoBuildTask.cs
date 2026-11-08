@@ -22,6 +22,7 @@ namespace Bot.Core.Tasks.Modules
     /// </summary>
     public class AutoBuildTask : BaseTaskWithCommonPatterns
     {
+        protected override TimeSpan MinInterval => TimeSpan.FromMinutes(10);
         private const int MIN_CLICK_DELAY_MS = 500; // Minimum delay between clicks
         private const int MAX_CLICK_DELAY_MS = 1000; // Maximum delay between clicks
         private static readonly Random _random = new Random();

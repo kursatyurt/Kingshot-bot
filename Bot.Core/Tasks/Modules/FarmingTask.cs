@@ -83,6 +83,8 @@ namespace Bot.Core.Tasks.Modules
         /// wakes up shortly after the earliest one instead of a fixed wait, so returned marches are not left idle.
         /// </summary>
         public static readonly ConcurrentDictionary<int, DateTime> NextMarchReturn = new();
+        // Every slot busy: nothing to send until the first march is home (the timer is capped at 15 min)
+        protected override bool OnCooldown(AccountSettings account) => NextMarchReturn.TryGetValue(account.InstanceNumber, out var back) && DateTime.UtcNow < back;
         private readonly string _templateFolder;
 
         // Constants for polling and timeouts
