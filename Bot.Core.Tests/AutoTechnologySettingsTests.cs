@@ -8,25 +8,24 @@ namespace Bot.Core.Tests
     public class AutoTechnologySettingsTests
     {
         [Test]
-        public void NextResearchType_AlternatesOnlyAfterAdvance()
+        public void NextResearchType_FollowsPriorityAndSkipsEmptyTrees()
         {
-            // As stored in config: taskSettings["AutoTechnology"] = {"ResearchTypes":[1,0]} (Economy, Growth)
-            var settings = JsonSerializer.Deserialize<AutoTechnologySettings>("{\"ResearchTypes\":[1,0]}")!;
+            // As stored in config: taskSettings["AutoTechnology"] = {"ResearchTypes":[0,1,2]} (Growth, Economy, Battle)
+            var settings = JsonSerializer.Deserialize<AutoTechnologySettings>("{\"ResearchTypes\":[0,1,2]}")!;
             const int instance = 9001;
 
-            Assert.AreEqual(ResearchType.Economy, settings.NextResearchType(instance));
-            Assert.AreEqual(ResearchType.Economy, settings.NextResearchType(instance), "no research started, so no rotation");
-            AutoTechnologySettings.AdvanceResearchType(instance);
             Assert.AreEqual(ResearchType.Growth, settings.NextResearchType(instance));
-            AutoTechnologySettings.AdvanceResearchType(instance);
+            Assert.AreEqual(ResearchType.Growth, settings.NextResearchType(instance), "Growth stays first while it has research");
+            AutoTechnologySettings.MarkEmpty(instance, ResearchType.Growth);
             Assert.AreEqual(ResearchType.Economy, settings.NextResearchType(instance));
+            AutoTechnologySettings.MarkEmpty(instance, ResearchType.Economy);
+            Assert.AreEqual(ResearchType.Battle, settings.NextResearchType(instance));
         }
 
         [Test]
         public void NextResearchType_WithoutList_UsesSingleResearchType()
         {
             var settings = JsonSerializer.Deserialize<AutoTechnologySettings>("{\"ResearchType\":2}")!;
-            AutoTechnologySettings.AdvanceResearchType(9002);
             Assert.AreEqual(ResearchType.Battle, settings.NextResearchType(9002));
         }
     }

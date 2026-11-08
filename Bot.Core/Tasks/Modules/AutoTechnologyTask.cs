@@ -35,7 +35,7 @@ namespace Bot.Core.Tasks.Modules
         /// Keeps the Academy researching. The city side panel shows Tech Research as Idle or busy; its arrow centres
         /// the Academy with its ring open; ring Research opens the tree. Items are tried top to bottom: a research
         /// dialog has an orange Finish (gems, never tapped) beside the cyan Research; a locked item shows only its
-        /// requirement with a cyan Go, which is skipped. Categories alternate per ResearchTypes (e.g. Economy, Growth).
+        /// requirement with a cyan Go, which is skipped. ResearchTypes is a priority order: Growth, then Economy, then Battle.
         /// </summary>
         protected override async Task<TaskExecutionDetails> ExecuteTaskLogicAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken, bool isReRun = false, IUserNotificationService? userNotifications = null)
         {
@@ -153,7 +153,6 @@ namespace Bot.Core.Tasks.Modules
             if (fallback is { } f) logger.LogInfo($"[{account.AccountName}] Could not find '{f.title}' again to level it up");
 
             logger.LogInfo($"[{account.AccountName}] No {researchType} research available right now");
-            AutoTechnologySettings.AdvanceResearchType(account.InstanceNumber); // try the other category next time
             AutoTechnologySettings.MarkEmpty(account.InstanceNumber, researchType);
             // Try the other category on the next cycle; only when every category came up empty wait an hour
             var empties = _emptyScans.AddOrUpdate(account.InstanceNumber, 1, (_, n) => n + 1);
@@ -240,7 +239,6 @@ namespace Bot.Core.Tasks.Modules
                 await ClickAsync(account.InstanceNumber, logger, new Point(603, 1197));
                 await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
             }
-            AutoTechnologySettings.AdvanceResearchType(account.InstanceNumber);
             _nextCheck[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(5); // short researches finish fast
             _emptyScans[account.InstanceNumber] = 0;
             // The tree's bottom bar shows the running research's timer: no new research can start before it ends
@@ -378,25 +376,15 @@ namespace Bot.Core.Tasks.Modules
 
         public bool IsEnabled { get; set; } = true;
 
-        // Per-instance position in ResearchTypes; advances only after a research actually starts
-        private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, int> _nextIndex = new();
+        public int CategoryCount => (ResearchTypes is { Count: > 0 } list ? list : new List<ResearchType> { ResearchType }).Count;
 
-        /// <summary>Never Battle: the march queue (the goal) is in Growth, and Battle only spends resources on troop stats.</summary>
-        public int CategoryCount => (ResearchTypes is { Count: > 0 } list ? list : new List<ResearchType> { ResearchType }).Count(t => t != ResearchType.Battle);
-
+        /// <summary>ResearchTypes is a priority order (e.g. Growth, Economy, Battle): the first tree not empty recently.</summary>
         public ResearchType NextResearchType(int instanceNumber)
         {
-            var types = (ResearchTypes is { Count: > 0 } list ? list : new List<ResearchType> { ResearchType })
-                .Where(t => t != ResearchType.Battle).ToList();
-            if (types.Count == 0) return ResearchType.Growth;
-            // Skip a category that came up empty recently, unless every category did
-            for (var i = 0; i < types.Count; i++)
-            {
-                var t = types[_nextIndex.GetOrAdd(instanceNumber, 0) % types.Count];
+            var types = ResearchTypes is { Count: > 0 } list ? list : new List<ResearchType> { ResearchType };
+            foreach (var t in types)
                 if (!_emptyUntil.TryGetValue((instanceNumber, t), out var until) || DateTime.UtcNow >= until) return t;
-                AdvanceResearchType(instanceNumber);
-            }
-            return types[_nextIndex.GetOrAdd(instanceNumber, 0) % types.Count];
+            return types[0];
         }
 
         // A category with nothing to start stays skipped for 2 h instead of being rescanned every cycle
@@ -404,8 +392,5 @@ namespace Bot.Core.Tasks.Modules
 
         public static void MarkEmpty(int instanceNumber, ResearchType type) =>
             _emptyUntil[(instanceNumber, type)] = DateTime.UtcNow.AddHours(2);
-
-        public static void AdvanceResearchType(int instanceNumber) =>
-            _nextIndex.AddOrUpdate(instanceNumber, 1, (_, i) => i + 1);
     }
 }
