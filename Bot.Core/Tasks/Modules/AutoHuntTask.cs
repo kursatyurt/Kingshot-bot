@@ -55,12 +55,19 @@ namespace Bot.Core.Tasks.Modules
             if (_nextRun.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next)
                 return new TaskExecutionDetails(true, message: "Skipped: Intel checked recently");
             _nextRun[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(15);
-            return await _coordinator.ExecuteAutoHuntAsync(
+            var result = await _coordinator.ExecuteAutoHuntAsync(
                 account, 
                 logger, 
                 cancellationToken, 
                 isReRun, 
                 userNotifications);
+            // Out of stamina (stamina items are never used): every attempt would only open Get More again
+            if (result.Message?.Contains("Stamina depleted", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                _nextRun[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(60);
+                logger.LogInfo($"[{account.AccountName}] No stamina: next hunt in 60 min");
+            }
+            return result;
         }
 
         protected override Task OnInitializeAsync(LogService logger, CancellationToken cancellationToken)
