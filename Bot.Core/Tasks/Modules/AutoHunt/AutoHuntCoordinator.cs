@@ -1474,12 +1474,27 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
             new OCRService(logger).ExtractTextFromScreenArea(shot, new Rectangle(110, 100, 500, 50)).Contains("Refreshes");
 
         // Mission popups left over the Intel screen: claim a finished rescue, then tap its Rewards popup away
+        /// <summary>Centre of a wide green button in the popup's lower middle (rescue Claim), if any.</summary>
+        public static Point? FindClaimButton(byte[] screenshot)
+        {
+            using var img = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
+            if (img.Empty()) return null;
+            using var roi = new OpenCvSharp.Mat(img, new OpenCvSharp.Rect(150, 780, 420, 220));
+            using var mask = new OpenCvSharp.Mat();
+            OpenCvSharp.Cv2.InRange(roi, new OpenCvSharp.Scalar(0, 150, 0), new OpenCvSharp.Scalar(130, 255, 130), mask);
+            OpenCvSharp.Cv2.FindContours(mask, out var contours, out _, OpenCvSharp.RetrievalModes.External, OpenCvSharp.ContourApproximationModes.ApproxSimple);
+            var button = contours.Select(OpenCvSharp.Cv2.BoundingRect).Where(r => r.Width is > 150 and < 400 && r.Height is > 40 and < 90).OrderByDescending(r => r.Width).FirstOrDefault();
+            return button.Width == 0 ? null : new Point(150 + button.X + button.Width / 2, 780 + button.Y + button.Height / 2);
+        }
+
         private async Task<byte[]?> CloseMissionPopupsAsync(AccountSettings account, LogService logger, byte[]? current, CancellationToken cancellationToken)
             {
-            if (current != null && new OCRService(logger).ExtractTextFromScreenArea(current, new Rectangle(260, 885, 200, 70)).Trim() == "Claim")
+            // The rescue popup's Claim sits at y≈867 or y≈920 depending on its layout: tap the green button where it is
+            if (current != null && FindClaimButton(current) is Point claim
+                && new OCRService(logger).ExtractBrightTextFromScreenArea(current, new Rectangle(260, claim.Y - 30, 200, 60), 190).Contains("Claim"))
             {
                 logger.LogInfo($"[{account.AccountName}] Claiming a finished rescue mission");
-                await ClickAsync(account.InstanceNumber, logger, new Point(360, 920));
+                await ClickAsync(account.InstanceNumber, logger, claim);
                 await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
                 current = await TakeScreenshotAsync(account.InstanceNumber, logger);
             }

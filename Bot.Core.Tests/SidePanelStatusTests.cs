@@ -104,6 +104,16 @@ namespace Bot.Core.Tests
         }
 
         [Test]
+        public void FindsTheRescueClaimButtonWhereverThePopupSits()
+        {
+            var shot = System.IO.File.ReadAllBytes(System.IO.Path.Combine(TestContext.CurrentContext.TestDirectory, "rescue-claim.png"));
+            var claim = Bot.Core.Tasks.Modules.AutoHunt.AutoHuntCoordinator.FindClaimButton(shot);
+            Assert.That(claim, Is.Not.Null);
+            Assert.That(claim!.Value.Y, Is.InRange(845, 890));
+            Assert.That(Bot.Core.Tasks.Modules.AutoHunt.AutoHuntCoordinator.FindClaimButton(System.IO.File.ReadAllBytes(System.IO.Path.Combine(TestContext.CurrentContext.TestDirectory, "city.png"))), Is.Null);
+        }
+
+        [Test]
         public void ParsesTitleThenStatusLines()
         {
             var rows = SidePanelStatus.Parse("Building Queue\nEmbassy Upgrading\n05:41:43 |\nTech Research\nIdle\n");
