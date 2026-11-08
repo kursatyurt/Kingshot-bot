@@ -30,7 +30,6 @@ namespace Bot.Core.Tasks.Modules
         );
         
         // Collection interval when both VIP rewards are collected
-        private static readonly TimeSpan VipRewardsInterval = TimeSpan.FromHours(12);
         
         // Track if VIP rewards were collected
         private bool _vipRewardsClicked = false;
@@ -225,7 +224,7 @@ namespace Bot.Core.Tasks.Modules
                 {
                     logger.LogWarning($"[{account.AccountName}] VIP plus button not found");
                     // Nothing more to do on the VIP page: leave it and look again in 2 h instead of failing
-                    _lastCollectionTimes[account.InstanceNumber] = DateTime.UtcNow - VipRewardsInterval + TimeSpan.FromHours(2);
+                    UpdateCollectionTime(account.InstanceNumber); // once a day
                     await PressBackAsync(account.InstanceNumber, logger);
                     await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                     return new TaskExecutionDetails(true, message: "VIP page had no plus button");
@@ -298,12 +297,12 @@ namespace Bot.Core.Tasks.Modules
                 if (_vipRewardsClicked && _vipRewards2Clicked)
                 {
                     UpdateCollectionTime(account.InstanceNumber);
-                    logger.LogInfo($"[{account.AccountName}] ✅ Both VIP rewards collected - applying 12-hour cooldown");
+                    logger.LogInfo($"[{account.AccountName}] ✅ Both VIP rewards collected - done until the daily reset");
                 }
                 else
                 {
-                    logger.LogInfo($"[{account.AccountName}] ℹ️ Not all VIP rewards were collected - checking again in 2 h");
-                    _lastCollectionTimes[account.InstanceNumber] = DateTime.UtcNow - VipRewardsInterval + TimeSpan.FromHours(2); // nothing ready: the chest runs on a long timer
+                    logger.LogInfo($"[{account.AccountName}] ℹ️ Not all VIP rewards were ready - done until the daily reset");
+                    UpdateCollectionTime(account.InstanceNumber); // once a day, whatever was ready
                     logger.LogInfo($"[{account.AccountName}] VIP Rewards: {(_vipRewardsClicked ? "Collected" : "Not found")}, VIP Rewards 2: {(_vipRewards2Clicked ? "Collected" : "Not found")}");
                 }
 
@@ -485,6 +484,12 @@ namespace Bot.Core.Tasks.Modules
             return "collectvip";
         }
         
+        protected override bool OnCooldown(AccountSettings account)
+        {
+            LoadCollectionTimes();
+            return !ShouldCollect(account.InstanceNumber);
+        }
+
         private bool ShouldCollect(int instanceNumber)
         {
             if (!_lastCollectionTimes.TryGetValue(instanceNumber, out DateTime lastCollection))
@@ -503,8 +508,8 @@ namespace Bot.Core.Tasks.Modules
                 return DateTime.UtcNow; // First time collection
             }
 
-            // Use 12-hour interval when VIP rewards were collected
-            return lastCollection.Add(VipRewardsInterval);
+            // Once per day: the next 00:00 UTC reset after the last visit
+            return lastCollection.Date.AddDays(1);
         }
 
         private void UpdateCollectionTime(int instanceNumber)

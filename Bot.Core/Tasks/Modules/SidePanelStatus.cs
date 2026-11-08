@@ -34,6 +34,8 @@ namespace Bot.Core.Tasks.Modules
         /// <summary>Rows and the titles of rows carrying a red dot (the game's "something to do here").</summary>
         public record Scan(DateTime At, List<PanelRow> Town, List<PanelRow> Wilderness, List<PanelRow> Daily, List<string> Dots)
         {
+            /// <summary>Fountain of Life "Available: have/cap" (green text on the Daily tab).</summary>
+            public (int Have, int Cap)? Fountain { get; init; }
             public bool HasDot(string word) => Dots.Any(d => d.Contains(word, StringComparison.OrdinalIgnoreCase));
             /// <summary>A dotted Town row that is a building queue (not a camp, not research).</summary>
             public bool BuildingDot => Dots.Any(d => d.StartsWith("Town:") && !new[] { "Infantry", "Cavalry", "Archer", "Research" }.Any(w => d.Contains(w, StringComparison.OrdinalIgnoreCase)));
@@ -74,6 +76,30 @@ namespace Bot.Core.Tasks.Modules
                 .Select(b => b.Y + 290).OrderBy(y => y).ToList();
         }
 
+        /// <summary>Green status text of the panel column (Available, Completed): white and grey drop out.</summary>
+        public static string ReadGreenText(byte[] screenshot, OCRService ocr)
+        {
+            using var img = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
+            using var roi = new OpenCvSharp.Mat(img, new OpenCvSharp.Rect(PanelText.X, PanelText.Y, PanelText.Width, PanelText.Height));
+            using var mask = new OpenCvSharp.Mat();
+            OpenCvSharp.Cv2.InRange(roi, new OpenCvSharp.Scalar(0, 170, 0), new OpenCvSharp.Scalar(140, 255, 140), mask);
+            using var inverted = new OpenCvSharp.Mat();
+            OpenCvSharp.Cv2.BitwiseNot(mask, inverted);
+            using var big = new OpenCvSharp.Mat();
+            OpenCvSharp.Cv2.Resize(inverted, big, new OpenCvSharp.Size(0, 0), 3, 3, OpenCvSharp.InterpolationFlags.Cubic);
+            using var bgr = new OpenCvSharp.Mat();
+            OpenCvSharp.Cv2.CvtColor(big, bgr, OpenCvSharp.ColorConversionCodes.GRAY2BGR);
+            return ocr.ExtractTextFromMat(bgr);
+        }
+
+        /// <summary>"Available: 962/2.160" → (962, 2160); thousands separators read as '.' or ','.</summary>
+        public static (int, int)? ParseFountain(string text)
+        {
+            var m = Regex.Match(text, @"Available\W*([\d.,]+)\s*/\s*([\d.,]+)", RegexOptions.IgnoreCase);
+            return m.Success && int.TryParse(m.Groups[1].Value.Replace(".", "").Replace(",", ""), out var have)
+                && int.TryParse(m.Groups[2].Value.Replace(".", "").Replace(",", ""), out var cap) && cap > 0 ? (have, cap) : null;
+        }
+
         private static TimeSpan? TimerOf(string line)
         {
             var m = Regex.Match(line, @"(\d{1,2}):(\d{2}):(\d{2})");
@@ -89,6 +115,7 @@ namespace Bot.Core.Tasks.Modules
             if (!await OpenSidePanelAsync(n, logger, cancellationToken)) return; // opens on the Town tab
             var ocr = new OCRService(logger);
             var dots = new List<string>();
+            (int, int)? fountain = null;
             async Task<List<PanelRow>> ReadTab(Point tab, string name)
             {
                 await ClickAsync(n, logger, tab);
@@ -97,14 +124,15 @@ namespace Bot.Core.Tasks.Modules
                 if (shot == null) return new();
                 foreach (var y in RowDots(shot)) // the row's title sits just below its arrow's dot
                     dots.Add($"{name}:{ocr.ExtractBrightTextFromScreenArea(shot, new Rectangle(70, y - 8, 300, 32), 190).Trim()}");
+                if (name == "Daily") fountain = ParseFountain(ReadGreenText(shot, ocr));
                 return Parse(ocr.ExtractBrightTextFromScreenArea(shot, PanelText, 190));
             }
-            var scan = new Scan(DateTime.UtcNow, await ReadTab(new Point(80, 268), "Town"), await ReadTab(new Point(225, 268), "Wilderness"), await ReadTab(new Point(370, 268), "Daily"), dots);
+            var scan = new Scan(DateTime.UtcNow, await ReadTab(new Point(80, 268), "Town"), await ReadTab(new Point(225, 268), "Wilderness"), await ReadTab(new Point(370, 268), "Daily"), dots) { Fountain = fountain };
             await ClickAsync(n, logger, new Point(464, 544)); // close the panel by its ◁ handle
             await Pace.Delay(600, cancellationToken);
             _latest[n] = scan;
             string Show(List<PanelRow> rows) => string.Join(", ", rows.Where(r => r.Timer != null || r.Idle).Select(r => $"{r.Title}={(r.Idle ? "Idle" : r.Timer.ToString())}"));
-            logger.LogInfo($"[{account.AccountName}] 📋 Panel - Town: {Show(scan.Town)} | Wilderness: {Show(scan.Wilderness)} | Daily: {Show(scan.Daily)} | 🔴 {string.Join(", ", dots)}");
+            logger.LogInfo($"[{account.AccountName}] 📋 Panel - Town: {Show(scan.Town)} | Wilderness: {Show(scan.Wilderness)} | Daily: {Show(scan.Daily)} | 🔴 {string.Join(", ", dots)} | 💧 {(fountain is { } f ? $"{f.Item1}/{f.Item2}" : "?")}");
         }
 
         protected override Task<TaskExecutionDetails> ExecuteTaskLogicAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken, bool isReRun = false, IUserNotificationService? userNotifications = null)

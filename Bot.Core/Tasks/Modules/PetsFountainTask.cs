@@ -36,10 +36,15 @@ namespace Bot.Core.Tasks.Modules
         /// waits. Pets run then (at most every 30 min); the fountain is collected every 4 h whatever its fill.
         /// </summary>
         private static bool PetsDue(int n) =>
-            !(_lastPetRun.TryGetValue(n, out var last) && DateTime.UtcNow - last < TimeSpan.FromMinutes(30))
-            && SidePanelStatus.Latest(n)?.HasDot("Adventure") == true; // the red dot: a chest to open or a pet to send
+            !(_lastPetRun.TryGetValue(n, out var last) && DateTime.UtcNow < last)
+            && SidePanelStatus.Latest(n) is { } p
+            && !p.Daily.Any(r => r.Is("Adventure") && r.Timer != null) // every pet out: its row counts down to the first one home
+            && p.HasDot("Adventure"); // the red dot: a chest to open or a pet to send
 
-        private static bool FountainDue(int n) => !(_nextCheck.TryGetValue(n, out var next) && DateTime.UtcNow < next);
+        /// <summary>The Daily tab's "Available: have/cap": the island is worth a trip from half full.</summary>
+        private static bool FountainDue(int n) => SidePanelStatus.Latest(n)?.Fountain is { } f
+            ? f.Have * 2 >= f.Cap
+            : !(_nextCheck.TryGetValue(n, out var next) && DateTime.UtcNow < next);
 
         protected override bool OnCooldown(AccountSettings account) => !FountainDue(account.InstanceNumber) && !PetsDue(account.InstanceNumber);
 
@@ -47,8 +52,8 @@ namespace Bot.Core.Tasks.Modules
         {
             if (OnCooldown(account)) return new TaskExecutionDetails(true, message: "Pets & Fountain checked recently");
             bool fountain = FountainDue(account.InstanceNumber), pets = PetsDue(account.InstanceNumber) || SidePanelStatus.Latest(account.InstanceNumber) == null;
-            if (fountain) _nextCheck[account.InstanceNumber] = DateTime.UtcNow.AddHours(4);
-            if (pets) _lastPetRun[account.InstanceNumber] = DateTime.UtcNow;
+            if (fountain) _nextCheck[account.InstanceNumber] = DateTime.UtcNow.AddHours(6);
+            if (pets) _lastPetRun[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(30);
 
             var locator = new LocatorService(logger, account, TaskType);
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
@@ -81,6 +86,7 @@ namespace Bot.Core.Tasks.Modules
             }
 
             var adventure = pets ? await PetAdventureAsync(account, logger, locator, cancellationToken) : null;
+            if (pets && adventure == null) _lastPetRun[account.InstanceNumber] = DateTime.UtcNow.AddHours(3); // a dot with nothing for us: leave it a while
             if (adventure != null) done.Add(adventure);
 
             var accountId = AccountDetectionTask.GetCachedAccountId(account.InstanceNumber);

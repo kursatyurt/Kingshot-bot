@@ -59,6 +59,18 @@ namespace Bot.Core.Tests
             Assert.That(title, Does.Contain(row));
         }
 
+        [TestCase("panel-daily.png", 962, 2160)]
+        [TestCase("panel-daily-online.png", 17, 2160)]
+        [TestCase("panel-daily-pets-done.png", 152, 1800)]
+        public void ReadsTheFountainFill(string file, int have, int cap)
+        {
+            var shot = System.IO.File.ReadAllBytes(System.IO.Path.Combine(TestContext.CurrentContext.TestDirectory, file));
+            string text;
+            try { text = SidePanelStatus.ReadGreenText(shot, new Bot.Core.Utils.OCRService(new Bot.Core.Logging.LogService())); }
+            catch (InvalidOperationException) { Assert.Ignore("Tesseract native libraries not next to the test binaries"); return; }
+            Assert.That(SidePanelStatus.ParseFountain(text), Is.EqualTo(((int, int)?)(have, cap)), text);
+        }
+
         [Test]
         public void ParsesTitleThenStatusLines()
         {
