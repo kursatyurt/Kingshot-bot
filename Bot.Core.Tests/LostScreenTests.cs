@@ -19,6 +19,15 @@ namespace Bot.Core.Tests
             .ExtractBrightTextFromScreenArea(s, new System.Drawing.Rectangle(90, 15, 130, 50), 190)?.Contains("Chat", System.StringComparison.OrdinalIgnoreCase) == true;
 
         [Test]
+        public void EmporiumIsRecognised()
+        {
+            static string Title(byte[] s) => new Bot.Core.Utils.OCRService(new Bot.Core.Logging.LogService())
+                .ExtractBrightTextFromScreenArea(s, new System.Drawing.Rectangle(90, 95, 350, 50), 190) ?? "";
+            Assert.That(Title(Shot("lost-emporium.png")), Does.Contain("Wishful"));
+            Assert.That(Title(Shot("panel-town.png")), Does.Not.Contain("Wishful"));
+        }
+
+        [Test]
         public void ConnectionLostIsRecognised()
         {
             static string Title(byte[] s) => new Bot.Core.Utils.OCRService(new Bot.Core.Logging.LogService())

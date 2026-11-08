@@ -219,6 +219,17 @@ namespace Bot.Core.Utils
                     finally { _closingPanel = false; }
                 }
 
+                // "Wishful Emporium" sale popup: close it by its X (TRY / buy is never tapped)
+                if (!_closingPanel && new OCRService(_logger).ExtractBrightTextFromScreenArea(screenshot, new Rectangle(90, 95, 350, 50), 190)?.Contains("Wishful", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    _logger.LogInfo("[Locator] Wishful Emporium popup - closing it by its X");
+                    await adbController.TapAsync(612, 115, cancellationToken);
+                    await Task.Delay(1500, cancellationToken);
+                    _closingPanel = true;
+                    try { return await DetectCurrentViewAsync(instanceNumber, cancellationToken); }
+                    finally { _closingPanel = false; }
+                }
+
                 // Chat left open (its "Chat" title top left): Back closes it
                 if (!_closingPanel && new OCRService(_logger).ExtractBrightTextFromScreenArea(screenshot, new Rectangle(90, 15, 130, 50), 190)?.Contains("Chat", StringComparison.OrdinalIgnoreCase) == true)
                 {
