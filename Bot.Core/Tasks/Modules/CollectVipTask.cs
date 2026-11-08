@@ -86,10 +86,10 @@ namespace Bot.Core.Tasks.Modules
                     return TaskExecutionDetails.Failed("VIP button not found");
                 }
 
-                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken); // Wait for VIP interface to load
-
-                // Step 2.5: Check if VIP interface loaded properly by looking for VIP chest or VIP claim
+                // Step 2.5: Check if VIP interface loaded properly by looking for VIP chest or VIP claim (it can take a few seconds)
                 logger.LogInfo($"[{account.AccountName}] Checking if VIP interface loaded...");
+                await WaitForImageAsync("vip-chest.png", account.InstanceNumber, logger, cancellationToken, 4000,
+                    threshold: GameCoordinates.Thresholds.StandardConfidence, searchArea: VipChestSearchArea);
                 var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
                 if (screenshot != null && _templateMatcher != null)
                 {

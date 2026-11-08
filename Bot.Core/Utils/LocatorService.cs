@@ -132,6 +132,7 @@ namespace Bot.Core.Utils
         /// <param name="cancellationToken">Cancellation token</param>
         /// <returns>Current view type or throws BotLostException if cannot detect</returns>
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, DateTime> _lastLostShot = new();
+        private bool _closingPanel;
 
         public async Task<ViewType> DetectCurrentViewAsync(int instanceNumber, CancellationToken cancellationToken = default)
         {
@@ -179,6 +180,19 @@ namespace Bot.Core.Utils
                     {
                         _logger.LogInfo($"[Locator] Map view not detected - confidence {confidenceMap:F3} below threshold 0.7");
                     }
+                }
+
+                // The city side panel left open hides the base view marker: close it by its ◁ handle and look again
+                var handle = Path.Combine(AppContext.BaseDirectory, "templates", "images", "locator", "side-panel-handle.png");
+                var (panelOpen, h, _) = _templateMatcher.MatchTemplate(screenshot, handle, instanceNumber, 0.88, searchArea: new Rectangle(400, 460, 140, 170));
+                if (panelOpen && !_closingPanel)
+                {
+                    _logger.LogInfo("[Locator] Side panel is open - closing it");
+                    await adbController.TapAsync(h.X + h.Width / 2, h.Y + h.Height / 2, cancellationToken);
+                    await Task.Delay(1200, cancellationToken);
+                    _closingPanel = true;
+                    try { return await DetectCurrentViewAsync(instanceNumber, cancellationToken); }
+                    finally { _closingPanel = false; }
                 }
 
                 // One screenshot per instance every 10 minutes shows which screens the locator does not know
