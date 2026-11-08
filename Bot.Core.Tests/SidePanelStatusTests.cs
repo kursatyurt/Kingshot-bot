@@ -125,6 +125,16 @@ namespace Bot.Core.Tests
         }
 
         [Test]
+        public void FirstPurchasePromoIsRecognised() // the locator closes it with Back
+        {
+            var shot = System.IO.File.ReadAllBytes(System.IO.Path.Combine(TestContext.CurrentContext.TestDirectory, "topup-promo.png"));
+            string text;
+            try { text = new Bot.Core.Utils.OCRService(new Bot.Core.Logging.LogService()).ExtractBrightTextFromScreenArea(shot, new System.Drawing.Rectangle(60, 120, 600, 120), 190); }
+            catch (InvalidOperationException) { Assert.Ignore("Tesseract native libraries not next to the test binaries"); return; }
+            Assert.That(text, Does.Contain("first purchas").IgnoreCase);
+        }
+
+        [Test]
         public void ParsesTitleThenStatusLines()
         {
             var rows = SidePanelStatus.Parse("Building Queue\nEmbassy Upgrading\n05:41:43 |\nTech Research\nIdle\n");

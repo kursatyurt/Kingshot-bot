@@ -193,6 +193,17 @@ namespace Bot.Core.Utils
                     finally { _closingPanel = false; }
                 }
 
+                // The "Reward for first purchase / TOP UP NOW" promo after a game start: Back closes it (TOP UP is never tapped)
+                if (!_closingPanel && new OCRService(_logger).ExtractBrightTextFromScreenArea(screenshot, new Rectangle(60, 120, 600, 120), 190)?.Contains("first purchas", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    _logger.LogInfo("[Locator] First-purchase promo - closing it with Back");
+                    await adbController.PressBackButtonAsync(cancellationToken);
+                    await Task.Delay(1500, cancellationToken);
+                    _closingPanel = true;
+                    try { return await DetectCurrentViewAsync(instanceNumber, cancellationToken); }
+                    finally { _closingPanel = false; }
+                }
+
                 // The city side panel left open hides the base view marker: close it by its ◁ handle and look again
                 var handle = Path.Combine(AppContext.BaseDirectory, "templates", "images", "locator", "side-panel-handle.png");
                 var (panelOpen, h, _) = _templateMatcher.MatchTemplate(screenshot, handle, instanceNumber, 0.88, searchArea: new Rectangle(400, 460, 140, 170));
