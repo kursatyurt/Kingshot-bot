@@ -19,6 +19,16 @@ namespace Bot.Core.Tests
             .ExtractBrightTextFromScreenArea(s, new System.Drawing.Rectangle(90, 15, 130, 50), 190)?.Contains("Chat", System.StringComparison.OrdinalIgnoreCase) == true;
 
         [Test]
+        public void ConnectionLostIsRecognised()
+        {
+            static string Title(byte[] s) => new Bot.Core.Utils.OCRService(new Bot.Core.Logging.LogService())
+                .ExtractTextFromScreenArea(s, new System.Drawing.Rectangle(100, 570, 520, 70)) ?? "";
+            Assert.That(Title(Shot("lost-connection.png")), Does.Contain("connect"));
+            Assert.That(Title(Shot("panel-town.png")), Does.Not.Contain("connect"));
+            Assert.That(Title(Shot("lost-chat.png")), Does.Not.Contain("connect"));
+        }
+
+        [Test]
         public void CloudAndChatAreRecognised()
         {
             Assert.That(IsCloud(Shot("lost-cloud.png")), Is.True);

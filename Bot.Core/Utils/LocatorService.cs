@@ -208,6 +208,17 @@ namespace Bot.Core.Utils
                     }
                 }
 
+                // "Connection lost" dialog: Back does nothing, Reconnect brings the game back
+                if (!_closingPanel && new OCRService(_logger).ExtractTextFromScreenArea(screenshot, new Rectangle(100, 570, 520, 70))?.Contains("Unable to connect", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    _logger.LogInfo("[Locator] Connection lost - tapping Reconnect");
+                    await adbController.TapAsync(512, 788, cancellationToken);
+                    await Task.Delay(8000, cancellationToken);
+                    _closingPanel = true;
+                    try { return await DetectCurrentViewAsync(instanceNumber, cancellationToken); }
+                    finally { _closingPanel = false; }
+                }
+
                 // Chat left open (its "Chat" title top left): Back closes it
                 if (!_closingPanel && new OCRService(_logger).ExtractBrightTextFromScreenArea(screenshot, new Rectangle(90, 15, 130, 50), 190)?.Contains("Chat", StringComparison.OrdinalIgnoreCase) == true)
                 {
