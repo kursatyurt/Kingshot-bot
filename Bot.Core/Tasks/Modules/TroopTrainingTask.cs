@@ -67,7 +67,7 @@ namespace Bot.Core.Tasks.Modules
             {
                 _nextCheck[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(15);
                 await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
-                return TaskExecutionDetails.Failed("Could not read the troop training panel");
+                return new TaskExecutionDetails(true, message: "Troop panel not readable this cycle"); // e.g. the side panel did not open: look again next cycle
             }
 
             int started = 0;

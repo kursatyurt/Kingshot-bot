@@ -897,6 +897,14 @@ namespace Bot.Core.Tasks.Modules
                         // Gather with every march queue busy just returns to the map (its notice fades in ~2s);
                         // lower levels and other resources would fail the same way, so end farming for this cycle
                         logger.LogInfo($"[{account.AccountName}] 🚫 No deploy screen after Gather: march queue is full.");
+                        // Newer clients show the "March Queue" upsell (Research / Activate VIP / Buy) instead: only its X is safe
+                        if (await TakeScreenshotAsync(account.InstanceNumber, logger) is { } upsell
+                            && new OCRService(logger).ExtractTextFromScreenArea(upsell, new Rectangle(200, 315, 320, 55)).Contains("March"))
+                        {
+                            logger.LogInfo($"[{account.AccountName}] Closing the March Queue popup");
+                            await ClickAsync(account.InstanceNumber, logger, new Point(642, 340));
+                            await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
+                        }
                         throw new NoTroopsAvailableException();
                     }
 
