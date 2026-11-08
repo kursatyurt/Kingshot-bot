@@ -429,15 +429,44 @@ namespace Bot.Core.Tasks.Modules
         }
 
         // A category with nothing to start stays skipped for 2 h instead of being rescanned every cycle
-        private static readonly System.Collections.Concurrent.ConcurrentDictionary<(int, ResearchType), DateTime> _emptyUntil = new();
+        // Kept on disk so a restart does not rescan trees that still wait on the Academy ("instance:type" → until)
+        private static readonly string EmptyFile = System.IO.Path.Combine(AppContext.BaseDirectory, "data", "research_empty.json");
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<(int, ResearchType), DateTime> _emptyUntil = LoadEmpty();
 
-        public static void MarkEmpty(int instanceNumber, ResearchType type, TimeSpan? @for = null) =>
+        private static System.Collections.Concurrent.ConcurrentDictionary<(int, ResearchType), DateTime> LoadEmpty()
+        {
+            var map = new System.Collections.Concurrent.ConcurrentDictionary<(int, ResearchType), DateTime>();
+            try
+            {
+                if (System.IO.File.Exists(EmptyFile))
+                    foreach (var (key, until) in JsonSerializer.Deserialize<Dictionary<string, DateTime>>(System.IO.File.ReadAllText(EmptyFile)) ?? new())
+                        if (key.Split(':') is [var n, var t] && int.TryParse(n, out var inst) && Enum.TryParse<ResearchType>(t, out var type)) map[(inst, type)] = until;
+            }
+            catch { }
+            return map;
+        }
+
+        private static void SaveEmpty()
+        {
+            try
+            {
+                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(EmptyFile)!);
+                System.IO.File.WriteAllText(EmptyFile, JsonSerializer.Serialize(_emptyUntil.ToDictionary(kv => $"{kv.Key.Item1}:{kv.Key.Item2}", kv => kv.Value)));
+            }
+            catch { }
+        }
+
+        public static void MarkEmpty(int instanceNumber, ResearchType type, TimeSpan? @for = null)
+        {
             _emptyUntil[(instanceNumber, type)] = DateTime.UtcNow + (@for ?? TimeSpan.FromHours(2));
+            SaveEmpty();
+        }
 
         /// <summary>The Academy went up a level: every tree may have opened.</summary>
         public static void ClearEmpty(int instanceNumber)
         {
             foreach (var key in _emptyUntil.Keys.Where(k => k.Item1 == instanceNumber).ToList()) _emptyUntil.TryRemove(key, out _);
+            SaveEmpty();
         }
 
         public bool AllEmpty(int instanceNumber) =>
