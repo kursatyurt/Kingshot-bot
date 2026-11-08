@@ -120,6 +120,15 @@ namespace Bot.Core.Services
                 
                 // Wait a moment for UI to return to previous state
                 await Task.Delay(500, cancellationToken);
+
+                // Right after a game start the profile can open late, after the Back tap: close it if it is still showing
+                for (int i = 0; i < 3 && await adbController.TakeScreenshotAsync(cancellationToken) is { } shot
+                    && new OCRService(_logger).ExtractBrightTextFromScreenArea(shot, new Rectangle(90, 15, 250, 50), 190)?.Contains("Governor", StringComparison.OrdinalIgnoreCase) == true; i++)
+                {
+                    _logger.LogInfo($"[{account.AccountName}] Governor Profile still open - tapping back again");
+                    await adbController.TapAsync(BackButton.X, BackButton.Y, cancellationToken);
+                    await Task.Delay(1000, cancellationToken);
+                }
                 
                 if (!string.IsNullOrEmpty(accountId))
                 {

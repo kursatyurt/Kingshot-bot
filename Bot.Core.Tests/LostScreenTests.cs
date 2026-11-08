@@ -19,6 +19,15 @@ namespace Bot.Core.Tests
             .ExtractBrightTextFromScreenArea(s, new System.Drawing.Rectangle(90, 15, 130, 50), 190)?.Contains("Chat", System.StringComparison.OrdinalIgnoreCase) == true;
 
         [Test]
+        public void GovernorProfileIsRecognised()
+        {
+            static string Title(byte[] s) => new Bot.Core.Utils.OCRService(new Bot.Core.Logging.LogService())
+                .ExtractBrightTextFromScreenArea(s, new System.Drawing.Rectangle(90, 15, 250, 50), 190) ?? "";
+            Assert.That(Title(Shot("lost-profile.png")), Does.Contain("Governor"));
+            Assert.That(Title(Shot("panel-town.png")), Does.Not.Contain("Governor"));
+        }
+
+        [Test]
         public void LoadingScreenIsRecognised()
         {
             static bool Loading(byte[] s) => new Bot.Core.Utils.OCRService(new Bot.Core.Logging.LogService())
