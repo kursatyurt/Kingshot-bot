@@ -29,6 +29,7 @@ namespace Bot.Core.Tasks.Modules
         private static readonly Point RingUpgradeButton = new Point(360, 750);
 
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, DateTime> _allEmptyUntil = new();
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, bool> _academyUpgrading = new();
 
         /// <summary>Research items found waiting on a higher Academy level; AutoBuild upgrades it with the next free builder.</summary>
         public static readonly System.Collections.Concurrent.ConcurrentDictionary<int, bool> AcademyNeeded = new();
@@ -37,6 +38,14 @@ namespace Bot.Core.Tasks.Modules
         protected override bool OnCooldown(AccountSettings account)
         {
             int n = account.InstanceNumber;
+            // An "Academy Upgrading" queue row that has gone again means a new level: rescan every tree
+            if (SidePanelStatus.Latest(n) is { } panel)
+            {
+                bool upgrading = panel.Town.Any(r => r.Is("Academy") && r.Timer != null);
+                if (upgrading) _academyUpgrading[n] = true;
+                else if (_academyUpgrading.TryRemove(n, out _)) { AutoTechnologySettings.ClearEmpty(n); _allEmptyUntil.TryRemove(n, out _); }
+            }
+            if (GetTaskSettings<AutoTechnologySettings>(account).AllEmpty(n)) return true;
             if (SidePanelStatus.Latest(n)?.Town.FirstOrDefault(r => r.Is("Research") && (r.Timer != null || r.Idle)) is { } row)
                 return row.Timer != null || (_allEmptyUntil.TryGetValue(n, out var until) && DateTime.UtcNow < until);
             return _nextCheck.TryGetValue(n, out var next) && DateTime.UtcNow < next;
@@ -94,6 +103,7 @@ namespace Bot.Core.Tasks.Modules
             ResearchType researchType = default;
             for (int tree = 0; tree < settings.CategoryCount; tree++)
             {
+            bool academyGate = false;
             researchType = settings.NextResearchType(account.InstanceNumber);
             var tab = researchType switch { ResearchType.Economy => new Point(361, 123), ResearchType.Battle => new Point(585, 120), _ => new Point(130, 116) };
             await ClickAsync(account.InstanceNumber, logger, tab);
@@ -158,7 +168,10 @@ namespace Bot.Core.Tasks.Modules
                     }
                     // A red "Academy Lv. N" requirement: the tree waits on the Academy, which AutoBuild then upgrades
                     if (research == null && dialog != null && new OCRService(logger).ExtractTextFromScreenArea(dialog, new Rectangle(140, 850, 300, 55)).Contains("Academy", StringComparison.OrdinalIgnoreCase))
+                    {
                         AcademyNeeded[account.InstanceNumber] = true;
+                        academyGate = true;
+                    }
                     if (dialog != null && HasDialogOpen(dialog))
                     {
                         await PressBackAsync(account.InstanceNumber, logger); // close a locked, maxed or deferred item
@@ -173,7 +186,9 @@ namespace Bot.Core.Tasks.Modules
             if (fallback is { } f) logger.LogInfo($"[{account.AccountName}] Could not find '{f.title}' again to level it up");
 
             logger.LogInfo($"[{account.AccountName}] No {researchType} research available right now");
-            AutoTechnologySettings.MarkEmpty(account.InstanceNumber, researchType);
+            // Waiting on the Academy: no point rescanning this tree until its level goes up
+            AutoTechnologySettings.MarkEmpty(account.InstanceNumber, researchType, academyGate ? TimeSpan.FromHours(6) : TimeSpan.FromHours(2));
+            if (academyGate) logger.LogInfo($"[{account.AccountName}] {researchType} waits on the Academy level: not rescanning it until the Academy is upgraded");
             }
             // Every tree came up empty: look again in an hour
             _nextCheck[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(60);
@@ -410,7 +425,17 @@ namespace Bot.Core.Tasks.Modules
         // A category with nothing to start stays skipped for 2 h instead of being rescanned every cycle
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<(int, ResearchType), DateTime> _emptyUntil = new();
 
-        public static void MarkEmpty(int instanceNumber, ResearchType type) =>
-            _emptyUntil[(instanceNumber, type)] = DateTime.UtcNow.AddHours(2);
+        public static void MarkEmpty(int instanceNumber, ResearchType type, TimeSpan? @for = null) =>
+            _emptyUntil[(instanceNumber, type)] = DateTime.UtcNow + (@for ?? TimeSpan.FromHours(2));
+
+        /// <summary>The Academy went up a level: every tree may have opened.</summary>
+        public static void ClearEmpty(int instanceNumber)
+        {
+            foreach (var key in _emptyUntil.Keys.Where(k => k.Item1 == instanceNumber).ToList()) _emptyUntil.TryRemove(key, out _);
+        }
+
+        public bool AllEmpty(int instanceNumber) =>
+            (ResearchTypes is { Count: > 0 } list ? list : new List<ResearchType> { ResearchType })
+                .All(t => _emptyUntil.TryGetValue((instanceNumber, t), out var until) && DateTime.UtcNow < until);
     }
 }

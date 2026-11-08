@@ -23,6 +23,19 @@ namespace Bot.Core.Tests
         }
 
         [Test]
+        public void TreesWaitingOnTheAcademyStaySkippedUntilItIsUpgraded()
+        {
+            var settings = JsonSerializer.Deserialize<AutoTechnologySettings>("{\"ResearchTypes\":[0,1,2]}")!;
+            const int instance = 9003;
+            foreach (var t in new[] { ResearchType.Growth, ResearchType.Economy, ResearchType.Battle })
+                AutoTechnologySettings.MarkEmpty(instance, t, System.TimeSpan.FromHours(6));
+            Assert.That(settings.AllEmpty(instance), Is.True, "nothing to scan while the Academy blocks every tree");
+            AutoTechnologySettings.ClearEmpty(instance);
+            Assert.That(settings.AllEmpty(instance), Is.False);
+            Assert.AreEqual(ResearchType.Growth, settings.NextResearchType(instance));
+        }
+
+        [Test]
         public void NextResearchType_WithoutList_UsesSingleResearchType()
         {
             var settings = JsonSerializer.Deserialize<AutoTechnologySettings>("{\"ResearchType\":2}")!;
