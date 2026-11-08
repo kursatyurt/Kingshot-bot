@@ -64,7 +64,10 @@ namespace Bot.Core.Tasks.Modules
             using (var ocr = new OCRService(logger, new OCRConfiguration { ScaleFactor = 3.0f, PageSegMode = PageSegMode.SingleLine }))
             {
                 var status = panel == null ? "" : ocr.ExtractBrightTextFromScreenArea(panel, ResearchStatusArea);
-                if (!status.Contains("Idle", StringComparison.OrdinalIgnoreCase))
+                // The cycle's panel scan reads the whole column reliably; this one-row read is only the fallback
+                bool idle = SidePanelStatus.Latest(account.InstanceNumber)?.Town.Any(r => r.Is("Research") && r.Idle)
+                    ?? status.Contains("Idle", StringComparison.OrdinalIgnoreCase);
+                if (!idle)
                 {
                     await ClickAsync(account.InstanceNumber, logger, SidePanelCloseHandle);
                     logger.LogInfo($"[{account.AccountName}] Research busy or no Academy ('{status}')");
