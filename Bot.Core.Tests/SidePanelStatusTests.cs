@@ -71,6 +71,16 @@ namespace Bot.Core.Tests
             Assert.That(SidePanelStatus.ParseFountain(text), Is.EqualTo(((int, int)?)(have, cap)), text);
         }
 
+        [TestCase("Available: 292/1, 800", 292, 1800)]
+        [TestCase("Available: 962/2.160", 962, 2160)]
+        [TestCase("Available: 17/2160", 17, 2160)]
+        [TestCase("Available: 292/1", null, null)]   // capacity cut off: no reading rather than "full"
+        public void ParsesFountainFillOrRejectsAMisread(string text, int? have, int? cap)
+        {
+            var parsed = SidePanelStatus.ParseFountain(text);
+            Assert.That(parsed, Is.EqualTo(have == null ? null : ((int, int)?)(have.Value, cap!.Value)));
+        }
+
         [Test]
         public void ParsesTitleThenStatusLines()
         {
