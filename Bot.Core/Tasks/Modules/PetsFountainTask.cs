@@ -179,13 +179,16 @@ namespace Bot.Core.Tasks.Modules
             return claimed + sent > 0 ? $"Pet Adventure: {claimed} chest(s), {sent} pet(s) sent" : null;
         }
 
+        private async Task<bool> InCityAsync(AccountSettings account, LogService logger) =>
+            await TakeScreenshotAsync(account.InstanceNumber, logger) is { } shot
+            && _templateMatcher.MatchTemplate(shot, Path.Combine(AppContext.BaseDirectory, "templates", "images", "locator", "base-view.png"), account.InstanceNumber, 0.7).found;
+
         /// <summary>Back arrow until the city shows (Pet Adventure and the enclosure each need one; a slow screen eats a tap).</summary>
         private async Task LeaveToCityAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
         {
-            var baseView = Path.Combine(AppContext.BaseDirectory, "templates", "images", "locator", "base-view.png");
             for (int i = 0; i < 4; i++)
             {
-                if (await TakeScreenshotAsync(account.InstanceNumber, logger) is { } shot && _templateMatcher.MatchTemplate(shot, baseView, account.InstanceNumber, 0.7).found) return;
+                if (await InCityAsync(account, logger)) return;
                 await ClickAsync(account.InstanceNumber, logger, new Point(48, 40));
                 await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
             }
@@ -251,6 +254,12 @@ namespace Bot.Core.Tasks.Modules
                 return false;
             await ClickAsync(account.InstanceNumber, logger, new Point(48, 40)); // back to the enclosure
             await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
+            // Back sometimes lands in the city, where (82,1200) is the Conquest button: only tap Skills in the enclosure
+            if (await InCityAsync(account, logger))
+            {
+                logger.LogInfo($"[{account.AccountName}] Pets: back went to the city, not the enclosure; skill check next time");
+                return false;
+            }
             await ClickAsync(account.InstanceNumber, logger, new Point(82, 1200)); // Skills
             if (!await WaitForImageAsync("pet-skill-title.png", account.InstanceNumber, logger, cancellationToken, 5000, threshold: 0.85))
                 return false;
