@@ -46,7 +46,7 @@ namespace Bot.Core.Tasks.Modules
 
         /// <summary>The scan of this cycle, if it is recent enough to trust.</summary>
         public static Scan? Latest(int instanceNumber) =>
-            _latest.TryGetValue(instanceNumber, out var s) && DateTime.UtcNow - s.At < TimeSpan.FromMinutes(5) ? s : null;
+            _latest.TryGetValue(instanceNumber, out var s) && DateTime.UtcNow - s.At < TimeSpan.FromMinutes(15) ? s : null; // a first cycle after a restart can take 6+ min
 
         public static List<PanelRow> Parse(string text)
         {

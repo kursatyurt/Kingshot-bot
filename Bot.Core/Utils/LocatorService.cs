@@ -182,6 +182,17 @@ namespace Bot.Core.Utils
                     }
                 }
 
+                // Celebration screens (a new troop tier, rewards) say "Tap anywhere to continue": tap and look again
+                if (!_closingPanel && new OCRService(_logger).ExtractBrightTextFromScreenArea(screenshot, new Rectangle(100, 1190, 520, 80), 190)?.Contains("anywhere", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    _logger.LogInfo("[Locator] 'Tap anywhere to continue' screen - tapping it away");
+                    await adbController.TapAsync(360, 1000, cancellationToken);
+                    await Task.Delay(1500, cancellationToken);
+                    _closingPanel = true;
+                    try { return await DetectCurrentViewAsync(instanceNumber, cancellationToken); }
+                    finally { _closingPanel = false; }
+                }
+
                 // The city side panel left open hides the base view marker: close it by its ◁ handle and look again
                 var handle = Path.Combine(AppContext.BaseDirectory, "templates", "images", "locator", "side-panel-handle.png");
                 var (panelOpen, h, _) = _templateMatcher.MatchTemplate(screenshot, handle, instanceNumber, 0.88, searchArea: new Rectangle(400, 460, 140, 170));

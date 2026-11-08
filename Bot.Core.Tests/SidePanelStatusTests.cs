@@ -82,6 +82,16 @@ namespace Bot.Core.Tests
         }
 
         [Test]
+        public void NewTroopPopupSaysTapAnywhere() // what the locator reads to dismiss it
+        {
+            var shot = System.IO.File.ReadAllBytes(System.IO.Path.Combine(TestContext.CurrentContext.TestDirectory, "tap-anywhere.png"));
+            string text;
+            try { text = new Bot.Core.Utils.OCRService(new Bot.Core.Logging.LogService()).ExtractBrightTextFromScreenArea(shot, new System.Drawing.Rectangle(100, 1190, 520, 80), 190); }
+            catch (InvalidOperationException) { Assert.Ignore("Tesseract native libraries not next to the test binaries"); return; }
+            Assert.That(text, Does.Contain("anywhere").IgnoreCase);
+        }
+
+        [Test]
         public void ParsesTitleThenStatusLines()
         {
             var rows = SidePanelStatus.Parse("Building Queue\nEmbassy Upgrading\n05:41:43 |\nTech Research\nIdle\n");

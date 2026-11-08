@@ -45,8 +45,8 @@ namespace Bot.Core.Tasks.Modules
         private static readonly double FountainMin = double.TryParse(Environment.GetEnvironmentVariable("KINGSHOT_FOUNTAIN_MIN"),
             System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var min) ? min : 0.5;
 
-        private static bool FountainDue(int n) => SidePanelStatus.Latest(n)?.Fountain is { } f
-            ? f.Have >= f.Cap * FountainMin
+        private static bool FountainDue(int n) => SidePanelStatus.Latest(n) is { } p
+            ? p.Fountain is { } f && f.Have >= f.Cap * FountainMin // an unreadable fill waits for the next scan
             : !(_nextCheck.TryGetValue(n, out var next) && DateTime.UtcNow < next);
 
         protected override bool OnCooldown(AccountSettings account) => !FountainDue(account.InstanceNumber) && !PetsDue(account.InstanceNumber);
