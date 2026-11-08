@@ -118,7 +118,7 @@ namespace Bot.Core.Tasks.Modules
             for (int open = 0; open < 2 && readable == 0; open++)
             {
                 // The ▷ tab toggles: if the panel was already open, the first tap closed it
-                await OpenSidePanelAsync(account.InstanceNumber, logger, cancellationToken);
+                if (!await OpenSidePanelAsync(account.InstanceNumber, logger, cancellationToken)) return null;
                 screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
                 if (screenshot == null) return null;
                 readable = ReadCamps(screenshot, ocr, result, account, logger);
@@ -177,7 +177,7 @@ namespace Bot.Core.Tasks.Modules
         private async Task CollectCampAsync(AccountSettings account, LogService logger, string camp, CancellationToken cancellationToken)
         {
             var y = Camps.First(c => c.Name == camp).Y;
-            await OpenSidePanelAsync(account.InstanceNumber, logger, cancellationToken);
+            if (!await OpenSidePanelAsync(account.InstanceNumber, logger, cancellationToken)) return; // the panel did not open: its positions would hit the city
             await ClickAsync(account.InstanceNumber, logger, new Point(CampArrowX, y));
             await Bot.Core.Utils.Pace.Delay(2500, cancellationToken);
             logger.LogInfo($"[{account.AccountName}] 🪖 Collecting trained {camp}");
@@ -188,7 +188,7 @@ namespace Bot.Core.Tasks.Modules
         private async Task<bool> TrainCampAsync(AccountSettings account, LogService logger, string camp, CancellationToken cancellationToken)
         {
             var y = Camps.First(c => c.Name == camp).Y;
-            await OpenSidePanelAsync(account.InstanceNumber, logger, cancellationToken);
+            if (!await OpenSidePanelAsync(account.InstanceNumber, logger, cancellationToken)) return false; // the panel did not open: its positions would hit the city
             await ClickAsync(account.InstanceNumber, logger, new Point(CampArrowX, y));
             await Bot.Core.Utils.Pace.Delay(2500, cancellationToken);
 

@@ -230,7 +230,7 @@ namespace Bot.Core.Tasks.Modules
             for (int built = 0; built < 6;)
             {
                 if (!await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken)) return;
-                await OpenSidePanelAsync(account.InstanceNumber, logger, cancellationToken); // side panel tab
+                if (!await OpenSidePanelAsync(account.InstanceNumber, logger, cancellationToken)) return; // the panel did not open: its positions would hit the city
                 var panel = await TakeScreenshotAsync(account.InstanceNumber, logger);
                 var queueStatus = panel == null ? "" : ocr.ExtractBrightTextFromScreenArea(panel, new Rectangle(150, 376, 160, 30));
                 if (!queueStatus.Contains("Idle", StringComparison.OrdinalIgnoreCase))
@@ -803,7 +803,7 @@ namespace Bot.Core.Tasks.Modules
             for (int extra = 1; extra <= 3; extra++)
             {
                 await Bot.Core.Utils.Pace.Delay(4000, cancellationToken);
-                await OpenSidePanelAsync(account.InstanceNumber, logger, cancellationToken); // side panel: is the builder free?
+                if (!await OpenSidePanelAsync(account.InstanceNumber, logger, cancellationToken)) return; // the panel did not open: its positions would hit the city
                 var panel = await TakeScreenshotAsync(account.InstanceNumber, logger);
                 var builder = panel == null ? "" : ocr.ExtractBrightTextFromScreenArea(panel, new Rectangle(150, 376, 160, 30));
                 await ClickAsync(account.InstanceNumber, logger, new Point(464, 544)); // close the panel

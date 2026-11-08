@@ -77,7 +77,8 @@ namespace Bot.Core.Tasks.Modules
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
 
             // 1. Is the Academy free?
-            await OpenSidePanelAsync(account.InstanceNumber, logger, cancellationToken);
+            if (!await OpenSidePanelAsync(account.InstanceNumber, logger, cancellationToken)) // the panel did not open: its positions would hit the city
+                return new TaskExecutionDetails(true, message: "Side panel did not open");
             var panel = await TakeScreenshotAsync(account.InstanceNumber, logger);
             using (var ocr = new OCRService(logger, new OCRConfiguration { ScaleFactor = 3.0f, PageSegMode = PageSegMode.SingleLine }))
             {
