@@ -292,7 +292,6 @@ namespace Bot.Core.Tasks.Modules
             await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
             await RequestAllianceHelpAsync(account, logger, cancellationToken); // the Academy's handshake bubble
-            SidePanelStatus.Invalidate(account.InstanceNumber); // its Idle row is out of date now
             return new TaskExecutionDetails(true, message: $"Started {researchType} research");
         }
 

@@ -96,7 +96,6 @@ namespace Bot.Core.Tasks.Modules
         private async Task ClaimStorehouseRewardsAsync(AccountSettings account, LogService logger, LocatorService locator, CancellationToken cancellationToken)
         {
             if (!StorehouseDue(account.InstanceNumber)) return;
-            SidePanelStatus.Invalidate(account.InstanceNumber); // the rows change once collected
             _nextStorehouseCheck[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(10);
 
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);

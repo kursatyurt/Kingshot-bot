@@ -48,9 +48,6 @@ namespace Bot.Core.Tasks.Modules
         public static Scan? Latest(int instanceNumber) =>
             _latest.TryGetValue(instanceNumber, out var s) && DateTime.UtcNow - s.At < TimeSpan.FromMinutes(5) ? s : null;
 
-        /// <summary>Forget the scan once a task has changed what it showed (started a research, a building...).</summary>
-        public static void Invalidate(int instanceNumber) => _latest.TryRemove(instanceNumber, out _);
-
         public static List<PanelRow> Parse(string text)
         {
             var lines = text.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToList();

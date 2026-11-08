@@ -51,7 +51,7 @@ namespace Bot.Core.Tasks.Modules
         protected override async Task<TaskExecutionDetails> ExecuteTaskLogicAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken, bool isReRun = false, IUserNotificationService? userNotifications = null)
         {
             if (OnCooldown(account)) return new TaskExecutionDetails(true, message: "Pets & Fountain checked recently");
-            bool fountain = FountainDue(account.InstanceNumber), pets = PetsDue(account.InstanceNumber) || SidePanelStatus.Latest(account.InstanceNumber) == null;
+            bool fountain = FountainDue(account.InstanceNumber), pets = PetsDue(account.InstanceNumber); // only on the panel's word
             if (fountain) _nextCheck[account.InstanceNumber] = DateTime.UtcNow.AddHours(6);
             if (pets) _lastPetRun[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(30);
 
