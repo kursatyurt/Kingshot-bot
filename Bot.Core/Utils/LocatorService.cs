@@ -302,9 +302,10 @@ namespace Bot.Core.Utils
             }
         }
 
-        /// <summary>The loading bar at the bottom shows a percentage ("45.67%").</summary>
+        /// <summary>The loading bar at the bottom shows a percentage ("45.67%") or "Checking version info".</summary>
         public bool IsLoadingScreen(byte[] screenshot) =>
-            new OCRService(_logger).ExtractBrightTextFromScreenArea(screenshot, new Rectangle(250, 1145, 220, 40), 190)?.Contains('%') == true;
+            new OCRService(_logger).ExtractBrightTextFromScreenArea(screenshot, new Rectangle(200, 1145, 320, 40), 190) is { } t
+            && (t.Contains('%') || t.Contains("version", StringComparison.OrdinalIgnoreCase));
 
         private async Task<ViewType> HandleNoViewDetected(string errorMessage)
         {

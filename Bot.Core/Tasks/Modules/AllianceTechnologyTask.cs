@@ -124,6 +124,14 @@ namespace Bot.Core.Tasks.Modules
                 var allianceTechFound = await FindAndClickWithTimeoutAsync(
                     account, logger, cancellationToken, allianceTechPath, 
                     "alliance tech", SEARCH_TIMEOUT_MS, SEARCH_INTERVAL_MS);
+                if (!allianceTechFound)
+                {
+                    // The Terror Auto-Join steps can leave the War page or its dialog open on top of the alliance menu
+                    await PressBackAsync(account.InstanceNumber, logger);
+                    await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
+                    allianceTechFound = await FindAndClickWithTimeoutAsync(account, logger, cancellationToken, allianceTechPath,
+                        "alliance tech", SEARCH_TIMEOUT_MS, SEARCH_INTERVAL_MS);
+                }
 
                 if (!allianceTechFound)
                 {
