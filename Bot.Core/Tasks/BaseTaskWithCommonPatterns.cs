@@ -412,18 +412,29 @@ namespace Bot.Core.Tasks
             // The ▷ tab toggles the panel, so check for the open panel's ◁ handle before and after tapping. Tapping the
             // Town tab spot with the panel closed would hit a city shortcut (it opened Hero Recruitment).
             var handle = Path.Combine(AppContext.BaseDirectory, "templates", "images", "locator", "side-panel-handle.png");
-            for (int attempt = 0; attempt < 3; attempt++)
+            // The panel slides in and out: a handle seen mid-animation is not an open panel, so it must show on two
+            // screenshots in a row; a toggle tap gets a full second to settle (unscaled)
+            async Task<bool> HandleShows()
             {
                 var screenshot = await TakeScreenshotAsync(instanceNumber, logger);
-                if (screenshot != null && _templateMatcher.MatchTemplate(screenshot, handle, instanceNumber, threshold: 0.88,
-                        searchArea: new Rectangle(400, 460, 140, 170)).found)
+                return screenshot != null && _templateMatcher.MatchTemplate(screenshot, handle, instanceNumber, threshold: 0.88,
+                    searchArea: new Rectangle(400, 460, 140, 170)).found;
+            }
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                if (await HandleShows())
                 {
-                    await ClickAsync(instanceNumber, logger, new Point(80, 268)); // Town tab
-                    await Bot.Core.Utils.Pace.Delay(700, cancellationToken);
-                    return true;
+                    await Task.Delay(400, cancellationToken);
+                    if (await HandleShows())
+                    {
+                        await ClickAsync(instanceNumber, logger, new Point(80, 268)); // Town tab
+                        await Bot.Core.Utils.Pace.Delay(700, cancellationToken);
+                        return true;
+                    }
+                    continue; // it was sliding: look again before tapping the toggle
                 }
                 await ClickAsync(instanceNumber, logger, new Point(12, 550));
-                await Bot.Core.Utils.Pace.Delay(1300, cancellationToken);
+                await Task.Delay(1500, cancellationToken);
             }
             logger.LogInfo("The city side panel did not open");
             return false;
