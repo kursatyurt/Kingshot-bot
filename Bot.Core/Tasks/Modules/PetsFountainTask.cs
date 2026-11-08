@@ -41,9 +41,12 @@ namespace Bot.Core.Tasks.Modules
             && !p.Daily.Any(r => r.Is("Adventure") && r.Timer != null) // every pet out: its row counts down to the first one home
             && p.HasDot("Adventure"); // the red dot: a chest to open or a pet to send
 
-        /// <summary>The Daily tab's "Available: have/cap": the island is worth a trip from half full.</summary>
+        /// <summary>The Daily tab's "Available: have/cap": the island is worth a trip from half full (KINGSHOT_FOUNTAIN_MIN overrides).</summary>
+        private static readonly double FountainMin = double.TryParse(Environment.GetEnvironmentVariable("KINGSHOT_FOUNTAIN_MIN"),
+            System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var min) ? min : 0.5;
+
         private static bool FountainDue(int n) => SidePanelStatus.Latest(n)?.Fountain is { } f
-            ? f.Have * 2 >= f.Cap
+            ? f.Have >= f.Cap * FountainMin
             : !(_nextCheck.TryGetValue(n, out var next) && DateTime.UtcNow < next);
 
         protected override bool OnCooldown(AccountSettings account) => !FountainDue(account.InstanceNumber) && !PetsDue(account.InstanceNumber);
