@@ -14,7 +14,7 @@ namespace Bot.Core.Tests
     /// Performance tests to validate Phase 1 improvements.
     /// These tests require a running LDPlayer instance to be meaningful.
     /// </summary>
-    [TestFixture, Category("Integration")] // needs a running emulator
+    [TestFixture, Category("Integration"), Explicit("drives the real emulators; run by name when the bot is stopped")]
     [Category("Performance")]
     public class InstanceManagerPerformanceTests
     {
