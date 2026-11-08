@@ -108,6 +108,7 @@ namespace Bot.Core.Tasks.Modules
             var tab = researchType switch { ResearchType.Economy => new Point(361, 123), ResearchType.Battle => new Point(585, 120), _ => new Point(130, 116) };
             await ClickAsync(account.InstanceNumber, logger, tab);
             await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
+            await ScrollTreeToTopAsync(account, logger, cancellationToken); // a tab keeps the scroll the last scan left
 
             // The tree runs far below one screen (Command Tactics II, the next march queue, is deep in Growth):
             // find the items on each page by their level badges, then scroll on until the page stops changing.
@@ -125,14 +126,7 @@ namespace Bot.Core.Tasks.Modules
             if (pass == 1)
             {
                 if (fallback == null) break;
-                for (int up = 0; up < 15; up++)
-                {
-                    var before = await TakeScreenshotAsync(account.InstanceNumber, logger);
-                    await SwipeAsync(account.InstanceNumber, logger, new Point(360, 300), new Point(360, 1100), 300);
-                    await Bot.Core.Utils.Pace.Delay(800, cancellationToken);
-                    var after = await TakeScreenshotAsync(account.InstanceNumber, logger);
-                    if (before != null && after != null && SamePage(before, after)) break;
-                }
+                await ScrollTreeToTopAsync(account, logger, cancellationToken);
             }
             byte[]? previousPage = null;
             for (int page = 0; page < 15; page++)
@@ -299,7 +293,7 @@ namespace Bot.Core.Tasks.Modules
         /// Research items on the visible part of the tree: each has a brown level badge ("0/3", 62x25) under its
         /// icon, whose centre is ~60 px above the badge. Items cut off at the top or bottom are left for another page.
         /// </summary>
-        private static List<Point> FindTreeItems(byte[] screenshot)
+        public static List<Point> FindTreeItems(byte[] screenshot)
         {
             using var img = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
             if (img.Empty()) return new List<Point>();
@@ -323,7 +317,7 @@ namespace Bot.Core.Tasks.Modules
         /// <summary>
         /// An unlocked item sits on a teal hexagon (a third of its box is teal); a locked one is grey (0%).
         /// </summary>
-        private static bool IsUnlocked(byte[] screenshot, Point item)
+        public static bool IsUnlocked(byte[] screenshot, Point item)
         {
             using var img = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
             if (img.Empty()) return true;
@@ -347,11 +341,23 @@ namespace Bot.Core.Tasks.Modules
             return OpenCvSharp.Cv2.Mean(diff).Val0 < 3;
         }
 
+        private async Task ScrollTreeToTopAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
+        {
+            for (int up = 0; up < 15; up++)
+            {
+                var before = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                await SwipeAsync(account.InstanceNumber, logger, new Point(360, 300), new Point(360, 1100), 300);
+                await Bot.Core.Utils.Pace.Delay(800, cancellationToken);
+                var after = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                if (before != null && after != null && SamePage(before, after)) break;
+            }
+        }
+
         /// <summary>
         /// The cyan Research button of a research dialog: a cyan button in the right half with the orange Finish (gems)
         /// on its left at the same height. A locked item's cyan Go has no Finish beside it.
         /// </summary>
-        private static Point? FindResearchButton(byte[] screenshot)
+        public static Point? FindResearchButton(byte[] screenshot)
         {
             using var img = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
             if (img.Empty()) return null;
