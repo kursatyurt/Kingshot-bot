@@ -272,7 +272,7 @@ namespace Bot.Core.Tasks.Modules
         }
 
         /// <summary>
-        /// The tick only opens My Island: the water is in green drop bubbles over the fountain (+1,440 when full) and the
+        /// The row only opens My Island: the water is in drop bubbles (green up to their fill level) over the fountain (+1,440 when full) and the
         /// well (+140), wherever the island camera puts them. Each tap collects one bubble.
         /// </summary>
         private async Task<int> CollectWaterBubblesAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
@@ -280,9 +280,10 @@ namespace Bot.Core.Tasks.Modules
             int collected = 0;
             for (; collected < 5; collected++)
             {
-                var (found, bubble, _) = await WaitForImageWithPositionAsync("water-bubble.png", account.InstanceNumber, logger, cancellationToken, collected == 0 ? 3000 : 1500,
-                    threshold: 0.8, searchArea: new Rectangle(0, 90, 720, 1000));
-                if (!found) break;
+                // Match the blue drop, not the bubble: a partly filled bubble is only green at the bottom
+                await Bot.Core.Utils.Pace.Delay(collected == 0 ? 2000 : 1000, cancellationToken);
+                var island = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                if (island == null || FindAll(island, Path.Combine(ImageTemplateFolder, "water-drop.png"), 0.72, new Rectangle(0, 90, 720, 1000)) is not [var bubble, ..]) break;
                 logger.LogInfo($"[{account.AccountName}] 💧 Collecting water essence");
                 await ClickAsync(account.InstanceNumber, logger, new Point(bubble.X + bubble.Width / 2, bubble.Y + bubble.Height / 2));
                 await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);

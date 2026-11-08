@@ -26,6 +26,18 @@ namespace Bot.Core.Tests
         private static byte[] Shot(string name) => System.IO.File.ReadAllBytes(System.IO.Path.Combine(TestContext.CurrentContext.TestDirectory, name));
 
         [Test]
+        public void FindsPartlyFilledWaterBubbles()
+        {
+            var tpl = System.IO.Path.Combine(TestContext.CurrentContext.TestDirectory, "../../../../templates/images/pets/water-drop.png");
+            var area = new System.Drawing.Rectangle(0, 90, 720, 1000);
+            var drops = PetsFountainTask.FindAll(Shot("island-partial.png"), tpl, 0.72, area);
+            Assert.That(drops, Has.Some.Matches<System.Drawing.Rectangle>(r => r.Contains(601, 410)));  // well
+            Assert.That(drops, Has.Some.Matches<System.Drawing.Rectangle>(r => r.Contains(356, 470)));  // fountain, partly full
+            Assert.That(drops, Has.Count.EqualTo(2));
+            Assert.That(PetsFountainTask.FindAll(Shot("city.png"), tpl, 0.72, area), Is.Empty);
+        }
+
+        [Test]
         public void PicksOnlyTheLynxWhileTheWolfIsInAdventure()
         {
             var list = Shot("select-pet.png");
