@@ -267,6 +267,10 @@ namespace Bot.Core.Tasks
                 _logger.LogInfo($"[{account.AccountName}] Executing {tasksToRun.Count} tasks: {string.Join(", ", tasksToRun)}");
                 _userNotifications?.ShowStatus($"Starting {tasksToRun.Count} tasks for {account.AccountName}: {string.Join(", ", tasksToRun)}");
                 
+                // One look at the side panel tells the tasks which queues are busy and for how long
+                try { await new Bot.Core.Tasks.Modules.SidePanelStatus().ScanAsync(account, _logger, cancellationToken); }
+                catch (Exception ex) when (ex is not OperationCanceledException) { _logger.LogWarning($"[{account.AccountName}] Side panel scan failed: {ex.Message}"); }
+
                 // Track farming retries to prevent infinite loops
                 var farmingRetryCount = 0;
                 const int maxFarmingRetries = 3;

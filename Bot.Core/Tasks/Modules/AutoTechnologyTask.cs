@@ -28,7 +28,19 @@ namespace Bot.Core.Tasks.Modules
         private static readonly Point RingResearchButton = new Point(480, 722);   // same slot as a camp's Train
         private static readonly Point RingUpgradeButton = new Point(360, 750);
 
-        protected override bool OnCooldown(AccountSettings account) => _nextCheck.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next;
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, DateTime> _allEmptyUntil = new();
+
+        /// <summary>Research items found waiting on a higher Academy level; AutoBuild upgrades it with the next free builder.</summary>
+        public static readonly System.Collections.Concurrent.ConcurrentDictionary<int, bool> AcademyNeeded = new();
+
+        /// <summary>The side panel's Tech Research row decides: busy (timer) waits, Idle runs unless every tree came up empty within the hour.</summary>
+        protected override bool OnCooldown(AccountSettings account)
+        {
+            int n = account.InstanceNumber;
+            if (SidePanelStatus.Latest(n)?.Town.FirstOrDefault(r => r.Is("Research") && (r.Timer != null || r.Idle)) is { } row)
+                return row.Timer != null || (_allEmptyUntil.TryGetValue(n, out var until) && DateTime.UtcNow < until);
+            return _nextCheck.TryGetValue(n, out var next) && DateTime.UtcNow < next;
+        }
 
         /// <summary>
         /// Keeps the Academy researching. The city side panel shows Tech Research as Idle or busy; its arrow centres
@@ -38,7 +50,7 @@ namespace Bot.Core.Tasks.Modules
         /// </summary>
         protected override async Task<TaskExecutionDetails> ExecuteTaskLogicAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken, bool isReRun = false, IUserNotificationService? userNotifications = null)
         {
-            if (_nextCheck.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next)
+            if (OnCooldown(account))
                 return new TaskExecutionDetails(true, message: "Skipped: checked recently");
             _nextCheck[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(20);
 
@@ -141,6 +153,9 @@ namespace Bot.Core.Tasks.Modules
                         double progress = level.Success ? Math.Min(int.Parse(level.Groups[1].Value), 3) / 3.0 : 1; // every research tops out at level 3
                         if (pass == 0 && title.Length >= 4 && (fallback == null || progress < fallback.Value.progress)) fallback = (page, item, progress, title);
                     }
+                    // A red "Academy Lv. N" requirement: the tree waits on the Academy, which AutoBuild then upgrades
+                    if (research == null && dialog != null && new OCRService(logger).ExtractTextFromScreenArea(dialog, new Rectangle(140, 850, 300, 55)).Contains("Academy", StringComparison.OrdinalIgnoreCase))
+                        AcademyNeeded[account.InstanceNumber] = true;
                     if (dialog != null && HasDialogOpen(dialog))
                     {
                         await PressBackAsync(account.InstanceNumber, logger); // close a locked, maxed or deferred item
@@ -159,6 +174,7 @@ namespace Bot.Core.Tasks.Modules
             }
             // Every tree came up empty: look again in an hour
             _nextCheck[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(60);
+            _allEmptyUntil[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(60);
             await PressBackAsync(account.InstanceNumber, logger); // leave Tech Research ourselves
             await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
@@ -257,6 +273,7 @@ namespace Bot.Core.Tasks.Modules
             await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
             await RequestAllianceHelpAsync(account, logger, cancellationToken); // the Academy's handshake bubble
+            SidePanelStatus.Invalidate(account.InstanceNumber); // its Idle row is out of date now
             return new TaskExecutionDetails(true, message: $"Started {researchType} research");
         }
 

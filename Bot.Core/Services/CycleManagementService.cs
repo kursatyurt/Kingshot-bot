@@ -341,10 +341,9 @@ namespace Bot.Core.Services
 
                     // Come back as soon as the first gathering march is home, so it doesn't sit idle until the random wait ends
                     var enabledInstances = config.Accounts.Where(a => a.IsEnabled).Select(a => a.InstanceNumber).ToHashSet();
-                    // ...and when an online chest or a pet adventure is due
+                    // ...and when an online chest is due
                     var marchReturns = Tasks.Modules.FarmingTask.NextMarchReturn
                         .Concat(Tasks.Modules.EventRewardsTask._nextStorehouseCheck)
-                        .Concat(Tasks.Modules.PetsFountainTask.NextPetReturn)
                         .Where(kv => enabledInstances.Contains(kv.Key)).Select(kv => kv.Value).ToList();
                     if (marchReturns.Count > 0)
                     {
@@ -352,7 +351,7 @@ namespace Bot.Core.Services
                         var marchWait = Math.Clamp(minutesUntilReturn, 1, waitMinutes);
                         if (marchWait < waitMinutes)
                         {
-                            _logger.LogInfo($"⏱️ A march, online chest or pet is due in about {minutesUntilReturn - 1} min; next cycle in {marchWait} min instead of {waitMinutes}");
+                            _logger.LogInfo($"⏱️ A march or online chest is due in about {minutesUntilReturn - 1} min; next cycle in {marchWait} min instead of {waitMinutes}");
                             waitMinutes = marchWait;
                         }
                     }

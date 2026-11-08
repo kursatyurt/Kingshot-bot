@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -28,23 +29,35 @@ namespace Bot.Core.Tasks.Modules
         private static readonly string PetsDayFile = Path.Combine(AppContext.BaseDirectory, "data", "pets_day.json");
         private static readonly Rectangle RowIcons = new(0, 290, 120, 570);
 
-        /// <summary>When each instance's next pet comes home (Daily row timer); the task and the cycle wake for it.</summary>
-        public static readonly System.Collections.Concurrent.ConcurrentDictionary<int, DateTime> NextPetReturn = new();
+        private static readonly Dictionary<int, DateTime> _lastPetRun = new();
 
-        protected override bool OnCooldown(AccountSettings account) => _nextCheck.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next
-            && !(NextPetReturn.TryGetValue(account.InstanceNumber, out var pet) && DateTime.UtcNow >= pet);
+        /// <summary>
+        /// The Daily tab's Pet Adventure row counts down while every pet is out; without a timer a chest or a free pet
+        /// waits. Pets run then (at most every 30 min); the fountain is collected every 4 h whatever its fill.
+        /// </summary>
+        private static bool PetsDue(int n) =>
+            !(_lastPetRun.TryGetValue(n, out var last) && DateTime.UtcNow - last < TimeSpan.FromMinutes(30))
+            && SidePanelStatus.Latest(n)?.Daily.Where(r => r.Is("Adventure")).ToList() is { Count: > 0 } rows
+            && rows.All(r => r.Timer == null); // the section header shares the row's title
+
+        private static bool FountainDue(int n) => !(_nextCheck.TryGetValue(n, out var next) && DateTime.UtcNow < next);
+
+        protected override bool OnCooldown(AccountSettings account) => !FountainDue(account.InstanceNumber) && !PetsDue(account.InstanceNumber);
 
         protected override async Task<TaskExecutionDetails> ExecuteTaskLogicAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken, bool isReRun = false, IUserNotificationService? userNotifications = null)
         {
             if (OnCooldown(account)) return new TaskExecutionDetails(true, message: "Pets & Fountain checked recently");
-            _nextCheck[account.InstanceNumber] = DateTime.UtcNow.AddHours(2);
+            bool fountain = FountainDue(account.InstanceNumber), pets = PetsDue(account.InstanceNumber) || SidePanelStatus.Latest(account.InstanceNumber) == null;
+            if (fountain) _nextCheck[account.InstanceNumber] = DateTime.UtcNow.AddHours(4);
+            if (pets) _lastPetRun[account.InstanceNumber] = DateTime.UtcNow;
 
             var locator = new LocatorService(logger, account, TaskType);
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
             var done = new List<string>();
 
-            int? fy = await OpenDailyTabAsync(account, logger, cancellationToken) ? await RowYAsync(account, logger, "fountain-row.png") : null;
-            if (fy == null)
+            int? fy = !fountain ? null : await OpenDailyTabAsync(account, logger, cancellationToken) ? await RowYAsync(account, logger, "fountain-row.png") : null;
+            if (!fountain) { }
+            else if (fy == null)
             {
                 var path = Path.Combine(AppContext.BaseDirectory, "logs", "screenshots", $"fountain_norow_{account.InstanceNumber}_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.png");
                 if (await TakeScreenshotAsync(account.InstanceNumber, logger) is { } miss) { Directory.CreateDirectory(Path.GetDirectoryName(path)!); await File.WriteAllBytesAsync(path, miss, cancellationToken); }
@@ -68,7 +81,7 @@ namespace Bot.Core.Tasks.Modules
                 }
             }
 
-            var adventure = await PetAdventureAsync(account, logger, locator, cancellationToken);
+            var adventure = pets ? await PetAdventureAsync(account, logger, locator, cancellationToken) : null;
             if (adventure != null) done.Add(adventure);
 
             var accountId = AccountDetectionTask.GetCachedAccountId(account.InstanceNumber);
@@ -85,7 +98,6 @@ namespace Bot.Core.Tasks.Modules
                 }
             }
 
-            await ReadPetTimerAsync(account, logger, locator, cancellationToken);
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
             return new TaskExecutionDetails(true, message: done.Count > 0 ? string.Join("; ", done) : "Nothing to do");
         }
@@ -163,20 +175,6 @@ namespace Bot.Core.Tasks.Modules
             await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
             logger.LogInfo($"[{account.AccountName}] Pet Adventure: {claimed} chest(s) opened, {sent} pet(s) sent");
             return claimed + sent > 0 ? $"Pet Adventure: {claimed} chest(s), {sent} pet(s) sent" : null;
-        }
-
-        /// <summary>The Daily tab's Pet Adventure row shows the next return countdown ("Completed" when a chest waits).</summary>
-        private async Task ReadPetTimerAsync(AccountSettings account, LogService logger, LocatorService locator, CancellationToken cancellationToken)
-        {
-            NextPetReturn.TryRemove(account.InstanceNumber, out _);
-            await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
-            if (!await OpenDailyTabAsync(account, logger, cancellationToken) || await RowYAsync(account, logger, "pet-adventure-row.png") is not int py) return;
-            var shot = await TakeScreenshotAsync(account.InstanceNumber, logger);
-            if (shot != null && EventRewardsTask.ParseTimer(new OCRService(logger).ExtractBrightTextFromScreenArea(shot, new Rectangle(80, py, 290, 32))) is { } wait)
-            {
-                NextPetReturn[account.InstanceNumber] = DateTime.UtcNow + wait + TimeSpan.FromSeconds(20);
-                logger.LogInfo($"[{account.AccountName}] Next pet home in {wait}");
-            }
         }
 
         private async Task ClosePopupsAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)

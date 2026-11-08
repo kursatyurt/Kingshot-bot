@@ -22,6 +22,10 @@ namespace Bot.Core.Tasks.Modules
     /// </summary>
     public class TroopTrainingTask : BaseTaskWithCommonPatterns
     {
+        // The side panel's troop rows: nothing to do while all three camps count down
+        protected override bool OnCooldown(AccountSettings account) => SidePanelStatus.Latest(account.InstanceNumber) is { } p
+            && p.Town.Where(r => r.Is("Infantry") || r.Is("Cavalry") || r.Is("Archer")).ToList() is { Count: > 0 } camps
+            && camps.All(r => r.Timer != null);
         public override TaskType TaskType => TaskType.TroopTraining;
         public override string Name => "Troop Training";
 

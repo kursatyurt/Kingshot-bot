@@ -32,7 +32,12 @@ namespace Bot.Core.Tasks.Modules
 
         // Runs whenever the online chest is due (its timer is read after each collection) or Path of Growth's 3 h is up
         protected override bool OnCooldown(AccountSettings account) => _lastRun.TryGetValue(account.InstanceNumber, out var last) && DateTime.UtcNow - last < Interval
-            && _nextStorehouseCheck.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next;
+            && !StorehouseDue(account.InstanceNumber);
+
+        /// <summary>The Daily tab shows an Online Rewards row only while a chest waits, and the feast row loses its timer when ready.</summary>
+        private static bool StorehouseDue(int n) => SidePanelStatus.Latest(n) is { } p
+            ? p.Daily.Any(r => r.Is("Online Rewards")) || p.Daily.Any(r => r.Is("Gourmet") && r.Timer == null && !r.Idle)
+            : !(_nextStorehouseCheck.TryGetValue(n, out var next) && DateTime.UtcNow < next);
 
         protected override async Task<TaskExecutionDetails> ExecuteTaskLogicAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken, bool isReRun = false, IUserNotificationService? userNotifications = null)
         {
@@ -90,7 +95,8 @@ namespace Bot.Core.Tasks.Modules
         /// </summary>
         private async Task ClaimStorehouseRewardsAsync(AccountSettings account, LogService logger, LocatorService locator, CancellationToken cancellationToken)
         {
-            if (_nextStorehouseCheck.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next) return;
+            if (!StorehouseDue(account.InstanceNumber)) return;
+            SidePanelStatus.Invalidate(account.InstanceNumber); // the rows change once collected
             _nextStorehouseCheck[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(10);
 
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);

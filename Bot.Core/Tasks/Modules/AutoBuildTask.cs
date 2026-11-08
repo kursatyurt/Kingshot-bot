@@ -23,6 +23,10 @@ namespace Bot.Core.Tasks.Modules
     public class AutoBuildTask : BaseTaskWithCommonPatterns
     {
         protected override TimeSpan MinInterval => TimeSpan.FromMinutes(10);
+        // The side panel's building queues: nothing to do while every queue counts down
+        protected override bool OnCooldown(AccountSettings account) => SidePanelStatus.Latest(account.InstanceNumber) is { } p
+            && p.Town.Where(r => !r.Is("Infantry") && !r.Is("Cavalry") && !r.Is("Archer") && !r.Is("Research")) is var queues
+            && queues.Any(r => r.Timer != null) && !queues.Any(r => r.Idle);
         private const int MIN_CLICK_DELAY_MS = 500; // Minimum delay between clicks
         private const int MAX_CLICK_DELAY_MS = 1000; // Maximum delay between clicks
         private static readonly Random _random = new Random();
@@ -151,20 +155,23 @@ namespace Bot.Core.Tasks.Modules
             }
         }
 
-        private async Task UpgradeSuggestedBuildingAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
+        private async Task<bool> UpgradeSuggestedBuildingAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken, bool ringOpen = false)
         {
             // An idle builder is the bigger waste: houses, the Infirmary and resource buildings level up on what is on
             // hand. Only backpack items stay unopened while the Town Center waits for resources.
             var townCenterShort = FarmingTask.TownCenterIsShortOfResources(account.InstanceNumber);
-            await SwipeAsync(account.InstanceNumber, logger, CentredBuildingPoint, new Point(CentredBuildingPoint.X + 1, CentredBuildingPoint.Y + 1), 150);
-            await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
+            if (!ringOpen)
+            {
+                await SwipeAsync(account.InstanceNumber, logger, CentredBuildingPoint, new Point(CentredBuildingPoint.X + 1, CentredBuildingPoint.Y + 1), 150);
+                await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
+            }
             if (!await TapRingButtonAsync(account.InstanceNumber, logger, Path.Combine(ImageTemplateFolder, "ring-upgrade.png"), BuildingRingUpgradeButton))
             {
                 logger.LogInfo($"[{account.AccountName}] The suggested building has no Upgrade on its ring; leaving it");
-                return;
+                return false;
             }
             var missing = await ReadRequirementsAsync(account, logger, cancellationToken);
-            if (missing == null) return;
+            if (missing == null) return false;
 
             var dialog = await TakeScreenshotAsync(account.InstanceNumber, logger);
             using (var words = new OCRService(logger, new OCRConfiguration { ScaleFactor = 2.0f }))
@@ -173,7 +180,7 @@ namespace Bot.Core.Tasks.Modules
                 if (title.Contains("Storehouse", StringComparison.OrdinalIgnoreCase) || title.Contains("House", StringComparison.Ordinal))
                 {
                     logger.LogInfo($"[{account.AccountName}] Not upgrading '{title}' (Storehouse and houses are left to the user)");
-                    return;
+                    return false;
                 }
             }
 
@@ -182,17 +189,18 @@ namespace Bot.Core.Tasks.Modules
             if (missing.Count > 0)
             {
                 logger.LogInfo($"[{account.AccountName}] The suggested upgrade needs: {string.Join("; ", missing)}");
-                return;
+                return false;
             }
             dialog = await TakeScreenshotAsync(account.InstanceNumber, logger);
             var (found, rect, _) = dialog == null ? (false, Rectangle.Empty, 0.0)
                 : _templateMatcher.MatchTemplate(dialog, Path.Combine(ImageTemplateFolder, "dialog-upgrade-button.png"),
                     account.InstanceNumber, threshold: 0.88, searchArea: DialogUpgradeButtonArea);
-            if (!found) return;
+            if (!found) return false;
             logger.LogInfo($"[{account.AccountName}] 🔨 Builder idle: upgrading the suggested building");
             await ClickRandomInRectAsync(account.InstanceNumber, logger, rect);
             await RandomDelay(cancellationToken);
             await RequestAllianceHelpAsync(account, logger, cancellationToken);
+            return true;
         }
 
         /// <summary>
@@ -236,6 +244,20 @@ namespace Bot.Core.Tasks.Modules
                 }
 
                 if (built == 0 && await TryUpgradeCommandCenterAsync(account, logger, cancellationToken)) return;
+                if (built == 0 && AutoTechnologyTask.AcademyNeeded.TryGetValue(account.InstanceNumber, out var academy) && academy)
+                {
+                    // The panel's Tech Research arrow centres the Academy with its ring open
+                    if (!await OpenSidePanelAsync(account.InstanceNumber, logger, cancellationToken)) return;
+                    await ClickAsync(account.InstanceNumber, logger, new Point(405, 820));
+                    await Bot.Core.Utils.Pace.Delay(2500, cancellationToken);
+                    if (await UpgradeSuggestedBuildingAsync(account, logger, cancellationToken, ringOpen: true))
+                    {
+                        AutoTechnologyTask.AcademyNeeded[account.InstanceNumber] = false;
+                        logger.LogInfo($"[{account.AccountName}] 🎓 Academy upgrade started: research was waiting on its level");
+                        return;
+                    }
+                    if (!await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken)) return;
+                }
                 if (built == 0) await OpenSidePanelAsync(account.InstanceNumber, logger, cancellationToken);
                 await ClickAsync(account.InstanceNumber, logger, new Point(405, 370)); // Building Queue 1 → suggested build
                 var (found, rect) = (false, Rectangle.Empty);

@@ -84,7 +84,13 @@ namespace Bot.Core.Tasks.Modules
         /// </summary>
         public static readonly ConcurrentDictionary<int, DateTime> NextMarchReturn = new();
         // Every slot busy: nothing to send until the first march is home (the timer is capped at 15 min)
-        protected override bool OnCooldown(AccountSettings account) => NextMarchReturn.TryGetValue(account.InstanceNumber, out var back) && DateTime.UtcNow < back;
+        // The Wilderness tab lists every march: an Idle one goes at once, otherwise wait for the first timer to end
+        protected override bool OnCooldown(AccountSettings account)
+        {
+            if (SidePanelStatus.Latest(account.InstanceNumber) is { } p && p.Wilderness.Any(r => r.Timer != null || r.Idle))
+                return !p.Wilderness.Any(r => r.Idle) && DateTime.UtcNow < p.At + p.Wilderness.Where(r => r.Timer != null).Min(r => r.Timer!.Value);
+            return NextMarchReturn.TryGetValue(account.InstanceNumber, out var back) && DateTime.UtcNow < back;
+        }
         private readonly string _templateFolder;
 
         // Constants for polling and timeouts
