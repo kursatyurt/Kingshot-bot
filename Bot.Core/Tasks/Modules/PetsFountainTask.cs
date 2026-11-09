@@ -74,7 +74,8 @@ namespace Bot.Core.Tasks.Modules
             {
                 // The row's tick or arrow both open My Island, which can hold water either way: always look
                 await ClickAsync(account.InstanceNumber, logger, new Point(404, fy.Value));
-                bool onIsland = await WaitForImageAsync("my-island-title.png", account.InstanceNumber, logger, cancellationToken, 8000, threshold: 0.85);
+                // The trip passes a cloud transition that can take well over 8 s
+                bool onIsland = await WaitForImageAsync("my-island-title.png", account.InstanceNumber, logger, cancellationToken, 20000, threshold: 0.85);
                 if (!onIsland && await TakeScreenshotAsync(account.InstanceNumber, logger) is { } missed)
                 {
                     var path = Path.Combine(AppContext.BaseDirectory, "logs", "screenshots", $"island_notopen_{account.InstanceNumber}_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.png");
@@ -332,13 +333,17 @@ namespace Bot.Core.Tasks.Modules
 
         private async Task<int?> RowYAsync(AccountSettings account, LogService logger, string icon)
         {
-            for (int i = 0; i < 4; i++) // the Daily tab can still be sliding in: look again before giving up
+            // The Daily tab can still be sliding in or its rows moving: only trust a row seen at the same height twice
+            int? last = null;
+            for (int i = 0; i < 6; i++)
             {
-                if (i > 0) await Task.Delay(1000);
+                if (i > 0) await Task.Delay(700);
                 var shot = await TakeScreenshotAsync(account.InstanceNumber, logger);
                 if (shot == null) continue;
                 var (found, rect, _) = _templateMatcher.MatchTemplate(shot, Path.Combine(ImageTemplateFolder, icon), account.InstanceNumber, threshold: 0.9, searchArea: RowIcons);
-                if (found) return rect.Y + rect.Height / 2;
+                int? y = found ? rect.Y + rect.Height / 2 : null;
+                if (y != null && last != null && Math.Abs(y.Value - last.Value) <= 3) return y;
+                last = y;
             }
             return null;
         }
