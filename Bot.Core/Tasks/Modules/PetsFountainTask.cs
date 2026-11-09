@@ -332,10 +332,15 @@ namespace Bot.Core.Tasks.Modules
 
         private async Task<int?> RowYAsync(AccountSettings account, LogService logger, string icon)
         {
-            var shot = await TakeScreenshotAsync(account.InstanceNumber, logger);
-            if (shot == null) return null;
-            var (found, rect, _) = _templateMatcher.MatchTemplate(shot, Path.Combine(ImageTemplateFolder, icon), account.InstanceNumber, threshold: 0.9, searchArea: RowIcons);
-            return found ? rect.Y + rect.Height / 2 : null;
+            for (int i = 0; i < 4; i++) // the Daily tab can still be sliding in: look again before giving up
+            {
+                if (i > 0) await Task.Delay(1000);
+                var shot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                if (shot == null) continue;
+                var (found, rect, _) = _templateMatcher.MatchTemplate(shot, Path.Combine(ImageTemplateFolder, icon), account.InstanceNumber, threshold: 0.9, searchArea: RowIcons);
+                if (found) return rect.Y + rect.Height / 2;
+            }
+            return null;
         }
 
         public static bool IsCyan(byte[] screenshot, Rectangle rect)

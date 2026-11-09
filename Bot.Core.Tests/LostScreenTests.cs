@@ -19,6 +19,18 @@ namespace Bot.Core.Tests
             .ExtractBrightTextFromScreenArea(s, new System.Drawing.Rectangle(90, 15, 130, 50), 190)?.Contains("Chat", System.StringComparison.OrdinalIgnoreCase) == true;
 
         [Test]
+        public void FountainRowScore()
+        {
+            using var img = OpenCvSharp.Cv2.ImDecode(Shot("fountain-norow.png"), OpenCvSharp.ImreadModes.Color);
+            using var tpl = OpenCvSharp.Cv2.ImRead(Path.Combine(TestContext.CurrentContext.TestDirectory, "templates", "images", "pets", "fountain-row.png"));
+            using var roi = new OpenCvSharp.Mat(img, new OpenCvSharp.Rect(0, 290, 120, 570));
+            using var res = new OpenCvSharp.Mat();
+            OpenCvSharp.Cv2.MatchTemplate(roi, tpl, res, OpenCvSharp.TemplateMatchModes.CCoeffNormed);
+            OpenCvSharp.Cv2.MinMaxLoc(res, out _, out double max, out _, out var loc);
+            Assert.That(max, Is.GreaterThan(0.9)); // the full Daily tab (2,160/2,160) the task once missed while it slid in
+        }
+
+        [Test]
         public void GovernorProfileIsRecognised()
         {
             static string Title(byte[] s) => new Bot.Core.Utils.OCRService(new Bot.Core.Logging.LogService())
