@@ -92,6 +92,13 @@ namespace Bot.Core.Tasks.Modules
                 {
                     var collected = await CollectWaterBubblesAsync(account, logger, cancellationToken);
                     if (collected > 0) done.Add($"collected {collected} water bubble(s)");
+                    else if (await TakeScreenshotAsync(account.InstanceNumber, logger) is { } dry)
+                    {
+                        var path = Path.Combine(AppContext.BaseDirectory, "logs", "screenshots", $"island_nodrops_{account.InstanceNumber}_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.png");
+                        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                        await File.WriteAllBytesAsync(path, dry, cancellationToken);
+                        logger.LogWarning($"[{account.AccountName}] On My Island but no water drop found; saved {path}");
+                    }
                     // My Island's back arrow → city; a building left in move mode eats the first tap
                     for (int i = 0; i < 3; i++)
                     {
@@ -278,6 +285,28 @@ namespace Bot.Core.Tasks.Modules
         }
 
         /// <summary>Every place the template matches above the threshold, best first.</summary>
+        /// <summary>A full fountain's bubble is a bright green square (~85 px) that the guide hand can cover the drop of.</summary>
+        public static Rectangle? FindGreenBubble(byte[] screenshot, Rectangle area, string dropTemplate)
+        {
+            var faintDrops = FindAll(screenshot, dropTemplate, 0.5, area); // the half-hidden drop still scores ~0.5
+            using var img = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
+            using var roi = new OpenCvSharp.Mat(img, new OpenCvSharp.Rect(area.X, area.Y, area.Width, area.Height));
+            using var hsv = roi.CvtColor(OpenCvSharp.ColorConversionCodes.BGR2HSV);
+            using var mask = hsv.InRange(new OpenCvSharp.Scalar(40, 120, 200), new OpenCvSharp.Scalar(75, 255, 255));
+            OpenCvSharp.Cv2.FindContours(mask, out var contours, out _, OpenCvSharp.RetrievalModes.External, OpenCvSharp.ContourApproximationModes.ApproxSimple);
+            foreach (var c in contours.OrderByDescending(c => OpenCvSharp.Cv2.ContourArea(c)))
+            {
+                var r = OpenCvSharp.Cv2.BoundingRect(c);
+                // The drop and the guide hand split the square: its widest solid piece is enough to tap
+                var box = new Rectangle(r.X + area.X, r.Y + area.Y, r.Width, r.Height);
+                var near = Rectangle.Inflate(box, 10, 50);
+                if (r.Width is >= 55 and <= 120 && r.Height is >= 30 and <= 120 && OpenCvSharp.Cv2.ContourArea(c) > 1000
+                    && faintDrops.Any(d => near.Contains(d.X + d.Width / 2, d.Y + d.Height / 2)))
+                    return box;
+            }
+            return null;
+        }
+
         public static List<Rectangle> FindAll(byte[] screenshot, string templatePath, double threshold, Rectangle area)
         {
             var hits = new List<Rectangle>();
@@ -353,10 +382,18 @@ namespace Bot.Core.Tasks.Modules
             int collected = 0;
             for (; collected < 5; collected++)
             {
-                // Match the blue drop, not the bubble: a partly filled bubble is only green at the bottom
-                await Bot.Core.Utils.Pace.Delay(collected == 0 ? 2000 : 1000, cancellationToken);
-                var island = await TakeScreenshotAsync(account.InstanceNumber, logger);
-                if (island == null || FindAll(island, Path.Combine(ImageTemplateFolder, "water-drop.png"), 0.72, new Rectangle(0, 90, 720, 1000)) is not [var bubble, ..]) break;
+                // Match the blue drop, not the bubble: a partly filled bubble is only green at the bottom.
+                // The drops pop up a few seconds after the island loads: give the first one up to ~12 s
+                Rectangle? found = null;
+                for (int look = 0; look < (collected == 0 ? 8 : 2) && found == null; look++)
+                {
+                    await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
+                    if (await TakeScreenshotAsync(account.InstanceNumber, logger) is { } island
+                        && (FindAll(island, Path.Combine(ImageTemplateFolder, "water-drop.png"), 0.72, new Rectangle(0, 90, 720, 1000)) is [var b, ..]
+                            ? b : FindGreenBubble(island, new Rectangle(0, 90, 720, 1000), Path.Combine(ImageTemplateFolder, "water-drop.png"))) is { } hit)
+                        found = hit;
+                }
+                if (found is not { } bubble) break;
                 logger.LogInfo($"[{account.AccountName}] 💧 Collecting water essence");
                 await ClickAsync(account.InstanceNumber, logger, new Point(bubble.X + bubble.Width / 2, bubble.Y + bubble.Height / 2));
                 await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);

@@ -35,6 +35,13 @@ namespace Bot.Core.Tests
             Assert.That(drops, Has.Some.Matches<System.Drawing.Rectangle>(r => r.Contains(356, 470)));  // fountain, partly full
             Assert.That(drops, Has.Count.EqualTo(2));
             Assert.That(PetsFountainTask.FindAll(Shot("city.png"), tpl, 0.72, area), Is.Empty);
+            // Full fountain under the dimmed guide-hand overlay (Kingshot_0, 1,800/1,800)
+            var guided = PetsFountainTask.FindAll(Shot("island-guide.png"), tpl, 0.72, area);
+            Assert.That(guided, Has.Some.Matches<System.Drawing.Rectangle>(r => r.Contains(603, 405)));
+            var green = PetsFountainTask.FindGreenBubble(Shot("island-guide.png"), area, tpl);
+            Assert.That(green is { } g && Math.Abs(g.X + g.Width / 2 - 360) < 30 && Math.Abs(g.Y + g.Height / 2 - 495) < 30, Is.True, $"{green}");
+            Assert.That(PetsFountainTask.FindGreenBubble(Shot("city.png"), area, tpl), Is.Null);
+            Assert.That(PetsFountainTask.FindGreenBubble(Shot("panel-daily.png"), area, tpl), Is.Null);
         }
 
         [Test]
