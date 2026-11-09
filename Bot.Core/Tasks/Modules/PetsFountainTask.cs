@@ -99,6 +99,11 @@ namespace Bot.Core.Tasks.Modules
                         await File.WriteAllBytesAsync(path, dry, cancellationToken);
                         logger.LogWarning($"[{account.AccountName}] On My Island but no water drop found; saved {path}");
                     }
+                    if (!(_islandHelpDone.TryGetValue(account.InstanceNumber, out var helpDay) && helpDay >= DateTime.UtcNow.Date))
+                    {
+                        var helped = await HelpAllyIslandsAsync(account, logger, cancellationToken);
+                        if (helped > 0) done.Add($"helped {helped} ally fountain(s)");
+                    }
                     // My Island's back arrow → city; a building left in move mode eats the first tap
                     for (int i = 0; i < 3; i++)
                     {
@@ -165,6 +170,83 @@ namespace Bot.Core.Tasks.Modules
             await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
             logger.LogInfo($"[{account.AccountName}] 🏆 Activity Triumph chest claimed");
             return true;
+        }
+
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, DateTime> _islandHelpDone = new();
+
+        /// <summary>Red dots on the Island Prosperity list's visit buttons: those allies' fountains can be helped.</summary>
+        public static List<int> VisitDots(byte[] screenshot)
+        {
+            using var img = OpenCvSharp.Cv2.ImDecode(screenshot, OpenCvSharp.ImreadModes.Color);
+            using var roi = new OpenCvSharp.Mat(img, new OpenCvSharp.Rect(650, 230, 40, 890));
+            using var hsv = roi.CvtColor(OpenCvSharp.ColorConversionCodes.BGR2HSV);
+            using var lo = hsv.InRange(new OpenCvSharp.Scalar(0, 150, 180), new OpenCvSharp.Scalar(8, 255, 255));
+            using var hi = hsv.InRange(new OpenCvSharp.Scalar(172, 150, 180), new OpenCvSharp.Scalar(180, 255, 255));
+            using var mask = new OpenCvSharp.Mat();
+            OpenCvSharp.Cv2.BitwiseOr(lo, hi, mask);
+            OpenCvSharp.Cv2.FindContours(mask, out var contours, out _, OpenCvSharp.RetrievalModes.External, OpenCvSharp.ContourApproximationModes.ApproxSimple);
+            return contours.Select(OpenCvSharp.Cv2.BoundingRect).Where(r => r.Width is >= 8 and <= 24 && r.Height is >= 8 and <= 24)
+                .Select(r => r.Y + 230 + r.Height / 2).OrderBy(y => y).ToList();
+        }
+
+        /// <summary>The visited island's help counter ("2/3": helps we have left today), or null when unreadable.</summary>
+        public static int? HelpsLeft(byte[] screenshot, LogService logger) =>
+            System.Text.RegularExpressions.Regex.Match(new OCRService(logger).ExtractBrightTextFromScreenArea(screenshot, new Rectangle(610, 1088, 90, 36), 220) ?? "", @"(\d)\s*/\s*3") is { Success: true } m
+                ? int.Parse(m.Groups[1].Value) : null;
+
+        /// <summary>
+        /// From My Island: trophy → Island Prosperity (Your Alliance) → a visit button with a red dot → tap the drop-and-handshake
+        /// icon over that ally's Fountain of Life. 3 helps a day (reset 00:00 UTC); each ally once per 6 h. Free, no gems.
+        /// </summary>
+        private async Task<int> HelpAllyIslandsAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
+        {
+            int helped = 0;
+            var ocr = new OCRService(logger);
+            for (int visit = 0; visit < 5; visit++)
+            {
+                await ClickAsync(account.InstanceNumber, logger, new Point(670, 103)); // trophy
+                await Bot.Core.Utils.Pace.Delay(3000, cancellationToken);
+                if (await TakeScreenshotAsync(account.InstanceNumber, logger) is not { } list
+                    || !ocr.ExtractBrightTextFromScreenArea(list, new Rectangle(90, 15, 300, 50), 190).Contains("Prosperity", StringComparison.OrdinalIgnoreCase))
+                {
+                    logger.LogInfo($"[{account.AccountName}] Island Prosperity list did not open");
+                    break;
+                }
+                int? dot = null;
+                for (int page = 0; page < 15 && dot == null; page++) // the list starts at the top every time it opens
+                {
+                    if (page > 0)
+                    {
+                        await SwipeAsync(account.InstanceNumber, logger, new Point(360, 1000), new Point(360, 300), 400);
+                        await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
+                    }
+                    if (await TakeScreenshotAsync(account.InstanceNumber, logger) is { } shot && VisitDots(shot) is [var y, ..]) dot = y;
+                }
+                if (dot == null)
+                {
+                    logger.LogInfo($"[{account.AccountName}] No ally island needs help right now");
+                    await PressBackAsync(account.InstanceNumber, logger);
+                    await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
+                    break;
+                }
+                await ClickAsync(account.InstanceNumber, logger, new Point(645, dot.Value + 22)); // that row's visit (eye) button
+                await Bot.Core.Utils.Pace.Delay(9000, cancellationToken);
+                var island = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                var (found, icon, _) = island == null ? (false, Rectangle.Empty, 0.0)
+                    : _templateMatcher!.MatchTemplate(island, Path.Combine(ImageTemplateFolder, "island-help.png"), account.InstanceNumber, threshold: 0.8, searchArea: new Rectangle(0, 90, 720, 900));
+                if (found)
+                {
+                    await ClickAsync(account.InstanceNumber, logger, new Point(icon.X + icon.Width / 2, icon.Y + icon.Height / 2));
+                    await Bot.Core.Utils.Pace.Delay(2500, cancellationToken);
+                    helped++;
+                    logger.LogInfo($"[{account.AccountName}] 🤝 Helped an ally's Fountain of Life");
+                }
+                var left = await TakeScreenshotAsync(account.InstanceNumber, logger) is { } after ? HelpsLeft(after, logger) : null;
+                await ClickAsync(account.InstanceNumber, logger, new Point(46, 34)); // back → My Island
+                await Bot.Core.Utils.Pace.Delay(5000, cancellationToken);
+                if (left == 0) { _islandHelpDone[account.InstanceNumber] = DateTime.UtcNow.Date; break; }
+            }
+            return helped;
         }
 
         private static readonly Rectangle AdventureMap = new(0, 150, 720, 1000);

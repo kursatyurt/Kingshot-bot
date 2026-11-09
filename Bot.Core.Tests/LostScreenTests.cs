@@ -18,6 +18,14 @@ namespace Bot.Core.Tests
         private static bool IsChat(byte[] s) => new Bot.Core.Utils.OCRService(new Bot.Core.Logging.LogService())
             .ExtractBrightTextFromScreenArea(s, new System.Drawing.Rectangle(90, 15, 130, 50), 190)?.Contains("Chat", System.StringComparison.OrdinalIgnoreCase) == true;
 
+        [Test, Explicit]
+        public void CropHelpIcon()
+        {
+            using var img = OpenCvSharp.Cv2.ImDecode(Shot("island-help.png"), OpenCvSharp.ImreadModes.Color);
+            using var icon = new OpenCvSharp.Mat(img, new OpenCvSharp.Rect(330, 310, 60, 50));
+            OpenCvSharp.Cv2.ImWrite("/Users/kursatyurt/Kingshot-bot/templates/images/pets/island-help.png", icon);
+        }
+
         [Test]
         public void ActivityTriumphRowAndPage()
         {

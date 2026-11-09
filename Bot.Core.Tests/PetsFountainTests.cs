@@ -26,6 +26,23 @@ namespace Bot.Core.Tests
         private static byte[] Shot(string name) => System.IO.File.ReadAllBytes(System.IO.Path.Combine(TestContext.CurrentContext.TestDirectory, name));
 
         [Test]
+        public void AllyIslandHelp()
+        {
+            var dots = PetsFountainTask.VisitDots(Shot("island-ranking-dots.png"));
+            Assert.That(dots, Has.Count.EqualTo(7)); // rows 54-60 all show a dot
+            Assert.That(dots[0], Is.InRange(240, 262));
+            Assert.That(PetsFountainTask.VisitDots(Shot("island-ranking-top.png")), Is.Empty);
+            var log = new Bot.Core.Logging.LogService();
+            Assert.That(PetsFountainTask.HelpsLeft(Shot("island-help.png"), log), Is.EqualTo(3));
+            Assert.That(PetsFountainTask.HelpsLeft(Shot("island-helped.png"), log), Is.EqualTo(2));
+            var m = new Bot.Core.ImageDetection.UnifiedTemplateMatchingService(log);
+            var tpl = System.IO.Path.Combine(TestContext.CurrentContext.TestDirectory, "../../../../templates/images/pets/island-help.png");
+            var area = new System.Drawing.Rectangle(0, 90, 720, 900);
+            Assert.That(m.MatchTemplate(Shot("island-help.png"), tpl, 1, 0.8, searchArea: area).found, Is.True);
+            Assert.That(m.MatchTemplate(Shot("island-helped.png"), tpl, 1, 0.8, searchArea: area).found, Is.False);
+        }
+
+        [Test]
         public void FindsPartlyFilledWaterBubbles()
         {
             var tpl = System.IO.Path.Combine(TestContext.CurrentContext.TestDirectory, "../../../../templates/images/pets/water-drop.png");
