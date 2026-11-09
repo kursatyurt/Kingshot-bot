@@ -49,7 +49,12 @@ namespace Bot.Core.Tasks.Modules
             ? p.Fountain is { } f && f.Have >= f.Cap * FountainMin // an unreadable fill waits for the next scan
             : !(_nextCheck.TryGetValue(n, out var next) && DateTime.UtcNow < next);
 
-        protected override bool OnCooldown(AccountSettings account) => !FountainDue(account.InstanceNumber) && !PetsDue(account.InstanceNumber);
+        /// <summary>The Daily tab's "Daily Activity Triumph" row shows a red dot while the personal chest is claimable.</summary>
+        private static bool TriumphDue(int n) => SidePanelStatus.Latest(n)?.HasDot("Triumph") == true
+            && !(_triumphTried.TryGetValue(n, out var t) && DateTime.UtcNow < t);
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, DateTime> _triumphTried = new();
+
+        protected override bool OnCooldown(AccountSettings account) => !FountainDue(account.InstanceNumber) && !PetsDue(account.InstanceNumber) && !TriumphDue(account.InstanceNumber);
 
         protected override async Task<TaskExecutionDetails> ExecuteTaskLogicAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken, bool isReRun = false, IUserNotificationService? userNotifications = null)
         {
@@ -101,6 +106,12 @@ namespace Bot.Core.Tasks.Modules
             if (pets && adventure == null) _lastPetRun[account.InstanceNumber] = DateTime.UtcNow.AddHours(3); // a dot with nothing for us: leave it a while
             if (adventure != null) done.Add(adventure);
 
+            if (TriumphDue(account.InstanceNumber))
+            {
+                _triumphTried[account.InstanceNumber] = DateTime.UtcNow.AddHours(1); // a dot we could not clear waits an hour
+                if (await ClaimActivityTriumphAsync(account, logger, locator, cancellationToken)) done.Add("Activity Triumph chest claimed");
+            }
+
             var accountId = AccountDetectionTask.GetCachedAccountId(account.InstanceNumber);
             if (string.IsNullOrEmpty(accountId)) accountId = $"Account_{account.AccountName}_{account.InstanceNumber}";
             var days = LoadPetsDays();
@@ -117,6 +128,36 @@ namespace Bot.Core.Tasks.Modules
 
             await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
             return new TaskExecutionDetails(true, message: done.Count > 0 ? string.Join("; ", done) : "Nothing to do");
+        }
+
+        /// <summary>
+        /// Daily tab → "Daily Activity Triumph" row's ✓ → Activity Triumph page → the free "Personal Activity Triumph Chest"
+        /// → "Tap anywhere to exit" → back. Nothing on the page costs gems.
+        /// </summary>
+        private async Task<bool> ClaimActivityTriumphAsync(AccountSettings account, LogService logger, LocatorService locator, CancellationToken cancellationToken)
+        {
+            await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
+            if (!await OpenDailyTabAsync(account, logger, cancellationToken) || await TakeScreenshotAsync(account.InstanceNumber, logger) is not { } shot) return false;
+            var ocr = new OCRService(logger);
+            int? row = SidePanelStatus.RowDots(shot).Cast<int?>().FirstOrDefault(y =>
+                ocr.ExtractBrightTextFromScreenArea(shot, new Rectangle(70, y!.Value - 8, 300, 32), 190).Contains("Triumph", StringComparison.OrdinalIgnoreCase));
+            if (row == null) { logger.LogInfo($"[{account.AccountName}] Activity Triumph row not found"); return false; }
+            await ClickAsync(account.InstanceNumber, logger, new Point(404, row.Value + 18)); // the row's ✓, just below its dot
+            await Bot.Core.Utils.Pace.Delay(2500, cancellationToken);
+            if (await TakeScreenshotAsync(account.InstanceNumber, logger) is not { } page
+                || !ocr.ExtractBrightTextFromScreenArea(page, new Rectangle(90, 15, 300, 50), 190).Contains("Triumph", StringComparison.OrdinalIgnoreCase))
+            {
+                logger.LogInfo($"[{account.AccountName}] Activity Triumph page did not open");
+                return false;
+            }
+            await ClickAsync(account.InstanceNumber, logger, new Point(360, 870)); // Personal Activity Triumph Chest
+            await Bot.Core.Utils.Pace.Delay(2500, cancellationToken);
+            await ClickAsync(account.InstanceNumber, logger, new Point(360, 1180)); // "Tap anywhere to exit"
+            await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
+            await PressBackAsync(account.InstanceNumber, logger);
+            await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
+            logger.LogInfo($"[{account.AccountName}] 🏆 Activity Triumph chest claimed");
+            return true;
         }
 
         private static readonly Rectangle AdventureMap = new(0, 150, 720, 1000);

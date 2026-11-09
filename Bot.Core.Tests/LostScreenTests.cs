@@ -19,6 +19,18 @@ namespace Bot.Core.Tests
             .ExtractBrightTextFromScreenArea(s, new System.Drawing.Rectangle(90, 15, 130, 50), 190)?.Contains("Chat", System.StringComparison.OrdinalIgnoreCase) == true;
 
         [Test]
+        public void ActivityTriumphRowAndPage()
+        {
+            var ocr = new Bot.Core.Utils.OCRService(new Bot.Core.Logging.LogService());
+            var daily = Shot("fountain-norow2.png");
+            var rows = System.Linq.Enumerable.ToList(System.Linq.Enumerable.Where(Bot.Core.Tasks.Modules.SidePanelStatus.RowDots(daily),
+                y => ocr.ExtractBrightTextFromScreenArea(daily, new System.Drawing.Rectangle(70, y - 8, 300, 32), 190).Contains("Triumph")));
+            Assert.That(rows, Has.Count.EqualTo(1));
+            Assert.That(rows[0] + 18, Is.InRange(700, 735)); // the row's ✓ button
+            Assert.That(ocr.ExtractBrightTextFromScreenArea(Shot("activity-triumph.png"), new System.Drawing.Rectangle(90, 15, 300, 50), 190), Does.Contain("Triumph"));
+        }
+
+        [Test]
         public void FountainRowScore()
         {
             using var img = OpenCvSharp.Cv2.ImDecode(Shot("fountain-norow.png"), OpenCvSharp.ImreadModes.Color);
