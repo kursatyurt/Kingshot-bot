@@ -46,6 +46,7 @@ namespace Bot.Core.Tests
                 var r = m.MatchTemplate(Shot(f), Path.Combine(TestContext.CurrentContext.TestDirectory, "templates", "images", "pets", "fountain-row.png"), 1, 0.9, searchArea: new System.Drawing.Rectangle(0, 290, 120, 570));
                 var h = m.MatchTemplate(Shot(f), Path.Combine(TestContext.CurrentContext.TestDirectory, "templates", "images", "locator", "side-panel-handle.png"), 1, 0.5, searchArea: new System.Drawing.Rectangle(400, 460, 140, 170));
                 // An open panel's handle scores 0.90-0.995 (it is see-through); no other screen tops 0.81
+                TestContext.Progress.WriteLine($"handle {f}: {h.confidence:F3} {h.matchRect}");
                 Assert.That(h.confidence >= 0.85, Is.EqualTo(f.StartsWith("panel-") || f.StartsWith("daily-") || f.StartsWith("fountain-norow")), f);
             }
         }

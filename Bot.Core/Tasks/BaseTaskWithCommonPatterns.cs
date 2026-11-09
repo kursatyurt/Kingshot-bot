@@ -420,7 +420,7 @@ namespace Bot.Core.Tasks
                 return screenshot != null && _templateMatcher.MatchTemplate(screenshot, handle, instanceNumber, threshold: 0.85,
                     searchArea: new Rectangle(400, 460, 140, 170)).found;
             }
-            for (int attempt = 0; attempt < 3; attempt++)
+            for (int attempt = 0; attempt < 4; attempt++) // the last pass only looks: a toggle tap is never left unchecked
             {
                 if (await HandleShows())
                 {
@@ -433,8 +433,9 @@ namespace Bot.Core.Tasks
                     }
                     continue; // it was sliding: look again before tapping the toggle
                 }
+                if (attempt == 3) break;
                 await ClickAsync(instanceNumber, logger, new Point(12, 550));
-                await Task.Delay(1500, cancellationToken);
+                await Task.Delay(2500, cancellationToken); // 1.5 s caught it mid-slide and the next tap shut it again
             }
             logger.LogInfo("The city side panel did not open");
             return false;
