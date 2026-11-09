@@ -46,7 +46,7 @@ namespace Bot.Core.Tasks.Modules
             System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var min) ? min : 0.5;
 
         private static bool FountainDue(int n) => SidePanelStatus.Latest(n) is { } p
-            ? p.Fountain is { } f && f.Have >= f.Cap * FountainMin // an unreadable fill waits for the next scan
+            ? p.Fountain is { } f ? f.Have >= f.Cap * FountainMin : p.HasDot("Fountain") // unreadable fill: the row's red dot says there is water
             : !(_nextCheck.TryGetValue(n, out var next) && DateTime.UtcNow < next);
 
         /// <summary>The Daily tab's "Daily Activity Triumph" row shows a red dot while the personal chest is claimable.</summary>
