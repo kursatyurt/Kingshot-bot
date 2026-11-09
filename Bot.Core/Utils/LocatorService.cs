@@ -268,7 +268,7 @@ namespace Bot.Core.Utils
 
                 // The city side panel left open hides the base view marker: close it by its ◁ handle and look again
                 var handle = Path.Combine(AppContext.BaseDirectory, "templates", "images", "locator", "side-panel-handle.png");
-                var (panelOpen, h, _) = _templateMatcher.MatchTemplate(screenshot, handle, instanceNumber, 0.88, searchArea: new Rectangle(400, 460, 140, 170));
+                var (panelOpen, h, _) = _templateMatcher.MatchTemplate(screenshot, handle, instanceNumber, 0.85, searchArea: new Rectangle(400, 460, 140, 170));
                 if (panelOpen && !_closingPanel)
                 {
                     _logger.LogInfo("[Locator] Side panel is open - closing it");

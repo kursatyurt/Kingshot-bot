@@ -28,6 +28,14 @@ namespace Bot.Core.Tests
             OpenCvSharp.Cv2.MatchTemplate(roi, tpl, res, OpenCvSharp.TemplateMatchModes.CCoeffNormed);
             OpenCvSharp.Cv2.MinMaxLoc(res, out _, out double max, out _, out var loc);
             Assert.That(max, Is.GreaterThan(0.9)); // the full Daily tab (2,160/2,160) the task once missed while it slid in
+            var m = new Bot.Core.ImageDetection.UnifiedTemplateMatchingService(new Bot.Core.Logging.LogService());
+            foreach (var f in System.Linq.Enumerable.Select(Directory.GetFiles(TestContext.CurrentContext.TestDirectory, "*.png"), Path.GetFileName))
+            {
+                var r = m.MatchTemplate(Shot(f), Path.Combine(TestContext.CurrentContext.TestDirectory, "templates", "images", "pets", "fountain-row.png"), 1, 0.9, searchArea: new System.Drawing.Rectangle(0, 290, 120, 570));
+                var h = m.MatchTemplate(Shot(f), Path.Combine(TestContext.CurrentContext.TestDirectory, "templates", "images", "locator", "side-panel-handle.png"), 1, 0.5, searchArea: new System.Drawing.Rectangle(400, 460, 140, 170));
+                // An open panel's handle scores 0.90-0.995 (it is see-through); no other screen tops 0.81
+                Assert.That(h.confidence >= 0.85, Is.EqualTo(f.StartsWith("panel-") || f.StartsWith("daily-") || f.StartsWith("fountain-norow")), f);
+            }
         }
 
         [Test]

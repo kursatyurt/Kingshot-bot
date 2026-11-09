@@ -417,7 +417,7 @@ namespace Bot.Core.Tasks
             async Task<bool> HandleShows()
             {
                 var screenshot = await TakeScreenshotAsync(instanceNumber, logger);
-                return screenshot != null && _templateMatcher.MatchTemplate(screenshot, handle, instanceNumber, threshold: 0.88,
+                return screenshot != null && _templateMatcher.MatchTemplate(screenshot, handle, instanceNumber, threshold: 0.85,
                     searchArea: new Rectangle(400, 460, 140, 170)).found;
             }
             for (int attempt = 0; attempt < 3; attempt++)
