@@ -171,54 +171,8 @@ namespace Bot.Core.Tasks
                     logger.LogInfo($"[{account.AccountName}] Alliance Help enabled but skipped (current view: {currentView}, requires BaseView or MapView)");
                 }
 
-                // Run Auto Heal if enabled and we're in map view
-                if (autoHealEnabled && currentView == ViewType.MapView)
-                {
-                    // Check cooldown period
-                    var now = DateTime.UtcNow;
-                    var lastAutoHealTime = _lastAutoHealTime.GetValueOrDefault(account.InstanceNumber, DateTime.MinValue);
-                    var timeSinceLastRun = now - lastAutoHealTime;
-                    
-                    if (timeSinceLastRun < AutoTaskCooldown)
-                    {
-                        var remainingTime = AutoTaskCooldown - timeSinceLastRun;
-                        logger.LogInfo($"[{account.AccountName}] Auto Heal skipped - cooldown active (last run {timeSinceLastRun.TotalSeconds:F0}s ago, next available in {remainingTime.TotalSeconds:F0}s)");
-                    }
-                    else
-                    {
-                        logger.LogInfo($"[{account.AccountName}] 🏥 Running Auto Heal before continuing with {Name}...");
-                        userNotifications?.ShowStatus($"Running Auto Heal before {Name}...", NotificationType.Info);
-                        
-                        // Update last run time before execution
-                        _lastAutoHealTime[account.InstanceNumber] = now;
+                // Auto Heal runs as its own task (it goes to the city); running it here left hunts in the city
 
-                    try
-                    {
-                        var autoHealTask = new AutoHealTask(logger);
-                        await autoHealTask.InitializeAsync(logger, cancellationToken);
-                        var healResult = await autoHealTask.ExecuteAsync(account, logger, cancellationToken, false, userNotifications);
-                        
-                        if (!healResult.Success)
-                        {
-                            logger.LogWarning($"[{account.AccountName}] Auto Heal failed: {healResult.Message}");
-                            // Continue anyway - don't fail the main task
-                        }
-                        else
-                        {
-                            logger.LogInfo($"[{account.AccountName}] ✅ Auto Heal completed successfully");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.LogError($"[{account.AccountName}] Error running Auto Heal: {ex.Message}");
-                        // Continue with main task
-                    }
-                    }
-                }
-                else if (autoHealEnabled)
-                {
-                    logger.LogInfo($"[{account.AccountName}] Auto Heal enabled but skipped (current view: {currentView}, requires MapView)");
-                }
 
                 logger.LogInfo($"[{account.AccountName}] Auto task check completed, continuing with {Name}");
                 return true;
