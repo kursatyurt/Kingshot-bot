@@ -47,7 +47,7 @@ namespace Bot.Core.Tasks.Modules
                 // Ensure we're in map view
                 NotifyProgress(userNotifications, "Navigating to map", 10);
                 var locator = new LocatorService(logger, account);
-                if (!await locator.EnsureViewAsync(ViewType.MapView, account.InstanceNumber, cancellationToken))
+                if (!await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken))
                 {
                     return FailNavigation("Step 2: Navigating to map view", "Could not reach map view");
                 }
@@ -87,7 +87,7 @@ namespace Bot.Core.Tasks.Modules
                             screenshot,
                             templatePath,
                             account.InstanceNumber,
-                            TEMPLATE_MATCH_THRESHOLD,
+                            description == "heal icon" ? 0.85 : TEMPLATE_MATCH_THRESHOLD,
                             searchArea: searchArea);
 
                         if (isFound)
