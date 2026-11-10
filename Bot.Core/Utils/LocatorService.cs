@@ -582,7 +582,7 @@ namespace Bot.Core.Utils
                 using var res = new OpenCvSharp.Mat();
                 OpenCvSharp.Cv2.MatchTemplate(img, t, res, OpenCvSharp.TemplateMatchModes.CCoeffNormed);
                 OpenCvSharp.Cv2.MinMaxLoc(res, out _, out double max, out _, out OpenCvSharp.Point loc);
-                if (max < 0.65 || (best != null && max <= best.Value.confidence)) continue;
+                if (max < 0.85 || (best != null && max <= best.Value.confidence)) continue; // 0.65-0.73 matched shop cards, not the glove (0.94)
 
                 // The cuff is the template's top corner away from the fingertip; the fingertip is below, past the other edge
                 int cw = (int)(47 * scale), ch = (int)(60 * scale);
