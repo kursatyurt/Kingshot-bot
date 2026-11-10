@@ -1565,6 +1565,8 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
                 try
                 {
                     await huntLocator.EnsureViewAsync(ViewType.MapView, account.InstanceNumber, cancellationToken);
+                    // recovery can stop in the city while reporting the map; ask again from a known view
+                    await huntLocator.EnsureViewAsync(ViewType.MapView, account.InstanceNumber, cancellationToken);
                     logger.LogInfo($"[{account.AccountName}] Locator service completed view recovery, retrying hunt button detection");
                     
                     // Retry after locator service; the city-to-map cloud transition can take longer than 2 s
