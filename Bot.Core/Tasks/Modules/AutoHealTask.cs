@@ -61,7 +61,8 @@ namespace Bot.Core.Tasks.Modules
                 // Define healing sequence with specific search areas
                 var healSequence = new[]
                 {
-                    (Path.Combine(_templateFolder, "heal.png"), new Rectangle(523, 1009, 70, 67), "heal icon"),
+                    // the green + bubble floats over the hospital, which can be anywhere on screen
+                    (Path.Combine(_templateFolder, "heal.png"), new Rectangle(0, 0, 720, 1280), "heal icon"),
                     (Path.Combine(_templateFolder, "heal-button.png"), new Rectangle(414, 786, 208, 202), "heal button"),
                     (Path.Combine(_templateFolder, "help-button.png"), new Rectangle(523, 1009, 70, 67), "help button")
                 };
