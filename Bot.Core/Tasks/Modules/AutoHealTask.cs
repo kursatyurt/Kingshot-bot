@@ -83,8 +83,14 @@ namespace Bot.Core.Tasks.Modules
                 await Bot.Core.Utils.Pace.Delay(2500, cancellationToken);
 
                 // "Heal Injured" screen: tap the cyan Heal button (never Finish, which costs gems)
-                var page = await ADBMigrationHelper.TakeScreenshotAsync(adbController, logger, cancellationToken);
-                var title = new OCRService(logger).ExtractBrightTextFromScreenArea(page, new Rectangle(90, 15, 300, 50));
+                // The screen can take a few seconds to open (09:35 Nov 11 read the city bar 2 s after the tap)
+                string? title = null;
+                for (var look = 0; look < 5 && title?.Contains("Heal", StringComparison.OrdinalIgnoreCase) != true; look++)
+                {
+                    if (look > 0) await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
+                    var page = await ADBMigrationHelper.TakeScreenshotAsync(adbController, logger, cancellationToken);
+                    title = new OCRService(logger).ExtractBrightTextFromScreenArea(page, new Rectangle(90, 15, 300, 50));
+                }
                 if (title?.Contains("Heal", StringComparison.OrdinalIgnoreCase) != true)
                 {
                     logger.LogWarning($"[AutoHeal] Heal Injured screen did not open (title '{title}')");
