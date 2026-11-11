@@ -62,6 +62,37 @@ Console.CancelKeyPress += (_, e) =>
 };
 Console.WriteLine($"Running {config.Accounts.Count} account(s) from {Path.GetFullPath(configPath)}. Ctrl+C to stop.");
 
+// --help-loop: only watch for the Alliance Help handshake and tap it within ~1.5 s (emulators must already be running)
+if (args.Contains("--help-loop"))
+{
+    var matcher = new Bot.Core.ImageDetection.UnifiedTemplateMatchingService(logger);
+    var dir = Path.Combine(AppContext.BaseDirectory, "templates", "images", "alliance");
+    await Task.WhenAll(config.Accounts.Where(a => a.IsEnabled).Select(async a =>
+    {
+        object? adb = null;
+        while (!cts.IsCancellationRequested)
+        {
+            try
+            {
+                adb ??= await ADBMigrationHelper.GetConnectionAsync(a.InstanceNumber, logger, cts.Token);
+                var shot = await ADBMigrationHelper.TakeScreenshotAsync(adb, logger, cts.Token);
+                foreach (var t in new[] { "alliance-help.png", "request-help-bubble.png" })
+                {
+                    var (found, rect, conf) = matcher.MatchTemplate(shot, Path.Combine(dir, t), a.InstanceNumber, 0.85);
+                    if (!found) continue;
+                    await ADBMigrationHelper.TapAsync(adb, rect.X + rect.Width / 2, rect.Y + rect.Height / 2, logger, cts.Token);
+                    Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] [{a.AccountName}] 🤝 Helped ({t}, {conf:F2})");
+                    break;
+                }
+                await Task.Delay(1500, cts.Token);
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex) { adb = null; Console.WriteLine($"[{a.AccountName}] help loop: {ex.Message}"); await Task.Delay(5000); }
+        }
+    }));
+    return 0;
+}
+
 try
 {
     await cycle.StartCycleAsync(config, cts.Token);

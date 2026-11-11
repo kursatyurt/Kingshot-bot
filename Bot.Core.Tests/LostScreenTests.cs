@@ -26,6 +26,28 @@ namespace Bot.Core.Tests
             OpenCvSharp.Cv2.ImWrite("/Users/kursatyurt/Kingshot-bot/templates/images/pets/island-help.png", icon);
         }
 
+        [Test, Explicit]
+        public void CropHealIcon()
+        {
+            using var img = OpenCvSharp.Cv2.ImDecode(Shot("heal-bubble-city.png"), OpenCvSharp.ImreadModes.Color);
+            using var icon = new OpenCvSharp.Mat(img, new OpenCvSharp.Rect(214, 430, 46, 44));
+            OpenCvSharp.Cv2.ImWrite("/Users/kursatyurt/Kingshot-bot/templates/images/autoheal/heal.png", icon);
+        }
+
+        [Test]
+        public void HospitalHealBubbleAndPage()
+        {
+            var m = new Bot.Core.ImageDetection.UnifiedTemplateMatchingService(new Bot.Core.Logging.LogService());
+            var heal = "/Users/kursatyurt/Kingshot-bot/templates/images/autoheal/heal.png";
+            var (found, rect, _) = m.MatchTemplate(Shot("heal-bubble-city.png"), heal, 0, 0.85, searchArea: new System.Drawing.Rectangle(0, 100, 720, 1000));
+            Assert.That(found, Is.True);
+            Assert.That(rect.X + rect.Width / 2, Is.InRange(220, 255)); // the + over the hospital at (237, 452)
+            Assert.That(rect.Y + rect.Height / 2, Is.InRange(435, 470));
+            // while healing runs, the small + on the timer must not count as a bubble
+            Assert.That(m.MatchTemplate(Shot("heal-in-progress.png"), heal, 0, 0.85, searchArea: new System.Drawing.Rectangle(0, 100, 720, 1000)).found, Is.False);
+            Assert.That(new Bot.Core.Utils.OCRService(new Bot.Core.Logging.LogService()).ExtractBrightTextFromScreenArea(Shot("heal-injured.png"), new System.Drawing.Rectangle(90, 15, 300, 50)), Does.Contain("Heal"));
+        }
+
         [Test]
         public void ActivityTriumphRowAndPage()
         {

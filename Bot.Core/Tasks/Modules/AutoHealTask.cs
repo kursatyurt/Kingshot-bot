@@ -20,7 +20,6 @@ namespace Bot.Core.Tasks.Modules
         
         private new readonly UnifiedTemplateMatchingService _templateMatcher = new UnifiedTemplateMatchingService(new LogService());
         private readonly string _templateFolder;
-        private const double TEMPLATE_MATCH_THRESHOLD = 0.65;
 
         public AutoHealTask(LogService logger)
         {
@@ -44,8 +43,8 @@ namespace Bot.Core.Tasks.Modules
                     return FailConfiguration("Step 1: Setup", $"Template directory not found: {_templateFolder}");
                 }
 
-                // Ensure we're in map view
-                NotifyProgress(userNotifications, "Navigating to map", 10);
+                // The hospital is in the city
+                NotifyProgress(userNotifications, "Going to the city", 10);
                 var locator = new LocatorService(logger, account);
                 if (!await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken))
                 {
@@ -58,106 +57,43 @@ namespace Bot.Core.Tasks.Modules
                     return FailConnection("Step 3: Connecting to emulator", "Failed to establish ADB connection");
                 }
 
-                // Define healing sequence with specific search areas
-                var healSequence = new[]
+                // The green + bubble floats over the hospital; below the top bar, which can clip it so a tap misses.
+                // If the camera hides the hospital, drag the city down once (the hospital sits in the north part).
+                var heal = Path.Combine(_templateFolder, "heal.png");
+                var area = new Rectangle(0, 100, 720, 1000);
+                (bool found, Rectangle rect, double conf) bubble = default;
+                for (var look = 0; look < 2 && !bubble.found; look++)
                 {
-                    // the green + bubble floats over the hospital, which can be anywhere on screen
-                    (Path.Combine(_templateFolder, "heal.png"), new Rectangle(0, 0, 720, 1280), "heal icon"),
-                    (Path.Combine(_templateFolder, "heal-button.png"), new Rectangle(414, 786, 208, 202), "heal button"),
-                    (Path.Combine(_templateFolder, "help-button.png"), new Rectangle(523, 1009, 70, 67), "help button")
-                };
-
-                foreach (var (templatePath, searchArea, description) in healSequence)
-                {
-                    if (!File.Exists(templatePath))
+                    if (look == 1)
                     {
-                        logger.LogError($"[AutoHeal] Template not found: {templatePath}");
-                        return TaskExecutionDetails.Failed($"Template not found: {Path.GetFileName(templatePath)}");
+                        await ADBMigrationHelper.SwipeAsync(adbController, 400, 500, 400, 800, 800, logger, cancellationToken);
+                        await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
                     }
-
-                    // Give each template up to 5 seconds to appear
-                    var startTime = DateTime.UtcNow;
-                    bool found = false;
-                    Rectangle matchRect = Rectangle.Empty;
-
-                    while ((DateTime.UtcNow - startTime).TotalSeconds < 5 && !found && !cancellationToken.IsCancellationRequested)
-                    {
-                        var screenshot = await ADBMigrationHelper.TakeScreenshotAsync(adbController, logger, cancellationToken);
-                        var (isFound, rect, confidence) = _templateMatcher.MatchTemplate(
-                            screenshot,
-                            templatePath,
-                            account.InstanceNumber,
-                            description == "heal icon" ? 0.85 : TEMPLATE_MATCH_THRESHOLD,
-                            searchArea: searchArea);
-
-                        if (isFound)
-                        {
-                            found = true;
-                            matchRect = rect;
-                            var clickPoint = matchRect.GetCenter();
-                            logger.LogInfo($"[AutoHeal] Found {description} at ({clickPoint.X}, {clickPoint.Y}) with confidence {confidence:F3}");
-                            await ADBMigrationHelper.TapAsync(adbController, clickPoint.X, clickPoint.Y, logger, cancellationToken);
-                            await Bot.Core.Utils.Pace.Delay(500, cancellationToken); // Short delay after click
-                            break;
-                        }
-
-                        // If it's the first template (heal.png) and we can't find it, exit early
-                        if (description == "heal icon" && (DateTime.UtcNow - startTime).TotalSeconds >= 4.5)
-                        {
-                            logger.LogInfo("[AutoHeal] Heal icon not found, skipping healing process");
-                            return TaskExecutionDetails.Succeeded("No healing needed");
-                        }
-
-                        await Bot.Core.Utils.Pace.Delay(200, cancellationToken);
-                    }
-
-                    if (!found && description != "heal icon")
-                    {
-                        logger.LogError($"[{account.AccountName}] Error: Failed to find {Path.GetFileName(templatePath)}, calling locator module for recovery");
-                        var healLocator = new LocatorService(logger, account);
-                        try
-                        {
-                            await healLocator.EnsureViewAsync(ViewType.MapView, account.InstanceNumber, cancellationToken);
-                            logger.LogInfo($"[{account.AccountName}] Locator service completed view recovery, retrying {description} detection");
-                            
-                            // Retry the template matching after locator service
-                            var retryStartTime = DateTime.UtcNow;
-                            while ((DateTime.UtcNow - retryStartTime).TotalSeconds < 5 && !found && !cancellationToken.IsCancellationRequested)
-                            {
-                                var retryScreenshot = await ADBMigrationHelper.TakeScreenshotAsync(adbController, logger, cancellationToken);
-                                var (retryFound, retryRect, retryConfidence) = _templateMatcher.MatchTemplate(
-                                    retryScreenshot,
-                                    templatePath,
-                                    account.InstanceNumber,
-                                    TEMPLATE_MATCH_THRESHOLD,
-                                    searchArea: searchArea);
-
-                                if (retryFound)
-                                {
-                                    found = true;
-                                    matchRect = retryRect;
-                                    var clickPoint = matchRect.GetCenter();
-                                    logger.LogInfo($"[AutoHeal] Found {description} at ({clickPoint.X}, {clickPoint.Y}) with confidence {retryConfidence:F3} after locator recovery");
-                                    await ADBMigrationHelper.TapAsync(adbController, clickPoint.X, clickPoint.Y, logger, cancellationToken);
-                                    await Bot.Core.Utils.Pace.Delay(500, cancellationToken);
-                                    break;
-                                }
-                                await Bot.Core.Utils.Pace.Delay(200, cancellationToken);
-                            }
-                            
-                            if (!found)
-                            {
-                                logger.LogError($"[{account.AccountName}] Could not find {description} even after locator recovery");
-                                return FailDetection($"Step: Finding {description}", description, recoveryNeeded: true);
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            logger.LogError($"[{account.AccountName}] Locator service failed: {ex.Message}");
-                            return FailDetection($"Step: Finding {description}", description, recoveryNeeded: true);
-                        }
-                    }
+                    var shot = await ADBMigrationHelper.TakeScreenshotAsync(adbController, logger, cancellationToken);
+                    bubble = _templateMatcher.MatchTemplate(shot, heal, account.InstanceNumber, 0.85, searchArea: area);
                 }
+                if (!bubble.found)
+                {
+                    logger.LogInfo("[AutoHeal] Heal icon not found, skipping healing process");
+                    return TaskExecutionDetails.Succeeded("No healing needed");
+                }
+                var c = bubble.rect.GetCenter();
+                logger.LogInfo($"[AutoHeal] Found heal icon at ({c.X}, {c.Y}) with confidence {bubble.conf:F3}");
+                await ADBMigrationHelper.TapAsync(adbController, c.X, c.Y, logger, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(2500, cancellationToken);
+
+                // "Heal Injured" screen: tap the cyan Heal button (never Finish, which costs gems)
+                var page = await ADBMigrationHelper.TakeScreenshotAsync(adbController, logger, cancellationToken);
+                var title = new OCRService(logger).ExtractBrightTextFromScreenArea(page, new Rectangle(90, 15, 300, 50));
+                if (title?.Contains("Heal", StringComparison.OrdinalIgnoreCase) != true)
+                {
+                    logger.LogWarning($"[AutoHeal] Heal Injured screen did not open (title '{title}')");
+                    await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
+                    return TaskExecutionDetails.Failed("Heal Injured screen did not open");
+                }
+                await ADBMigrationHelper.TapAsync(adbController, 571, 1207, logger, cancellationToken);
+                await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
+                await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
 
                 logger.LogInfo("[AutoHeal] Successfully completed healing sequence");
                 return TaskExecutionDetails.Succeeded("Healing completed successfully");
