@@ -35,6 +35,16 @@ namespace Bot.Core.Tests
         }
 
         [Test]
+        public void ConquestScreenIsRecognised()
+        {
+            var s = Shot("conquest-screen.png"); // 2026-11-10 21:28: the screen was open but the task said it did not open
+            var m = new Bot.Core.ImageDetection.UnifiedTemplateMatchingService(new Bot.Core.Logging.LogService());
+            var button = m.MatchTemplate(s, "/Users/kursatyurt/Kingshot-bot/templates/images/conquest/conquer-button.png", 0, 0.9, searchArea: new System.Drawing.Rectangle(150, 1100, 420, 160)).found;
+            var title = new Bot.Core.Utils.OCRService(new Bot.Core.Logging.LogService()).ExtractBrightTextFromScreenArea(s, new System.Drawing.Rectangle(90, 15, 250, 50))?.Contains("Conquest") == true;
+            Assert.That(button || title, Is.True);
+        }
+
+        [Test]
         public void HospitalHealBubbleAndPage()
         {
             var m = new Bot.Core.ImageDetection.UnifiedTemplateMatchingService(new Bot.Core.Logging.LogService());

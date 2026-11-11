@@ -116,9 +116,18 @@ namespace Bot.Core.Tasks.Modules
 
         private async Task<bool> OnConquestScreenAsync(AccountSettings account, LogService logger)
         {
-            var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
-            return screenshot != null && _templateMatcher.MatchTemplate(screenshot, Path.Combine(ImageTemplateFolder, "conquer-button.png"),
-                account.InstanceNumber, threshold: 0.9, searchArea: new Rectangle(150, 1100, 420, 160)).found;
+            // The screen can take a few seconds past the 3 s wait to open: look up to 5 times; the "Conquest" title also counts
+            for (var look = 0; look < 5; look++)
+            {
+                if (look > 0) await Bot.Core.Utils.Pace.Delay(1500, CancellationToken.None);
+                var screenshot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                if (screenshot == null) continue;
+                if (_templateMatcher.MatchTemplate(screenshot, Path.Combine(ImageTemplateFolder, "conquer-button.png"),
+                        account.InstanceNumber, threshold: 0.9, searchArea: new Rectangle(150, 1100, 420, 160)).found
+                    || new OCRService(logger).ExtractBrightTextFromScreenArea(screenshot, new Rectangle(90, 15, 250, 50))?.Contains("Conquest") == true)
+                    return true;
+            }
+            return false;
         }
 
         /// <summary>
