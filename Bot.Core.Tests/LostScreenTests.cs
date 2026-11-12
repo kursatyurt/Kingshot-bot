@@ -141,5 +141,14 @@ namespace Bot.Core.Tests
             Assert.That(IsChat(Shot("lost-chat.png")), Is.True);
             Assert.That(IsChat(Shot("panel-town.png")), Is.False);
         }
+
+        // 05:19 Nov 10: the game opened on the Mystery Shop and a weak glove match tapped an item card
+        [Test]
+        public void MysteryShopHasNoTutorialGlove()
+        {
+            var glove = Path.Combine(TestContext.CurrentContext.TestDirectory, "templates", "images", "locator", "tutorial-glove.png");
+            Assert.That(File.Exists(glove));
+            Assert.That(Bot.Core.Utils.LocatorService.FindTutorialGlove(Shot("mystery-shop.png"), glove), Is.Null);
+        }
     }
 }
