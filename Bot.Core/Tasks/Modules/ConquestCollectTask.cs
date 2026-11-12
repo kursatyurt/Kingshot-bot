@@ -70,9 +70,16 @@ namespace Bot.Core.Tasks.Modules
                 var locator = new LocatorService(logger, account);
                 if (!await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken))
                     return TaskExecutionDetails.Failed("Could not reach the city view");
-                await ClickAsync(account.InstanceNumber, logger, ConquestTab);
-                await Bot.Core.Utils.Pace.Delay(3000, cancellationToken);
-                if (!await OnConquestScreenAsync(account, logger))
+                // Second try: once in 11 taps Chat opened instead (04:19 Nov 12); going back to the city and tapping again fixes it
+                var opened = false;
+                for (var attempt = 0; attempt < 2 && !opened; attempt++)
+                {
+                    if (attempt > 0 && !await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken)) break;
+                    await ClickAsync(account.InstanceNumber, logger, ConquestTab);
+                    await Bot.Core.Utils.Pace.Delay(3000, cancellationToken);
+                    opened = await OnConquestScreenAsync(account, logger);
+                }
+                if (!opened)
                 {
                     await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken);
                     return TaskExecutionDetails.Failed("Conquest screen did not open");
