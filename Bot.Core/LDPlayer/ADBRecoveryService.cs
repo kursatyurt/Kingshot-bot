@@ -56,14 +56,8 @@ namespace Bot.Core.LDPlayer
                     return true;
             }
             
-            // Strategy 4: Reset ADB keys
-            if (await ResetADBKeysAsync(cancellationToken))
-            {
-                _logger.LogInfo("[ADBRecovery] ADB keys reset", category: LogCategories.ADB);
-                if (await TestConnectionAsync(instanceNumber, cancellationToken))
-                    return true;
-            }
-            
+            // No key reset: deleting ~/.android/adbkey makes every emulator reject the bot as "unauthorized"
+
             // Strategy 5: Enable ADB in LDPlayer settings
             if (await EnableADBInSettingsAsync(instanceNumber, cancellationToken))
             {
@@ -224,36 +218,6 @@ namespace Bot.Core.LDPlayer
             catch (Exception ex)
             {
                 _logger.LogError($"[ADBRecovery] Failed to fix port conflicts: {ex.Message}", category: LogCategories.ADB);
-            }
-            
-            return false;
-        }
-        
-        private async Task<bool> ResetADBKeysAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                var adbKeyPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".android");
-                if (Directory.Exists(adbKeyPath))
-                {
-                    var keyFiles = new[] { "adbkey", "adbkey.pub" };
-                    foreach (var keyFile in keyFiles)
-                    {
-                        var fullPath = Path.Combine(adbKeyPath, keyFile);
-                        if (File.Exists(fullPath))
-                        {
-                            File.Delete(fullPath);
-                            _logger.LogInfo($"[ADBRecovery] Deleted {keyFile}", category: LogCategories.ADB);
-                        }
-                    }
-                }
-                
-                // Restart ADB to regenerate keys
-                return await RestartADBServerAsync(cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"[ADBRecovery] Failed to reset ADB keys: {ex.Message}", category: LogCategories.ADB);
             }
             
             return false;
