@@ -71,6 +71,16 @@ namespace Bot.Core.Tasks.Modules
                     }
                     var shot = await ADBMigrationHelper.TakeScreenshotAsync(adbController, logger, cancellationToken);
                     bubble = _templateMatcher.MatchTemplate(shot, heal, account.InstanceNumber, 0.85, searchArea: area);
+                    // After the drag the city keeps sliding (03:54 Nov 12 tapped where the bubble had been): tap only once it stays put
+                    for (var settle = 0; look == 1 && bubble.found && settle < 3; settle++)
+                    {
+                        await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
+                        shot = await ADBMigrationHelper.TakeScreenshotAsync(adbController, logger, cancellationToken);
+                        var again = _templateMatcher.MatchTemplate(shot, heal, account.InstanceNumber, 0.85, searchArea: area);
+                        var moved = !again.found || Math.Abs(again.matchRect.Y - bubble.rect.Y) + Math.Abs(again.matchRect.X - bubble.rect.X) > 4;
+                        bubble = again;
+                        if (!moved) break;
+                    }
                 }
                 if (!bubble.found)
                 {
