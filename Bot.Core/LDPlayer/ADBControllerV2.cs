@@ -35,7 +35,6 @@ namespace Bot.Core.LDPlayer
         // Connection health tracking
         private DateTime _lastSuccessfulOperation = DateTime.UtcNow;
         private int _consecutiveFailures = 0;
-        private const int MAX_CONSECUTIVE_FAILURES = 3;
         
         // Performance metrics
         private static readonly ConcurrentDictionary<string, (long TotalTime, int Count)> _performanceMetrics = new();
@@ -420,13 +419,10 @@ namespace Bot.Core.LDPlayer
         {
             try
             {
-                if (_consecutiveFailures >= MAX_CONSECUTIVE_FAILURES)
-                {
-                    return false;
-                }
-
-                // Quick responsiveness test
+                // Always ping: refusing outright after 3 failures could never reset, so a short stall while the game
+                // loaded made every screenshot fail for the rest of startup (04:47 Nov 12, both accounts)
                 await ExecuteShellCommandAsync("echo ping", cancellationToken, timeoutMs: 5000);
+                RecordSuccessfulOperation();
                 return true;
             }
             catch
