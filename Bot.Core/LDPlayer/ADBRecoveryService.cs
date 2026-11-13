@@ -32,6 +32,17 @@ namespace Bot.Core.LDPlayer
         {
             _logger.LogInfo($"[ADBRecovery] Starting comprehensive recovery for instance {instanceNumber}", category: LogCategories.ADB);
             
+            // Strategy 0: reconnect just this device; restarting the adb server below cuts off every account
+            if (await RunAdbAsync($"-s {Serial(instanceNumber)} reconnect", cancellationToken))
+            {
+                await Task.Delay(2000, cancellationToken); // the device takes a moment to come back
+                if (await TestConnectionAsync(instanceNumber, cancellationToken))
+                {
+                    _logger.LogInfo($"[ADBRecovery] Reconnected {Serial(instanceNumber)}", category: LogCategories.ADB);
+                    return true;
+                }
+            }
+
             // Strategy 1: Kill all adb processes and restart
             if (await RestartADBServerAsync(cancellationToken))
             {
@@ -40,7 +51,8 @@ namespace Bot.Core.LDPlayer
                     return true;
             }
             
-            // Strategy 2: Restart the LDPlayer instance
+            // Strategy 2: Restart the LDPlayer instance, with ADB switched on in its settings first (one restart covers both)
+            await EnableADBInSettingsAsync(instanceNumber, cancellationToken);
             if (await RestartInstanceAsync(instanceNumber, cancellationToken))
             {
                 _logger.LogInfo($"[ADBRecovery] Instance {instanceNumber} restarted", category: LogCategories.ADB);
@@ -58,14 +70,6 @@ namespace Bot.Core.LDPlayer
             
             // No key reset: deleting ~/.android/adbkey makes every emulator reject the bot as "unauthorized"
 
-            // Strategy 5: Enable ADB in LDPlayer settings
-            if (await EnableADBInSettingsAsync(instanceNumber, cancellationToken))
-            {
-                _logger.LogInfo("[ADBRecovery] ADB enabled in LDPlayer settings", category: LogCategories.ADB);
-                if (await TestConnectionAsync(instanceNumber, cancellationToken))
-                    return true;
-            }
-            
             _logger.LogError($"[ADBRecovery] All recovery strategies failed for instance {instanceNumber}", category: LogCategories.ADB);
             return false;
         }
@@ -241,8 +245,7 @@ namespace Bot.Core.LDPlayer
                 {
                     await process.WaitForExitAsync(cancellationToken);
                     
-                    // Restart instance for settings to take effect
-                    return await RestartInstanceAsync(instanceNumber, cancellationToken);
+                    return process.ExitCode == 0;
                 }
             }
             catch (Exception ex)
@@ -253,35 +256,42 @@ namespace Bot.Core.LDPlayer
             return false;
         }
         
-        private async Task<bool> TestConnectionAsync(int instanceNumber, CancellationToken cancellationToken)
+        private static string Serial(int instanceNumber) => $"emulator-{5554 + (instanceNumber * 2)}";
+
+        private Task<bool> TestConnectionAsync(int instanceNumber, CancellationToken cancellationToken) =>
+            RunAdbAsync($"-s {Serial(instanceNumber)} shell echo test", cancellationToken, expect: "test");
+
+        // adb can hang on a stuck device: give up after 10 s instead of stalling recovery
+        private async Task<bool> RunAdbAsync(string args, CancellationToken cancellationToken, string? expect = null)
         {
             try
             {
-                var deviceSerial = $"emulator-{5554 + (instanceNumber * 2)}";
-                
-                // Test ADB connection
-                var testInfo = new ProcessStartInfo
+                using var process = Process.Start(new ProcessStartInfo
                 {
                     FileName = _adbPath,
-                    Arguments = $"-s {deviceSerial} shell echo test",
+                    Arguments = args,
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     CreateNoWindow = true
-                };
-                
-                using var process = Process.Start(testInfo);
-                if (process != null)
-                {
-                    var output = await process.StandardOutput.ReadToEndAsync();
-                    var error = await process.StandardError.ReadToEndAsync();
-                    await process.WaitForExitAsync(cancellationToken);
-                    
-                    return process.ExitCode == 0 && output.Contains("test") && !error.Contains("error");
-                }
+                });
+                if (process == null) return false;
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeout.CancelAfter(10000);
+                var output = process.StandardOutput.ReadToEndAsync(timeout.Token);
+                var error = process.StandardError.ReadToEndAsync(timeout.Token);
+                try { await process.WaitForExitAsync(timeout.Token); }
+                catch (OperationCanceledException) { try { process.Kill(); } catch { } throw; }
+                return process.ExitCode == 0 && (expect == null || (await output).Contains(expect)) && !(await error).Contains("error");
             }
-            catch { }
-            
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                _logger.LogWarning($"[ADBRecovery] adb {args} timed out", category: LogCategories.ADB);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogWarning($"[ADBRecovery] adb {args} failed: {ex.Message}", category: LogCategories.ADB);
+            }
             return false;
         }
     }
