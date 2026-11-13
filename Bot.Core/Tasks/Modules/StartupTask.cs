@@ -275,6 +275,17 @@ namespace Bot.Core.Tasks.Modules
                         continue;
                     }
 
+                    // The game closed (10:04 Nov 13 sat on the Android home screen while Back was pressed for a minute): start it again
+                    if ((DateTime.UtcNow - startTime).TotalSeconds > 15
+                        && await ADBMigrationHelper.GetConnectionAsync(account.InstanceNumber, logger, cancellationToken) is ADBControllerV2 adb
+                        && !await adb.IsAppInForegroundAsync("com.run.tower.defense", cancellationToken))
+                    {
+                        logger.LogWarning($"[{account.AccountName}] Kingshot is not on screen, starting it again");
+                        await FindAndClickKingshotApp(account, logger, cancellationToken, userNotifications);
+                        await Bot.Core.Utils.Pace.Delay(10000, cancellationToken);
+                        continue;
+                    }
+
                     // A popup left over from before the restart (a map tile's Gather card, ...) hides the view markers: Back closes it
                     if ((DateTime.UtcNow - startTime).TotalSeconds > 15)
                         await PressBackAsync(account.InstanceNumber, logger);

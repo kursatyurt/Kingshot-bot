@@ -307,38 +307,9 @@ namespace Bot.Core.LDPlayer
         {
             try
             {
-                // Try multiple dumpsys commands like wosbot-master does
-                var commands = new[]
-                {
-                    "dumpsys window windows",
-                    "dumpsys window displays", 
-                    "dumpsys activity activities"
-                };
-
-                foreach (var command in commands)
-                {
-                    var result = await ExecuteShellCommandAsync(command, cancellationToken);
-                    
-                    if (command.Contains("window"))
-                    {
-                        if ((result.Contains("mCurrentFocus") || result.Contains("mFocusedApp")) && 
-                            result.Contains($"{packageName}/"))
-                        {
-                            _logger.LogInfo($"[ADBv2] App {packageName} detected in foreground on instance {_instanceNumber}");
-                            return true;
-                        }
-                    }
-                    else if (command.Contains("activity"))
-                    {
-                        if (result.Contains("mResumedActivity") && result.Contains($"{packageName}/"))
-                        {
-                            _logger.LogInfo($"[ADBv2] App {packageName} detected in foreground on instance {_instanceNumber}");
-                            return true;
-                        }
-                    }
-                }
-                
-                return false;
+                // Only the resumed-activity line: the full window dump lists the game even when it is in the background
+                var result = await ExecuteShellCommandAsync("dumpsys activity activities | grep topResumedActivity", cancellationToken);
+                return result.Contains($"{packageName}/");
             }
             catch (Exception ex)
             {
