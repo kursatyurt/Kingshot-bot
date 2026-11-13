@@ -87,7 +87,7 @@ if (args.Contains("--help-loop"))
                 await Task.Delay(1500, cts.Token);
             }
             catch (OperationCanceledException) { }
-            catch (Exception ex) { adb = null; Console.WriteLine($"[{a.AccountName}] help loop: {ex.Message}"); await Task.Delay(5000); }
+            catch (Exception ex) { adb = null; Console.WriteLine($"[{a.AccountName}] help loop: {ex.Message}"); try { await Task.Delay(5000, cts.Token); } catch (OperationCanceledException) { } }
         }
     }));
     return 0;

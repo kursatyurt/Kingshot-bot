@@ -86,7 +86,6 @@ namespace Bot.Core.Tasks
         
         // Timing controls for auto tasks to prevent excessive triggering
         private static readonly ConcurrentDictionary<int, DateTime> _lastAllianceHelpTime = new();
-        private static readonly ConcurrentDictionary<int, DateTime> _lastAutoHealTime = new();
         private static readonly TimeSpan AutoTaskCooldown = TimeSpan.FromSeconds(30);
         
         private static readonly string[] ResourceIcons = { "bread.png", "wood.png", "stone.png", "iron.png" };
@@ -105,13 +104,12 @@ namespace Bot.Core.Tasks
                     return true;
                 }
 
-                // Check if either task is enabled
+                // Only Alliance Help runs inside other tasks (Auto Heal is its own task)
                 bool allianceHelpEnabled = account.EnabledTasks.Contains(TaskType.AutoAllianceHelp);
-                bool autoHealEnabled = account.EnabledTasks.Contains(TaskType.AutoHeal);
 
-                if (!allianceHelpEnabled && !autoHealEnabled)
+                if (!allianceHelpEnabled)
                 {
-                    logger.LogInfo($"[{account.AccountName}] No auto tasks enabled for {Name} (Alliance Help: {allianceHelpEnabled}, Auto Heal: {autoHealEnabled})");
+                    logger.LogInfo($"[{account.AccountName}] Alliance Help not enabled for {Name}");
                     return true; // Nothing to do
                 }
 
@@ -119,7 +117,7 @@ namespace Bot.Core.Tasks
                 var locator = new LocatorService(logger, account, TaskType);
                 var currentView = await locator.DetectCurrentViewAsync(account.InstanceNumber, cancellationToken);
 
-                logger.LogInfo($"[{account.AccountName}] Current view: {currentView}, checking for auto tasks (Alliance Help: {allianceHelpEnabled}, Auto Heal: {autoHealEnabled})...");
+                logger.LogInfo($"[{account.AccountName}] Current view: {currentView}, checking for Alliance Help...");
 
                 // Run Alliance Help if enabled and we're in base view or map view
                 if (allianceHelpEnabled && (currentView == ViewType.BaseView || currentView == ViewType.MapView))
