@@ -48,7 +48,7 @@ namespace Bot.Core.Tasks.Modules
                 var locator = new LocatorService(logger, account);
                 if (!await locator.EnsureViewAsync(ViewType.BaseView, account.InstanceNumber, cancellationToken))
                 {
-                    return FailNavigation("Step 2: Navigating to map view", "Could not reach map view");
+                    return FailNavigation("Step 2: Navigating to the city", "Could not reach the city");
                 }
 
                 var adbController = await ADBMigrationHelper.GetConnectionAsync(account.InstanceNumber, logger, cancellationToken);
@@ -72,15 +72,17 @@ namespace Bot.Core.Tasks.Modules
                     var shot = await ADBMigrationHelper.TakeScreenshotAsync(adbController, logger, cancellationToken);
                     bubble = _templateMatcher.MatchTemplate(shot, heal, account.InstanceNumber, 0.85, searchArea: area);
                     // After the drag the city keeps sliding (03:54 Nov 12 tapped where the bubble had been): tap only once it stays put
-                    for (var settle = 0; look == 1 && bubble.found && settle < 3; settle++)
+                    var still = look == 0;
+                    for (var settle = 0; look == 1 && bubble.found && settle < 3 && !still; settle++)
                     {
                         await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
                         shot = await ADBMigrationHelper.TakeScreenshotAsync(adbController, logger, cancellationToken);
                         var again = _templateMatcher.MatchTemplate(shot, heal, account.InstanceNumber, 0.85, searchArea: area);
                         var moved = !again.found || Math.Abs(again.matchRect.Y - bubble.rect.Y) + Math.Abs(again.matchRect.X - bubble.rect.X) > 4;
                         bubble = again;
-                        if (!moved) break;
+                        still = !moved;
                     }
+                    if (!still) bubble = default; // still sliding after 3 s: never tap a moving target
                 }
                 if (!bubble.found)
                 {
@@ -95,11 +97,12 @@ namespace Bot.Core.Tasks.Modules
                 // "Heal Injured" screen: tap the cyan Heal button (never Finish, which costs gems)
                 // The screen can take a few seconds to open (09:35 Nov 11 read the city bar 2 s after the tap)
                 string? title = null;
+                using var ocr = new OCRService(logger);
                 for (var look = 0; look < 5 && title?.Contains("Heal", StringComparison.OrdinalIgnoreCase) != true; look++)
                 {
                     if (look > 0) await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
                     var page = await ADBMigrationHelper.TakeScreenshotAsync(adbController, logger, cancellationToken);
-                    title = new OCRService(logger).ExtractBrightTextFromScreenArea(page, new Rectangle(90, 15, 300, 50));
+                    title = ocr.ExtractBrightTextFromScreenArea(page, new Rectangle(90, 15, 300, 50));
                 }
                 if (title?.Contains("Heal", StringComparison.OrdinalIgnoreCase) != true)
                 {
