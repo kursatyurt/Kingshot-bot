@@ -159,6 +159,8 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
 
                         if (target == null)
                         {
+                            if (noMarchesAvailable) AutoHuntTask.HoldMarches(account.InstanceNumber, TimeSpan.FromMinutes(20));
+                            else AutoHuntTask.ReleaseMarches(account.InstanceNumber);
                             if (noMarchesAvailable)
                                 logger.LogInfo($"[{account.AccountName}] Only beasts left and no free march; they wait for the next run");
 
@@ -869,6 +871,10 @@ namespace Bot.Core.Tasks.Modules.AutoHunt
             // The "Intel Mission" title is stable; the castle in the middle changes look as the city levels up
             if (_templateMatcher.MatchTemplate(screenshot, Path.Combine(ImageTemplateFolder, "intel-title.png"),
                     account.InstanceNumber, threshold: 0.85, searchArea: new Rectangle(60, 0, 300, 90)).found)
+                return true;
+            // The title sits on the moving map, so its template scored 0.49 on Kingshot_0 (dark castle skin: no castle match
+            // either) and no Intel mission was ever seen there: read the words instead
+            if (new OCRService(logger).ExtractBrightTextFromScreenArea(screenshot, new Rectangle(85, 15, 220, 50), 190).Contains("Intel", StringComparison.OrdinalIgnoreCase))
                 return true;
 
             // Check for castle-hunt icon

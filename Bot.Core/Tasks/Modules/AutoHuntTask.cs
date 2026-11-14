@@ -41,7 +41,19 @@ namespace Bot.Core.Tasks.Modules
                 visualDebugger);
         }
 
-        protected override bool OnCooldown(AccountSettings account) => _nextRun.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next;
+        // Intel missions come first: while they wait for a march, Farming sends none out and this task runs every cycle.
+        // The hold expires by itself, so a run that keeps failing cannot park the marches for good.
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, (DateTime Until, DateTime KeepUntil)> _hold = new();
+        public static bool MarchesHeld(int instanceNumber) => _hold.TryGetValue(instanceNumber, out var h) && DateTime.UtcNow < h.Until;
+        /// <summary>keepFor: no release before then (missions refreshed, gatherers still walking home).</summary>
+        public static void HoldMarches(int instanceNumber, TimeSpan duration, TimeSpan keepFor = default) =>
+            _hold[instanceNumber] = (DateTime.UtcNow + duration, keepFor == default && _hold.TryGetValue(instanceNumber, out var h) ? h.KeepUntil : DateTime.UtcNow + keepFor);
+        public static void ReleaseMarches(int instanceNumber)
+        {
+            if (_hold.TryGetValue(instanceNumber, out var h) && DateTime.UtcNow >= h.KeepUntil) _hold.TryRemove(instanceNumber, out _);
+        }
+
+        protected override bool OnCooldown(AccountSettings account) => !MarchesHeld(account.InstanceNumber) && _nextRun.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next;
 
         protected override async Task<TaskExecutionDetails> ExecuteTaskLogicAsync(
             AccountSettings account,
@@ -52,7 +64,7 @@ namespace Bot.Core.Tasks.Modules
         {
             // Intel missions refresh every few hours and beasts wait for a march to come home: a run every cycle
             // (~35 s) mostly found nothing new
-            if (_nextRun.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next)
+            if (!MarchesHeld(account.InstanceNumber) && _nextRun.TryGetValue(account.InstanceNumber, out var next) && DateTime.UtcNow < next)
                 return new TaskExecutionDetails(true, message: "Skipped: Intel checked recently");
             _nextRun[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(15);
             var result = await _coordinator.ExecuteAutoHuntAsync(
@@ -65,6 +77,7 @@ namespace Bot.Core.Tasks.Modules
             if (result.Message?.Contains("Stamina depleted", StringComparison.OrdinalIgnoreCase) == true)
             {
                 _nextRun[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(60);
+                _hold.TryRemove(account.InstanceNumber, out _); // nothing to hunt with: let the marches gather
                 logger.LogInfo($"[{account.AccountName}] No stamina: next hunt in 60 min");
             }
             return result;

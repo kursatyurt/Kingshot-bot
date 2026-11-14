@@ -87,6 +87,10 @@ namespace Bot.Core.Tasks.Modules
         // The Wilderness tab lists every march: an Idle one goes at once, otherwise wait for the first timer to end
         protected override bool OnCooldown(AccountSettings account)
         {
+            _intelSlot.TryAdd(account.InstanceNumber, IntelSlot());
+            if (IntelRefreshed(account.InstanceNumber)) return false; // the gatherers are recalled even with every march out
+            if (AutoHuntTask.MarchesHeld(account.InstanceNumber)) return true;
+            if (_rallyPhase.TryGetValue(account.InstanceNumber, out var rallies) && DateTime.UtcNow < rallies) return false;
             if (SidePanelStatus.Latest(account.InstanceNumber) is { } p && p.Wilderness.Any(r => r.Timer != null || r.Idle))
                 return !p.Wilderness.Any(r => r.Idle) && !p.Dots.Any(d => d.StartsWith("Wilderness:"))
                     && DateTime.UtcNow < p.At + p.Wilderness.Where(r => r.Timer != null).Min(r => r.Timer!.Value);
@@ -131,6 +135,7 @@ namespace Bot.Core.Tasks.Modules
 
             await ClickRandomInRectAsync(account.InstanceNumber, logger, SearchIconRect);
             await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
+            await ScrollSearchRowToStartAsync(account, logger, cancellationToken);
             await ClickAsync(account.InstanceNumber, logger, new Point(245, 900)); // Terror tab
             await Bot.Core.Utils.Pace.Delay(1200, cancellationToken);
             await ClickAsync(account.InstanceNumber, logger, new Point(360, 1215)); // Search
@@ -188,6 +193,72 @@ namespace Bot.Core.Tasks.Modules
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, DateTime> _nextBeastHunt = new();
 
         /// <summary>
+        /// The search panel's row (Beasts, Terror, Great Mill, Bread, ...) keeps its last scroll: after a resource search
+        /// Beasts and Terror are off-screen and their spots hold Great Mill and Bread, so no rally or beast hunt ever started.
+        /// </summary>
+        private async Task ScrollSearchRowToStartAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
+        {
+            for (int swipe = 0; swipe < 2; swipe++)
+            {
+                await SwipeAsync(account.InstanceNumber, logger, new Point(150, 900), new Point(650, 900), 400);
+                await Bot.Core.Utils.Pace.Delay(800, cancellationToken);
+            }
+        }
+
+        // Intel missions refresh at 00:00, 08:00 and 16:00 UTC (2 minutes of slack for the game to list them)
+        private static readonly ConcurrentDictionary<int, long> _intelSlot = new();
+        private static long IntelSlot() => (DateTime.UtcNow.Ticks - TimeSpan.FromMinutes(2).Ticks) / TimeSpan.FromHours(8).Ticks;
+        // After a refresh's Intel missions, stamina goes to Terror rallies before any march gathers (2 h at most)
+        private static readonly ConcurrentDictionary<int, DateTime> _rallyPhase = new();
+        private static bool IntelRefreshed(int instance) => _intelSlot.TryGetValue(instance, out var slot) && slot != IntelSlot();
+
+        /// <summary>
+        /// World map march panel: every row has a Recall arrow at x=218 (rows 61 px apart, first at y=270) → "Recall squad?"
+        /// → Confirm. Only rows reading "Gathering" are tapped, and Confirm only under that question.
+        /// </summary>
+        private async Task RecallGatherersAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
+        {
+            using var statusOcr = new OCRService(logger, new OCRConfiguration { CharacterWhitelist = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", PageSegMode = Tesseract.PageSegMode.SingleLine });
+            int recalled = 0;
+            for (int pass = 0; pass < 6; pass++) // 4 marches; a recalled row may move, so the panel is read again each time
+            {
+                var panel = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                if (panel == null) break;
+                int row = Enumerable.Range(0, 4).Where(r => statusOcr.ExtractBrightTextFromScreenArea(panel, new Rectangle(55, 248 + 61 * r, 110, 24), 190)
+                    .Contains("Gather", StringComparison.OrdinalIgnoreCase)).DefaultIfEmpty(-1).First();
+                if (row < 0) break;
+                await ClickAsync(account.InstanceNumber, logger, new Point(218, 270 + 61 * row));
+                await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
+                var dialog = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                if (dialog != null && IsCyanArea(dialog, new Rectangle(400, 765, 220, 40))
+                    && new OCRService(logger).ExtractTextFromScreenArea(dialog, new Rectangle(150, 575, 420, 60))?.Contains("ecall", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    await ClickAsync(account.InstanceNumber, logger, new Point(512, 788)); // Confirm
+                    recalled++;
+                }
+                else
+                    await PressBackAsync(account.InstanceNumber, logger);
+                await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
+            }
+            logger.LogInfo($"[{account.AccountName}] 🔙 Recalled {recalled} gathering march(es) for the Intel missions");
+        }
+
+        /// <summary>Resources another march is gathering now, from the side panel's Wilderness rows ("Gathering Lv.7 Idle Quarry").</summary>
+        // ponytail: the scan is from the start of the cycle, so a march home since then still counts; scan again here if resources double up
+        private static HashSet<ResourceType> ResourcesBeingGathered(int instance)
+        {
+            var busy = new HashSet<ResourceType>();
+            foreach (var row in SidePanelStatus.Latest(instance)?.Wilderness.Where(r => r.Timer != null && r.Is("Gathering")) ?? Enumerable.Empty<PanelRow>())
+            {
+                if (row.Is("Mill")) busy.Add(ResourceType.Bread);
+                else if (row.Is("Lumber")) busy.Add(ResourceType.Wood);
+                else if (row.Is("Quarry")) busy.Add(ResourceType.Stone);
+                else if (row.Is("Iron")) busy.Add(ResourceType.Iron);
+            }
+            return busy;
+        }
+
+        /// <summary>
         /// World map search → Beasts → Search → Attack (10 stamina) → Deploy. A search above the account's
         /// "Max opponent" level finds nothing, so the level is lowered and the search repeated. Without stamina or
         /// a free march another dialog shows instead of the deploy page: back out.
@@ -200,6 +271,7 @@ namespace Bot.Core.Tasks.Modules
 
             await ClickRandomInRectAsync(account.InstanceNumber, logger, SearchIconRect);
             await Bot.Core.Utils.Pace.Delay(2000, cancellationToken);
+            await ScrollSearchRowToStartAsync(account, logger, cancellationToken);
             await ClickAsync(account.InstanceNumber, logger, new Point(88, 900)); // Beasts tab
             await Bot.Core.Utils.Pace.Delay(1200, cancellationToken);
             Point? attack = null;
@@ -384,6 +456,33 @@ namespace Bot.Core.Tasks.Modules
                     return TaskExecutionDetails.Failed("World map not reached");
                 }
 
+                // New Intel missions: every gatherer comes home, the missions go first, then all marches gather again
+                if (IntelRefreshed(account.InstanceNumber))
+                {
+                    logger.LogInfo($"[{account.AccountName}] 🕵️ Intel missions refreshed: recalling the gatherers");
+                    await RecallGatherersAsync(account, logger, cancellationToken);
+                    AutoHuntTask.HoldMarches(account.InstanceNumber, TimeSpan.FromMinutes(30), keepFor: TimeSpan.FromMinutes(5));
+                    _rallyPhase[account.InstanceNumber] = DateTime.UtcNow.AddHours(2);
+                    _nextTerrorRally.TryRemove(account.InstanceNumber, out _);
+                }
+                _intelSlot[account.InstanceNumber] = IntelSlot();
+                if (AutoHuntTask.MarchesHeld(account.InstanceNumber))
+                    return new TaskExecutionDetails(true, message: "Marches kept home for the Intel missions");
+
+                // The Intel missions are done: all stamina goes to Terror rallies (25 each), and only then do the marches gather
+                if (_rallyPhase.TryGetValue(account.InstanceNumber, out var rallyUntil) && DateTime.UtcNow < rallyUntil)
+                {
+                    if (_nextTerrorRally.TryGetValue(account.InstanceNumber, out var nextRally) && DateTime.UtcNow < nextRally)
+                        return new TaskExecutionDetails(true, message: "Waiting for the Terror rally to finish");
+                    if (await HoldTerrorRallyAsync(account, logger, cancellationToken))
+                    {
+                        _nextTerrorRally[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(6); // 3 min rally + the march there and back
+                        return new TaskExecutionDetails(true, message: "Held a Terror rally; the marches gather once the stamina is spent");
+                    }
+                    _rallyPhase.TryRemove(account.InstanceNumber, out _);
+                    logger.LogInfo($"[{account.AccountName}] No more Terror rallies (stamina spent): the marches go gathering");
+                }
+
                 // Check and activate gathering boost if enabled
                 await CheckAndActivateGatheringBoostAsync(account, logger, cancellationToken);
 
@@ -431,6 +530,7 @@ namespace Bot.Core.Tasks.Modules
                 // Main farming loop
                 int marchesSentSuccessfully = 0;
                 int consecutiveFailures = 0; // one failed resource (e.g. no tile nearby) should not end farming for the cycle
+                var sentThisRun = new HashSet<ResourceType>();
                 var initialMarchesSent = FarmingSettings.GetMarchesSent(account.InstanceNumber);
                 
                 try
@@ -462,9 +562,14 @@ namespace Bot.Core.Tasks.Modules
                         // Rotate resources across cycles: start from the one after the last march actually sent. A failed
                         // attempt only moves on within this cycle, so a full queue doesn't skip a resource's turn.
                         int currentIndex = _farmingRotationIndexes.GetOrAdd(account.InstanceNumber, LoadRotationIndex) + consecutiveFailures;
+                        // One march per resource: skip what another march gathers already or this run just sent (all taken: plain rotation)
+                        var busy = ResourcesBeingGathered(account.InstanceNumber);
+                        busy.UnionWith(sentThisRun);
+                        for (int skip = 0; skip < account.FarmingTargets.Count && busy.Contains(account.FarmingTargets[currentIndex % account.FarmingTargets.Count].ResourceType); skip++)
+                            currentIndex++;
                         FarmingTarget currentTarget = account.FarmingTargets[currentIndex % account.FarmingTargets.Count];
                         bool priorityMarch = false;
-                        if (consecutiveFailures == 0 && _priorityResource.TryGetValue(account.InstanceNumber, out var priority) && DateTime.UtcNow < priority.Until
+                        if (consecutiveFailures == 0 && _priorityResource.TryGetValue(account.InstanceNumber, out var priority) && DateTime.UtcNow < priority.Until && !busy.Contains(priority.Type)
                             && account.FarmingTargets.FirstOrDefault(t => t.ResourceType == priority.Type) is FarmingTarget wanted)
                         {
                             // The Town Center waits on this resource: gather it first; the rotation resumes afterwards
@@ -484,6 +589,7 @@ namespace Bot.Core.Tasks.Modules
                                 SaveRotationIndexes();
                             }
                             consecutiveFailures = 0;
+                            sentThisRun.Add(currentTarget.ResourceType);
                             marchesSentSuccessfully++;
                             FarmingSettings.IncrementMarchesSent(account.InstanceNumber);
                             
@@ -1333,8 +1439,7 @@ namespace Bot.Core.Tasks.Modules
                         }
                         else
                         {
-                            logger.LogWarning($"[{account.AccountName}] ⚠️ Boost activation unclear, may need to purchase with gems");
-                            await HandleBoostPurchaseAsync(account, logger, cancellationToken);
+                            logger.LogWarning($"[{account.AccountName}] ⚠️ Boost not activated (no boost item?); gems are never spent on it");
                         }
                     }
                 }

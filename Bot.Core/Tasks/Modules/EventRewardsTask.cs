@@ -167,7 +167,7 @@ namespace Bot.Core.Tasks.Modules
 
         private int? RowY(byte[] panel, string icon, int instance)
         {
-            var (found, rect, _) = _templateMatcher.MatchTemplate(panel, Path.Combine(ImageTemplateFolder, icon), instance, threshold: 0.85, searchArea: new Rectangle(0, 290, 120, 570));
+            var (found, rect, _) = _templateMatcher.MatchTemplate(panel, Path.Combine(ImageTemplateFolder, icon), instance, threshold: 0.85, searchArea: new Rectangle(22, 290, 98, 570)); // from x=22: the "My Rewards" header's gift icon (x 10–54) scored 0.84 as the Online Rewards row, so the feast was never opened
             return found ? rect.Y + rect.Height / 2 : null;
         }
 

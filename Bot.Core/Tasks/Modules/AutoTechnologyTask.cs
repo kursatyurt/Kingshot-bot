@@ -208,7 +208,9 @@ namespace Bot.Core.Tasks.Modules
         /// Researches started as soon as they can be: Command Tactics (march queue) and Tool Enhancement (construction
         /// speed). One distinctive word each, since OCR adds stray letters inside titles ("CommandjTiactics]ll").
         /// </summary>
-        private static readonly string[] PriorityResearch = { "Command", "Enhanc" };
+        // Farm accounts live off gathering: its speed (Food Foraging, Wood Gathering, Stone Mining, Iron Mining) and the
+        // march's load (Regimental Expansion) come before the Output items, which only raise city production
+        private static readonly string[] PriorityResearch = { "Command", "Enhanc", "Forag", "Gather", "Mining", "Regiment" };
         private static readonly Rectangle GetMoreUseButton = new Rectangle(510, 390, 140, 40); // first row of "Get More": green Use for an owned pack
         /// <summary>The lowest green Use on "Get More" (rows 142 px apart); an orange gem row ends the owned packs.</summary>
         private static Point? BiggestOwnedPack(byte[] screenshot)
