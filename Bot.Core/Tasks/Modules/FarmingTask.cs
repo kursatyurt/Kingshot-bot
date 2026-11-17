@@ -164,6 +164,7 @@ namespace Bot.Core.Tasks.Modules
             var deploy = await TakeScreenshotAsync(account.InstanceNumber, logger);
             if (deploy == null || !IsCyanArea(deploy, new Rectangle(420, 1180, 250, 20)))
             {
+                logger.LogInfo($"[{account.AccountName}] Terror rally not started: no Deploy screen after Hold a rally (a pop-up instead, usually low stamina)");
                 await new LocatorService(logger, account).EnsureViewAsync(ViewType.MapView, account.InstanceNumber, cancellationToken);
                 return false;
             }
@@ -243,19 +244,71 @@ namespace Bot.Core.Tasks.Modules
             logger.LogInfo($"[{account.AccountName}] 🔙 Recalled {recalled} gathering march(es) for the Intel missions");
         }
 
-        /// <summary>Resources another march is gathering now, from the side panel's Wilderness rows ("Gathering Lv.7 Idle Quarry").</summary>
-        // ponytail: the scan is from the start of the cycle, so a march home since then still counts; scan again here if resources double up
-        private static HashSet<ResourceType> ResourcesBeingGathered(int instance)
+        /// <summary>"154.4 M", "421.5 K": the game always shows one decimal next to a suffix, and OCR often drops the point ("103M" is 10.3 M).</summary>
+        public static double? ParseAmount(string? text)
         {
-            var busy = new HashSet<ResourceType>();
+            var m = Regex.Match(text ?? "", @"^\s*([\d.,]+)\s*([KMB]?)\s*$", RegexOptions.IgnoreCase);
+            if (!m.Success) return null;
+            var digits = m.Groups[1].Value.Replace(',', '.');
+            var suffix = m.Groups[2].Value.ToUpperInvariant();
+            if (suffix != "" && !digits.Contains('.') && digits.Length > 1) digits = digits[..^1] + "." + digits[^1];
+            if (!double.TryParse(digits, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v)) return null;
+            return v * (suffix switch { "K" => 1e3, "M" => 1e6, "B" => 1e9, _ => 1.0 });
+        }
+
+        /// <summary>The orange (secured) amount under a resource's "Owns" figure: OCR reads it only as black on white, so mask the orange first.</summary>
+        private static string ReadSecuredText(byte[] shot, int y, OCRService ocr)
+        {
+            using var img = OpenCvSharp.Cv2.ImDecode(shot, OpenCvSharp.ImreadModes.Color);
+            using var roi = new OpenCvSharp.Mat(img, new OpenCvSharp.Rect(466, y + 44, 134, 40));
+            using var hsv = new OpenCvSharp.Mat();
+            OpenCvSharp.Cv2.CvtColor(roi, hsv, OpenCvSharp.ColorConversionCodes.BGR2HSV);
+            using var mask = new OpenCvSharp.Mat();
+            OpenCvSharp.Cv2.InRange(hsv, new OpenCvSharp.Scalar(5, 110, 140), new OpenCvSharp.Scalar(28, 255, 255), mask);
+            using var inverted = new OpenCvSharp.Mat();
+            OpenCvSharp.Cv2.BitwiseNot(mask, inverted);
+            using var padded = new OpenCvSharp.Mat();
+            OpenCvSharp.Cv2.CopyMakeBorder(inverted, padded, 10, 10, 10, 10, OpenCvSharp.BorderTypes.Constant, OpenCvSharp.Scalar.White);
+            return ocr.ExtractTextFromScreenArea(padded.ToBytes(".png"), new Rectangle(0, 0, padded.Width, padded.Height)) ?? "";
+        }
+
+        /// <summary>
+        /// What the account owns of each resource beyond the Storehouse's protection: tap the bread chip in the top bar, read the
+        /// Overview's "Owns" figure and the secured (orange) one under it, close it. Null when it did not open or a number could not be read.
+        /// </summary>
+        private async Task<Dictionary<ResourceType, double>?> ReadStocksAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
+        {
+            await ClickAsync(account.InstanceNumber, logger, new Point(500, 28));
+            await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
+            Dictionary<ResourceType, double>? stocks = null;
+            var shot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+            var ocr = new OCRService(logger);
+            if (shot != null && ocr.ExtractTextFromScreenArea(shot, new Rectangle(10, 330, 250, 50))?.Contains("verview", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                var found = new Dictionary<ResourceType, double>();
+                foreach (var (type, y) in new[] { (ResourceType.Bread, 480), (ResourceType.Wood, 596), (ResourceType.Stone, 712), (ResourceType.Iron, 828) })
+                    if (ParseAmount(ocr.ExtractTextFromScreenArea(shot, new Rectangle(430, y, 150, 60))) is double owned
+                        && ParseAmount(ReadSecuredText(shot, y, ocr)) is double secured && secured <= owned * 1.001)
+                        found[type] = Math.Max(0, owned - secured);
+                if (found.Count == 4) stocks = found;
+            }
+            await PressBackAsync(account.InstanceNumber, logger);
+            await Bot.Core.Utils.Pace.Delay(800, cancellationToken);
+            await new LocatorService(logger, account).EnsureViewAsync(ViewType.MapView, account.InstanceNumber, cancellationToken);
+            return stocks;
+        }
+
+        /// <summary>Marches gathering each resource now, from the side panel's Wilderness rows ("Gathering Lv.8 Idle Quarry").</summary>
+        // ponytail: the scan is from the start of the cycle, so a march home since then still counts
+        private static Dictionary<ResourceType, int> ResourcesBeingGathered(int instance)
+        {
+            var count = new Dictionary<ResourceType, int>();
             foreach (var row in SidePanelStatus.Latest(instance)?.Wilderness.Where(r => r.Timer != null && r.Is("Gathering")) ?? Enumerable.Empty<PanelRow>())
             {
-                if (row.Is("Mill")) busy.Add(ResourceType.Bread);
-                else if (row.Is("Lumber")) busy.Add(ResourceType.Wood);
-                else if (row.Is("Quarry")) busy.Add(ResourceType.Stone);
-                else if (row.Is("Iron")) busy.Add(ResourceType.Iron);
+                ResourceType? type = row.Is("Mill") ? ResourceType.Bread : row.Is("Lumber") ? ResourceType.Wood : row.Is("Quarry") ? ResourceType.Stone : row.Is("Iron") ? ResourceType.Iron : null;
+                if (type is ResourceType t) count[t] = count.GetValueOrDefault(t) + 1;
             }
-            return busy;
+            return count;
         }
 
         /// <summary>
@@ -469,20 +522,6 @@ namespace Bot.Core.Tasks.Modules
                 if (AutoHuntTask.MarchesHeld(account.InstanceNumber))
                     return new TaskExecutionDetails(true, message: "Marches kept home for the Intel missions");
 
-                // The Intel missions are done: all stamina goes to Terror rallies (25 each), and only then do the marches gather
-                if (_rallyPhase.TryGetValue(account.InstanceNumber, out var rallyUntil) && DateTime.UtcNow < rallyUntil)
-                {
-                    if (_nextTerrorRally.TryGetValue(account.InstanceNumber, out var nextRally) && DateTime.UtcNow < nextRally)
-                        return new TaskExecutionDetails(true, message: "Waiting for the Terror rally to finish");
-                    if (await HoldTerrorRallyAsync(account, logger, cancellationToken))
-                    {
-                        _nextTerrorRally[account.InstanceNumber] = DateTime.UtcNow.AddMinutes(6); // 3 min rally + the march there and back
-                        return new TaskExecutionDetails(true, message: "Held a Terror rally; the marches gather once the stamina is spent");
-                    }
-                    _rallyPhase.TryRemove(account.InstanceNumber, out _);
-                    logger.LogInfo($"[{account.AccountName}] No more Terror rallies (stamina spent): the marches go gathering");
-                }
-
                 // Check and activate gathering boost if enabled
                 await CheckAndActivateGatheringBoostAsync(account, logger, cancellationToken);
 
@@ -500,12 +539,36 @@ namespace Bot.Core.Tasks.Modules
                     return TaskExecutionDetails.Failed("Farming task cancelled during view location.");
                 }
 
-                // A free march and stamina go to a Terror rally first: alliance members auto-join it
-                if (await HoldTerrorRallyAsync(account, logger, cancellationToken) && --currentMarches <= 0)
-                    return new TaskExecutionDetails(true, message: "Held a Terror rally; no march left for gathering");
-                // A free march and stamina hunt a beast first (10 stamina; back within about a minute and a half)
-                if (await HuntBeastAsync(account, logger, cancellationToken) && --currentMarches <= 0)
-                    return new TaskExecutionDetails(true, message: "Hunting a beast; no march left for gathering");
+                // A free march and stamina go to a Terror rally first (alliance members auto-join it). The first rally opens the
+                // rally phase (an Intel refresh does too): the gatherers come home and all four marches rally, one per free
+                // march, until a rally fails with a march free (stamina spent); then every march gathers again.
+                var inst = account.InstanceNumber;
+                bool wasInPhase = _rallyPhase.TryGetValue(inst, out var rallyUntil) && DateTime.UtcNow < rallyUntil;
+                bool inPhase = wasInPhase, rallied = false, failed = false;
+                while (currentMarches > 0 && account.FarmingSettings.TerrorRallies)
+                {
+                    if (inPhase) _nextTerrorRally.TryRemove(inst, out _); // no wait between the rallies of a burst
+                    if (!await HoldTerrorRallyAsync(account, logger, cancellationToken)) { failed = true; break; }
+                    rallied = inPhase = true;
+                    _nextTerrorRally.TryRemove(inst, out _);
+                    // With every march home there is no march panel and the first read is only "at least 1": read again
+                    currentMarches = await ReadAvailableMarchesAsync(account, logger, cancellationToken, justSentMarch: true);
+                }
+                if (failed && inPhase)
+                {
+                    _rallyPhase.TryRemove(inst, out _);
+                    logger.LogInfo($"[{account.AccountName}] No more Terror rallies (stamina spent): every march gathers");
+                }
+                else if (rallied)
+                {
+                    _rallyPhase[inst] = DateTime.UtcNow.AddHours(2);
+                    if (!wasInPhase) await RecallGatherersAsync(account, logger, cancellationToken); // the gatherers rally too
+                    return new TaskExecutionDetails(true, message: "Terror rallies: every march rallies until the stamina is spent");
+                }
+                if (currentMarches <= 0)
+                    return new TaskExecutionDetails(true, message: "Terror rally; no march left for gathering");
+                // No world-map beast hunts (HuntBeastAsync): at 10 stamina every few minutes they kept the bar under the
+                // 25 a rally costs (Nov 13-15: 112 hunts, 24 rallies). Intel-mission beasts are AutoHunt's and still run.
 
                 await WaitIfPausedAsync(cancellationToken);
                 if (cancellationToken.IsCancellationRequested) return TaskExecutionDetails.Failed("Task was cancelled");
@@ -530,7 +593,14 @@ namespace Bot.Core.Tasks.Modules
                 // Main farming loop
                 int marchesSentSuccessfully = 0;
                 int consecutiveFailures = 0; // one failed resource (e.g. no tile nearby) should not end farming for the cycle
-                var sentThisRun = new HashSet<ResourceType>();
+                // The targets' "weight" is each resource's share of the unsecured stock (4:4:2:1; what the Storehouse protects
+                // does not count): every march goes to the resource furthest below its share
+                var stocks = await ReadStocksAsync(account, logger, cancellationToken);
+                if (stocks != null)
+                    logger.LogInfo($"[{account.AccountName}] 📦 Unsecured stock: " + string.Join(", ", stocks.Select(s => $"{s.Key} {s.Value / 1e6:0.0}M")));
+                else
+                    logger.LogWarning($"[{account.AccountName}] Could not read the resource stock; rotating the resources instead");
+                var sentThisRun = new Dictionary<ResourceType, int>();
                 var initialMarchesSent = FarmingSettings.GetMarchesSent(account.InstanceNumber);
                 
                 try
@@ -562,14 +632,17 @@ namespace Bot.Core.Tasks.Modules
                         // Rotate resources across cycles: start from the one after the last march actually sent. A failed
                         // attempt only moves on within this cycle, so a full queue doesn't skip a resource's turn.
                         int currentIndex = _farmingRotationIndexes.GetOrAdd(account.InstanceNumber, LoadRotationIndex) + consecutiveFailures;
-                        // One march per resource: skip what another march gathers already or this run just sent (all taken: plain rotation)
-                        var busy = ResourcesBeingGathered(account.InstanceNumber);
-                        busy.UnionWith(sentThisRun);
-                        for (int skip = 0; skip < account.FarmingTargets.Count && busy.Contains(account.FarmingTargets[currentIndex % account.FarmingTargets.Count].ResourceType); skip++)
-                            currentIndex++;
                         FarmingTarget currentTarget = account.FarmingTargets[currentIndex % account.FarmingTargets.Count];
+                        if (stocks != null)
+                        {
+                            // Marches already out (or sent this run) will bring a load each. ponytail: assumes a Lv.8 node's 14 M load
+                            // scales with the weight (iron 1/4 of bread), not read from the game; the next stock reading corrects it
+                            var out_ = ResourcesBeingGathered(account.InstanceNumber);
+                            double Fill(FarmingTarget t) => (stocks[t.ResourceType] + (out_.GetValueOrDefault(t.ResourceType) + sentThisRun.GetValueOrDefault(t.ResourceType)) * 14e6 * Math.Max(1, t.Weight) / 4) / Math.Max(1, t.Weight);
+                            currentTarget = account.FarmingTargets.OrderBy(Fill).ElementAt(consecutiveFailures % account.FarmingTargets.Count);
+                        }
                         bool priorityMarch = false;
-                        if (consecutiveFailures == 0 && _priorityResource.TryGetValue(account.InstanceNumber, out var priority) && DateTime.UtcNow < priority.Until && !busy.Contains(priority.Type)
+                        if (consecutiveFailures == 0 && _priorityResource.TryGetValue(account.InstanceNumber, out var priority) && DateTime.UtcNow < priority.Until
                             && account.FarmingTargets.FirstOrDefault(t => t.ResourceType == priority.Type) is FarmingTarget wanted)
                         {
                             // The Town Center waits on this resource: gather it first; the rotation resumes afterwards
@@ -589,7 +662,7 @@ namespace Bot.Core.Tasks.Modules
                                 SaveRotationIndexes();
                             }
                             consecutiveFailures = 0;
-                            sentThisRun.Add(currentTarget.ResourceType);
+                            sentThisRun[currentTarget.ResourceType] = sentThisRun.GetValueOrDefault(currentTarget.ResourceType) + 1;
                             marchesSentSuccessfully++;
                             FarmingSettings.IncrementMarchesSent(account.InstanceNumber);
                             

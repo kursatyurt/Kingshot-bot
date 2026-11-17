@@ -13,6 +13,10 @@ namespace Bot.Core.Models
         [JsonPropertyName("maxFarmingMarches")]
         public int MaxFarmingMarches { get; set; } = 0;
 
+        /// <summary>Hold Terror rallies with free marches while there is stamina; false = marches only gather.</summary>
+        [JsonPropertyName("terrorRallies")]
+        public bool TerrorRallies { get; set; } = true;
+
         /// <summary>
         /// Static cache to track marches sent per instance to persist across task runs.
         /// Key: InstanceNumber, Value: Number of marches sent in current session
