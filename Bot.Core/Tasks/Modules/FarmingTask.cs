@@ -256,42 +256,61 @@ namespace Bot.Core.Tasks.Modules
             return v * (suffix switch { "K" => 1e3, "M" => 1e6, "B" => 1e9, _ => 1.0 });
         }
 
-        /// <summary>The orange (secured) amount under a resource's "Owns" figure: OCR reads it only as black on white, so mask the orange first.</summary>
-        private static string ReadSecuredText(byte[] shot, int y, OCRService ocr)
+        /// <summary>
+        /// OCR reads only black-on-white: keep the pixels of one colour range (HSV) in the area, white-pad it and read it. Thin digits
+        /// ("11.5") read right only when enlarged first, short strings ("7.1 M") only at 1x, so try both and keep the first that is an amount.
+        /// </summary>
+        private static string ReadMasked(byte[] shot, OpenCvSharp.Rect area, OpenCvSharp.Scalar lo, OpenCvSharp.Scalar hi, OCRService ocr)
         {
             using var img = OpenCvSharp.Cv2.ImDecode(shot, OpenCvSharp.ImreadModes.Color);
-            using var roi = new OpenCvSharp.Mat(img, new OpenCvSharp.Rect(466, y + 44, 134, 40));
-            using var hsv = new OpenCvSharp.Mat();
-            OpenCvSharp.Cv2.CvtColor(roi, hsv, OpenCvSharp.ColorConversionCodes.BGR2HSV);
-            using var mask = new OpenCvSharp.Mat();
-            OpenCvSharp.Cv2.InRange(hsv, new OpenCvSharp.Scalar(5, 110, 140), new OpenCvSharp.Scalar(28, 255, 255), mask);
-            using var inverted = new OpenCvSharp.Mat();
-            OpenCvSharp.Cv2.BitwiseNot(mask, inverted);
-            using var padded = new OpenCvSharp.Mat();
-            OpenCvSharp.Cv2.CopyMakeBorder(inverted, padded, 10, 10, 10, 10, OpenCvSharp.BorderTypes.Constant, OpenCvSharp.Scalar.White);
-            return ocr.ExtractTextFromScreenArea(padded.ToBytes(".png"), new Rectangle(0, 0, padded.Width, padded.Height)) ?? "";
+            using var crop = new OpenCvSharp.Mat(img, area);
+            string text = "";
+            foreach (var scale in new[] { 3.0, 1.0 })
+            {
+                using var roi = new OpenCvSharp.Mat();
+                OpenCvSharp.Cv2.Resize(crop, roi, new OpenCvSharp.Size(), scale, scale, OpenCvSharp.InterpolationFlags.Cubic);
+                using var hsv = new OpenCvSharp.Mat();
+                OpenCvSharp.Cv2.CvtColor(roi, hsv, OpenCvSharp.ColorConversionCodes.BGR2HSV);
+                using var mask = new OpenCvSharp.Mat();
+                OpenCvSharp.Cv2.InRange(hsv, lo, hi, mask);
+                using var inverted = new OpenCvSharp.Mat();
+                OpenCvSharp.Cv2.BitwiseNot(mask, inverted);
+                using var padded = new OpenCvSharp.Mat();
+                OpenCvSharp.Cv2.CopyMakeBorder(inverted, padded, 10, 10, 10, 10, OpenCvSharp.BorderTypes.Constant, OpenCvSharp.Scalar.White);
+                text = ocr.ExtractTextFromScreenArea(padded.ToBytes(".png"), new Rectangle(0, 0, padded.Width, padded.Height)) ?? "";
+                if (ParseAmount(text) != null) break;
+            }
+            return text;
         }
 
         /// <summary>
         /// What the account owns of each resource beyond the Storehouse's protection: tap the bread chip in the top bar, read the
-        /// Overview's "Owns" figure and the secured (orange) one under it, close it. Null when it did not open or a number could not be read.
+        /// Overview's "Owns" figure (dark) and the secured one (orange) under it, close it. Null when it did not open or a number could not be read.
         /// </summary>
         private async Task<Dictionary<ResourceType, double>?> ReadStocksAsync(AccountSettings account, LogService logger, CancellationToken cancellationToken)
         {
             await ClickAsync(account.InstanceNumber, logger, new Point(500, 28));
-            await Bot.Core.Utils.Pace.Delay(1500, cancellationToken);
             Dictionary<ResourceType, double>? stocks = null;
-            var shot = await TakeScreenshotAsync(account.InstanceNumber, logger);
             var ocr = new OCRService(logger);
-            if (shot != null && ocr.ExtractTextFromScreenArea(shot, new Rectangle(10, 330, 250, 50))?.Contains("verview", StringComparison.OrdinalIgnoreCase) == true)
+            string seen = "";
+            for (int i = 0; i < 4 && stocks == null; i++) // the panel slides in; the title is white on tan and OCR cannot read it, so the four amounts are the check
             {
+                await Bot.Core.Utils.Pace.Delay(1000, cancellationToken);
+                var shot = await TakeScreenshotAsync(account.InstanceNumber, logger);
+                if (shot == null) continue;
                 var found = new Dictionary<ResourceType, double>();
+                seen = "";
                 foreach (var (type, y) in new[] { (ResourceType.Bread, 480), (ResourceType.Wood, 596), (ResourceType.Stone, 712), (ResourceType.Iron, 828) })
-                    if (ParseAmount(ocr.ExtractTextFromScreenArea(shot, new Rectangle(430, y, 150, 60))) is double owned
-                        && ParseAmount(ReadSecuredText(shot, y, ocr)) is double secured && secured <= owned * 1.001)
+                {
+                    var o = ReadMasked(shot, new OpenCvSharp.Rect(440, y, 160, 44), new OpenCvSharp.Scalar(0, 0, 0), new OpenCvSharp.Scalar(180, 255, 130), ocr);
+                    var s = ReadMasked(shot, new OpenCvSharp.Rect(440, y + 44, 160, 40), new OpenCvSharp.Scalar(5, 110, 140), new OpenCvSharp.Scalar(28, 255, 255), ocr);
+                    seen += $" {type}:'{o.Trim()}'/'{s.Trim()}'";
+                    if (ParseAmount(o) is double owned && ParseAmount(s) is double secured && secured <= owned * 1.001)
                         found[type] = Math.Max(0, owned - secured);
+                }
                 if (found.Count == 4) stocks = found;
             }
+            if (stocks == null) logger.LogInfo($"[{account.AccountName}] Resource overview not read (owned/secured OCR:{seen})");
             await PressBackAsync(account.InstanceNumber, logger);
             await Bot.Core.Utils.Pace.Delay(800, cancellationToken);
             await new LocatorService(logger, account).EnsureViewAsync(ViewType.MapView, account.InstanceNumber, cancellationToken);
